@@ -1,0 +1,39 @@
+{
+  "checks": [
+    {
+      "page": "dashboard",
+      "ok": true
+    },
+    {
+      "page": "portfolio",
+      "ok": true
+    },
+    {
+      "page": "dividends",
+      "ok": true
+    },
+    {
+      "page": "calendar",
+      "ok": true
+    },
+    {
+      "page": "analytics",
+      "ok": true
+    },
+    {
+      "settings": true,
+      "ok": true
+    },
+    {
+      "ics_export": "FinansalEB-temettu-takvimi-2026-08-27.ics",
+      "ok": true
+    },
+    {
+      "asset_form": true,
+      "ok": true
+    }
+  ],
+  "title": "Finansal(EB)",
+  "errors": [],
+  "ok": true
+}

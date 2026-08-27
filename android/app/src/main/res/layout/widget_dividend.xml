@@ -1,0 +1,57 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center_vertical"
+    android:background="@drawable/widget_small_background"
+    android:padding="14dp">
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="SIRADAKİ TEMETTÜ"
+            android:textColor="@color/accent"
+            android:textSize="10sp"
+            android:textStyle="bold" />
+        <TextView
+            android:id="@+id/widget_refresh"
+            android:layout_width="32dp"
+            android:layout_height="28dp"
+            android:gravity="center"
+            android:text="↻"
+            android:textColor="@color/text_muted"
+            android:textSize="18sp" />
+    </LinearLayout>
+    <TextView
+        android:id="@+id/dividend_symbol"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="5dp"
+        android:text="—"
+        android:textColor="@color/text_primary"
+        android:textSize="20sp"
+        android:textStyle="bold" />
+    <TextView
+        android:id="@+id/dividend_amount"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:text="₺0,00"
+        android:textColor="@color/accent"
+        android:textSize="23sp"
+        android:textStyle="bold" />
+    <TextView
+        android:id="@+id/dividend_date"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="Takvimde ödeme yok"
+        android:textColor="@color/text_muted"
+        android:textSize="11sp" />
+</LinearLayout>

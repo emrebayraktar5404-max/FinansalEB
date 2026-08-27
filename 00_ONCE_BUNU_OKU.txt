@@ -1,0 +1,17 @@
+FINANSALEB - GITHUB YUKLEME PAKETI
+
+Bu ZIP dosyasini bilgisayarinizda cikartin.
+Cikartilan klasorun ICINDEKI tum dosya ve klasorleri GitHub'a yukleyin.
+
+GitHub ana dizininde dogrudan sunlar gorunmelidir:
+.github
+android
+docs
+scripts
+server
+tests
+web
+README.md
+
+ZIP dosyasinin kendisini GitHub'a yuklemeyin.
+.github klasoru gorunmuyorsa Windows Gezgini'nde Gorunum > Goster > Gizli ogeler secenegini acin.

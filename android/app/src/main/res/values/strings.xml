@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">Finansal(EB)</string>
+    <string name="widget_portfolio_name">Finansal(EB) Portföy Özeti</string>
+    <string name="widget_dividend_name">Finansal(EB) Sıradaki Temettü</string>
+    <string name="notification_channel_name">Temettü Takvimi</string>
+    <string name="notification_channel_description">Hak kullanım ve ödeme tarihi bildirimleri</string>
+</resources>

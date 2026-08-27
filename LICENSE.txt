@@ -1,0 +1,7 @@
+Finansal(EB) Kişisel Kullanım Lisansı
+
+Telif ve kullanım hakkı: Emre Bayraktar.
+
+Bu proje, kullanıcının kendi cihazı ve kendi sunucusunda kişisel yatırım takibi amacıyla kullanılabilir, değiştirilebilir ve yedeklenebilir. Üçüncü taraf piyasa verilerinin yeniden dağıtımı bu lisansın kapsamında değildir; ilgili veri sağlayıcısının koşulları geçerlidir.
+
+Uygulama yatırım tavsiyesi, vergi danışmanlığı veya aracı kurum hizmeti sunmaz. Kaynak kod ve yazılım, uygulanabilir hukukun izin verdiği ölçüde herhangi bir garanti olmaksızın sağlanır.

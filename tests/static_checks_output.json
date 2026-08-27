@@ -1,0 +1,56 @@
+{
+  "ok": true,
+  "checks": [
+    {
+      "name": "JS syntax app.js",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "JS syntax sw.js",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "JSON manifest.webmanifest",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "PHP syntax api.php",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "PHP syntax config.sample.php",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Android XML",
+      "ok": true,
+      "detail": "12 dosya"
+    },
+    {
+      "name": "Android resource references",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Manifest classes",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Web/Android asset sync",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Required files",
+      "ok": true,
+      "detail": "8 dosya"
+    }
+  ],
+  "errors": []
+}
