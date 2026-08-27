@@ -5,6 +5,10 @@ plugins {
 android {
     namespace 'com.finansaleb.app'
     compileSdk 35
+    
+        buildFeatures {
+        buildConfig = true
+        }
 
     defaultConfig {
         applicationId 'com.finansaleb.app'
