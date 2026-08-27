@@ -49,7 +49,17 @@
     {
       "name": "Required files",
       "ok": true,
-      "detail": "8 dosya"
+      "detail": "12 dosya"
+    },
+    {
+      "name": "Native market bridge",
+      "ok": true,
+      "detail": "arama/fiyat/temettü geri çağrısı bağlı"
+    },
+    {
+      "name": "Stable APK signing",
+      "ok": true,
+      "detail": "v0.2.0 sonrası güncellemeler aynı anahtarla imzalanır"
     }
   ],
   "errors": []

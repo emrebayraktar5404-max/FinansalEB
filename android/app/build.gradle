@@ -2,29 +2,47 @@ plugins {
     id 'com.android.application'
 }
 
+def signingProperties = new Properties()
+def signingPropertiesFile = rootProject.file('signing/keystore.properties')
+if (!signingPropertiesFile.exists()) {
+    throw new GradleException('Kişisel imzalama ayarı bulunamadı: android/signing/keystore.properties')
+}
+signingProperties.load(new FileInputStream(signingPropertiesFile))
+
 android {
     namespace 'com.finansaleb.app'
     compileSdk 35
-    
-        buildFeatures {
+
+    buildFeatures {
         buildConfig = true
-        }
+    }
 
     defaultConfig {
         applicationId 'com.finansaleb.app'
         minSdk 26
         targetSdk 35
-        versionCode 1
-        versionName '0.1.0'
+        versionCode 2
+        versionName '0.2.0'
+    }
+
+    signingConfigs {
+        personal {
+            storeFile rootProject.file("signing/${signingProperties['storeFile']}")
+            storePassword signingProperties['storePassword']
+            keyAlias signingProperties['keyAlias']
+            keyPassword signingProperties['keyPassword']
+        }
     }
 
     buildTypes {
         debug {
             applicationIdSuffix '.debug'
             versionNameSuffix '-debug'
+            signingConfig signingConfigs.personal
         }
         release {
             minifyEnabled false
+            signingConfig signingConfigs.personal
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }

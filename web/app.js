@@ -5,7 +5,7 @@
 (() => {
   'use strict';
 
-  const APP_VERSION = '0.1.0';
+  const APP_VERSION = '0.2.0';
   const STORAGE_KEY = 'finansaleb_state_v1';
   const ONBOARDING_KEY = 'finansaleb_onboarded_v1';
   const DAY = 86_400_000;
@@ -213,6 +213,43 @@
   let portfolioQuery = '';
   let toastTimer = null;
   let refreshController = null;
+  const nativeMarketRequests = new Map();
+  let nativeMarketSequence = 0;
+
+  window.FinansalEBNative = {
+    onMarketResult(requestId, payload) {
+      const pending = nativeMarketRequests.get(String(requestId));
+      if (!pending) return;
+      nativeMarketRequests.delete(String(requestId));
+      clearTimeout(pending.timer);
+      try {
+        const result = typeof payload === 'string' ? JSON.parse(payload) : payload;
+        if (!result?.ok) throw new Error(result?.error || 'Piyasa verisi alınamadı');
+        pending.resolve(result);
+      } catch (error) {
+        pending.reject(error instanceof Error ? error : new Error(String(error)));
+      }
+    }
+  };
+
+  function nativeMarketCall(action, params = {}, timeout = 22000) {
+    if (!window.Android?.requestMarketData) return Promise.reject(new Error('Android veri köprüsü kullanılamıyor'));
+    const requestId = `market_${Date.now().toString(36)}_${++nativeMarketSequence}`;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        nativeMarketRequests.delete(requestId);
+        reject(new Error('Piyasa veri isteği zaman aşımına uğradı'));
+      }, timeout);
+      nativeMarketRequests.set(requestId, {resolve, reject, timer});
+      try {
+        window.Android.requestMarketData(requestId, action, JSON.stringify(params));
+      } catch (error) {
+        clearTimeout(timer);
+        nativeMarketRequests.delete(requestId);
+        reject(error);
+      }
+    });
+  }
 
   function saveState({render = false} = {}) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -316,7 +353,7 @@
     const close = () => closeModal();
     if (dismissible) {
       layer.onclick = e => { if (e.target === layer) close(); };
-      $('.modal-close', layer)?.addEventListener('click', close);
+      $$('[data-modal-close], .modal-close', layer).forEach(button => button.addEventListener('click', close));
     } else layer.onclick = null;
   }
 
@@ -326,6 +363,13 @@
     layer.setAttribute('aria-hidden','true');
     setTimeout(() => { if (!layer.classList.contains('open')) layer.innerHTML = ''; }, 180);
   }
+
+  window.FinansalEBHandleBack = () => {
+    const layer = $('#modalLayer');
+    if (!layer?.classList.contains('open')) return false;
+    closeModal();
+    return true;
+  };
 
   function demoBanner() {
     return state.demo ? `<div class="demo-banner"><span>Örnek veriler gösteriliyor; tutarlar gerçek portföyün değildir.</span><button data-action="clear-demo">Boş başla</button></div>` : '';
@@ -614,7 +658,7 @@
   }
 
   function modalHeader(title) {
-    return `<div class="modal-grabber"></div><div class="modal-head"><div class="modal-title">${esc(title)}</div><button class="modal-close" aria-label="Kapat">${ICONS.close}</button></div>`;
+    return `<div class="modal-grabber"></div><div class="modal-head"><div class="modal-title">${esc(title)}</div><button type="button" class="modal-x" data-modal-close aria-label="Kapat">${ICONS.close}</button></div>`;
   }
 
   function showAssetForm(assetId = null) {
@@ -623,61 +667,230 @@
     showModal(`${modalHeader(existing ? 'Varlığı düzenle' : 'Yeni varlık ekle')}
       <form id="assetForm"><div class="form-grid">
         <div class="field"><label>Varlık türü</label><select name="type">${Object.entries(TYPE_META).map(([key,m])=>`<option value="${key}" ${a.type===key?'selected':''}>${m.label}</option>`).join('')}</select></div>
-        <div class="field"><label>Para birimi</label><select name="currency">${['TRY','USD','EUR','GBP'].map(c=>`<option ${a.currency===c?'selected':''}>${c}</option>`).join('')}</select></div>
-        <div class="field"><label>Sembol / fon kodu</label><input name="symbol" required autocomplete="off" value="${esc(a.symbol)}" placeholder="TUPRS, SCHD, TMG"></div>
-        <div class="field"><label>Veri sembolü</label><input name="sourceSymbol" value="${esc(a.sourceSymbol||'')}" placeholder="Otomatik oluşturulur"></div>
-        <div class="field full"><label>Varlık adı</label><input name="name" required value="${esc(a.name)}" placeholder="Tüpraş, Schwab Dividend ETF..."></div>
+        <div class="field"><label>Para birimi</label><select name="currency">${['TRY','USD','EUR','GBP'].map(c=>`<option value="${c}" ${a.currency===c?'selected':''}>${c}</option>`).join('')}</select></div>
+        <div class="field full asset-lookup-field">
+          <label>Sembol / fon kodu</label>
+          <div class="lookup-input-row">
+            <input name="symbol" required autocomplete="off" autocapitalize="characters" value="${esc(a.symbol)}" placeholder="DEVA, TUPRS, SCHD, TMG">
+            <button type="button" class="lookup-button" id="assetLookupBtn">Bul</button>
+          </div>
+          <input type="hidden" name="sourceSymbol" value="${esc(a.sourceSymbol||'')}">
+          <div id="assetLookupStatus" class="lookup-status">${existing ? 'Kayıtlı sembolü yeniden doğrulamak için Bul’a basın.' : 'Sembolü yazınca şirket/fon adı ve güncel fiyat otomatik aranır.'}</div>
+          <div id="assetSearchResults" class="asset-search-results" hidden></div>
+        </div>
+        <div class="field full"><label>Varlık adı</label><input name="name" value="${esc(a.name)}" placeholder="Otomatik doldurulacak; gerekirse düzenleyebilirsiniz"></div>
         <div class="field"><label>Adet / pay</label><input name="quantity" type="number" step="any" min="0" value="${a.quantity ?? ''}" placeholder="0"></div>
         <div class="field"><label>Ortalama maliyet</label><input name="avgCost" type="number" step="any" min="0" value="${a.avgCost ?? ''}" placeholder="0"></div>
         <div class="field"><label>Güncel fiyat</label><input name="price" type="number" step="any" min="0" value="${a.price ?? ''}" placeholder="Otomatik çekilecek"></div>
         <div class="field"><label>Hedef ağırlık (%)</label><input name="targetWeight" type="number" step=".1" min="0" max="100" value="${a.targetWeight ?? 0}"></div>
         <div class="field"><label>Temettü stopajı (%)</label><input name="dividendTax" type="number" step=".1" min="0" max="100" value="${a.dividendTax ?? 0}"></div>
         <div class="field"><label>Yıllık temettü / pay</label><input name="annualDividendPerShare" type="number" step="any" min="0" value="${a.annualDividendPerShare ?? 0}"></div>
-        <div class="field full"><div class="field-hint">Stopaj oranı kişiseldir; uygulama vergi danışmanlığı yapmaz. Açıklanmış temettü varsa olay bazındaki net tutar önceliklidir.</div></div>
-      </div><div class="button-row">${existing?`<button type="button" class="danger-btn" id="deleteAsset">Sil</button>`:`<button type="button" class="secondary-btn modal-close">Vazgeç</button>`}<button class="primary-btn" type="submit">Kaydet</button></div></form>`);
+        <div class="field full"><div class="field-hint">BIST/ABD/ETF için sembol araması; TEFAS için fon kodu sorgusu APK içinde otomatik yapılır. Stopaj oranı kişiseldir.</div></div>
+      </div><div class="button-row">${existing?`<button type="button" class="danger-btn" id="deleteAsset">Sil</button>`:`<button type="button" class="secondary-btn" id="assetCancelButton" data-modal-close>Vazgeç</button>`}<button class="primary-btn" id="assetSaveButton" type="submit">Kaydet</button></div></form>`);
+
     const form = $('#assetForm');
     const typeSelect = form.elements.type;
+    const symbolInput = form.elements.symbol;
+    const sourceInput = form.elements.sourceSymbol;
+    const nameInput = form.elements.name;
+    const priceInput = form.elements.price;
+    const currencyInput = form.elements.currency;
+    const statusNode = $('#assetLookupStatus');
+    const resultsNode = $('#assetSearchResults');
+    const lookupButton = $('#assetLookupBtn');
+    const saveButton = $('#assetSaveButton');
+    let lookupTimer = null;
+    let lookupGeneration = 0;
+    let selectedMarketData = existing ? {
+      symbol:a.symbol, sourceSymbol:a.sourceSymbol, name:a.name, price:a.price,
+      prevClose:a.prevClose, changePct:a.changePct, currency:a.currency
+    } : null;
+
+    const setStatus = (message, tone = '') => {
+      statusNode.textContent = message;
+      statusNode.className = `lookup-status ${tone}`.trim();
+    };
+    const clearResults = () => {
+      resultsNode.hidden = true;
+      resultsNode.innerHTML = '';
+    };
+    const showResults = results => {
+      resultsNode.innerHTML = results.map((result,index)=>`
+        <button type="button" class="asset-search-result" data-result-index="${index}">
+          <span class="asset-result-symbol">${esc(result.symbol)}</span>
+          <span class="asset-result-main"><strong>${esc(result.name||result.symbol)}</strong><small>${esc(result.exchange||TYPE_META[result.type]?.label||'Otomatik veri')}</small></span>
+          <span class="asset-result-price">${Number(result.price)>0?money(result.price,result.currency||currencyInput.value,false,Math.abs(Number(result.price))<1?4:2):'Seç'}</span>
+        </button>`).join('');
+      resultsNode.hidden = !results.length;
+      $$('.asset-search-result', resultsNode).forEach(button=>button.addEventListener('click',()=>{
+        const result=results[Number(button.dataset.resultIndex)];
+        if(result)applyLookupResult(result);
+      }));
+    };
+
+    async function applyLookupResult(result) {
+      clearResults();
+      selectedMarketData = {...result};
+      symbolInput.value = String(result.symbol || symbolInput.value).toUpperCase();
+      sourceInput.value = result.sourceSymbol || inferSourceSymbol(symbolInput.value,typeSelect.value);
+      if (result.name) nameInput.value = result.name;
+      if (result.currency) currencyInput.value = result.currency;
+      if (Number(result.price)>0) priceInput.value = String(Number(result.price));
+      setStatus(`${result.symbol} bulundu · ad ve fiyat otomatik dolduruldu.`, 'success');
+
+      if (!(Number(result.price)>0)) {
+        try {
+          setStatus(`${result.symbol} bulundu · güncel fiyat alınıyor…`, 'loading');
+          const quote = await lookupQuotePreview({
+            symbol:result.symbol,
+            sourceSymbol:sourceInput.value,
+            type:typeSelect.value,
+            currency:currencyInput.value
+          });
+          selectedMarketData = {...selectedMarketData,...quote};
+          if (quote.name && (!nameInput.value || nameInput.value===symbolInput.value)) nameInput.value=quote.name;
+          if (quote.currency) currencyInput.value=quote.currency;
+          if (Number(quote.price)>0) priceInput.value=String(Number(quote.price));
+          setStatus(`${result.symbol} doğrulandı · fiyat ${money(quote.price,quote.currency||currencyInput.value,false,Math.abs(Number(quote.price))<1?4:2)}.`, 'success');
+        } catch (error) {
+          setStatus(`${result.symbol} bulundu; fiyat şu an alınamadı. Kayıttan sonra yeniden denenecek.`, 'warning');
+        }
+      }
+    }
+
+    async function runLookup({force = false} = {}) {
+      const type = typeSelect.value;
+      const query = String(symbolInput.value||'').trim();
+      clearTimeout(lookupTimer);
+      clearResults();
+      if (!assetTypeSupportsLookup(type)) {
+        setStatus('Bu varlık türünde isim ve fiyat manuel girilir.', 'muted');
+        return null;
+      }
+      if (query.length < (type==='TEFAS'?3:2)) {
+        setStatus(type==='TEFAS'?'TEFAS fonunun kodunu en az 3 karakter yazın.':'Arama için en az 2 karakter yazın.', 'warning');
+        return null;
+      }
+
+      const generation = ++lookupGeneration;
+      lookupButton.disabled = true;
+      lookupButton.classList.add('loading');
+      setStatus('Piyasa kaydında aranıyor…', 'loading');
+      try {
+        const results = await searchAssetCandidates(query,type);
+        if (generation !== lookupGeneration) return null;
+        if (!results.length) {
+          setStatus('Eşleşen hisse/fon bulunamadı. Sembolü veya fon kodunu kontrol edin.', 'error');
+          return null;
+        }
+        const normalized = query.toUpperCase().replace(/\.IS$/,'').replace(/\s+/g,'');
+        const exact = results.find(result => String(result.symbol||'').toUpperCase().replace(/\.IS$/,'')===normalized
+          || String(result.sourceSymbol||'').toUpperCase()===query.toUpperCase());
+        if (exact || (force && results.length===1) || results.length===1) {
+          const chosen = exact || results[0];
+          await applyLookupResult(chosen);
+          return chosen;
+        }
+        showResults(results);
+        setStatus(`${results.length} eşleşme bulundu; doğru olanı seçin.`, 'success');
+        return null;
+      } catch (error) {
+        if (generation === lookupGeneration) setStatus(error.message || 'Otomatik arama yapılamadı.', 'error');
+        return null;
+      } finally {
+        if (generation === lookupGeneration) {
+          lookupButton.disabled = false;
+          lookupButton.classList.remove('loading');
+        }
+      }
+    }
+
     typeSelect.addEventListener('change',()=>{
       const meta = TYPE_META[typeSelect.value];
-      if (meta) form.elements.currency.value = meta.currency;
+      if (meta) currencyInput.value = meta.currency;
+      selectedMarketData = null;
+      sourceInput.value = '';
+      clearResults();
+      if (assetTypeSupportsLookup(typeSelect.value)) {
+        setStatus(typeSelect.value==='TEFAS'?'Fon kodunu yazın; adı ve son fiyatı TEFAS’tan alınır.':'Sembolü yazınca otomatik arama başlar.');
+        if (symbolInput.value.trim().length >= (typeSelect.value==='TEFAS'?3:2)) runLookup({force:true});
+      } else setStatus('Bu varlık türünde isim ve fiyat manuel girilir.', 'muted');
     });
-    form.addEventListener('submit',e=>{
-      e.preventDefault();
-      const fd = new FormData(form);
-      const type = fd.get('type');
-      const symbol = String(fd.get('symbol')).trim().toUpperCase();
-      const next = {
-        id: existing?.id || uid('asset'),
-        type,
-        currency:String(fd.get('currency')),
-        symbol,
-        sourceSymbol:String(fd.get('sourceSymbol')).trim() || inferSourceSymbol(symbol,type),
-        name:String(fd.get('name')).trim(),
-        quantity:Number(fd.get('quantity')||0),
-        avgCost:Number(fd.get('avgCost')||0),
-        price:Number(fd.get('price')||0),
-        prevClose:existing?.prevClose || Number(fd.get('price')||0),
-        changePct:existing?.changePct || 0,
-        targetWeight:Number(fd.get('targetWeight')||0),
-        dividendTax:Number(fd.get('dividendTax')||0),
-        annualDividendPerShare:Number(fd.get('annualDividendPerShare')||0),
-        history:existing?.history || [],
-        lastUpdated:existing?.lastUpdated || null,
-        dataStatus:existing?.dataStatus || 'manual'
-      };
-      if (existing) Object.assign(existing,next); else {
-        state.assets.push(next);
-        if (next.quantity > 0) state.transactions.push({id:uid('tx'),assetId:next.id,type:'buy',date:isoDate(),quantity:next.quantity,price:next.avgCost,fee:0,currency:next.currency});
+
+    symbolInput.addEventListener('input',()=>{
+      selectedMarketData = null;
+      sourceInput.value = '';
+      clearResults();
+      const cursor = symbolInput.selectionStart;
+      symbolInput.value = symbolInput.value.toUpperCase();
+      try { symbolInput.setSelectionRange(cursor,cursor); } catch (_) {}
+      clearTimeout(lookupTimer);
+      const min = typeSelect.value==='TEFAS'?3:2;
+      if (symbolInput.value.trim().length < min) {
+        setStatus(typeSelect.value==='TEFAS'?'TEFAS fon kodunu yazın.':'Sembolü yazın; arama otomatik başlayacak.');
+        return;
       }
-      state.demo=false; saveState(); closeModal(); renderPage(); showToast(existing?'Varlık güncellendi':'Varlık eklendi');
-      if (state.settings.autoRefresh) refreshAll({silent:true,onlyAssetId:next.id});
+      setStatus('Yazmayı bitirince otomatik aranacak…', 'loading');
+      lookupTimer = setTimeout(()=>runLookup(),550);
+    });
+    lookupButton.addEventListener('click',()=>runLookup({force:true}));
+
+    form.addEventListener('submit',async e=>{
+      e.preventDefault();
+      saveButton.disabled = true;
+      saveButton.textContent = 'Kaydediliyor…';
+      try {
+        if (assetTypeSupportsLookup(typeSelect.value) && (!sourceInput.value || !nameInput.value || !(Number(priceInput.value)>0))) {
+          await runLookup({force:true});
+        }
+        const fd = new FormData(form);
+        const type = String(fd.get('type'));
+        const symbol = String(fd.get('symbol')).trim().toUpperCase();
+        if (!symbol) throw new Error('Sembol veya fon kodu zorunludur.');
+        const currentPrice = Number(fd.get('price')||0);
+        const next = {
+          id: existing?.id || uid('asset'),
+          type,
+          currency:String(fd.get('currency')),
+          symbol,
+          sourceSymbol:String(fd.get('sourceSymbol')).trim() || inferSourceSymbol(symbol,type),
+          name:String(fd.get('name')).trim() || symbol,
+          quantity:Number(fd.get('quantity')||0),
+          avgCost:Number(fd.get('avgCost')||0),
+          price:currentPrice,
+          prevClose:Number(selectedMarketData?.prevClose || existing?.prevClose || currentPrice),
+          changePct:Number(selectedMarketData?.changePct || existing?.changePct || 0),
+          targetWeight:Number(fd.get('targetWeight')||0),
+          dividendTax:Number(fd.get('dividendTax')||0),
+          annualDividendPerShare:Number(fd.get('annualDividendPerShare')||0),
+          history:existing?.history || [],
+          lastUpdated:currentPrice>0 ? new Date().toISOString() : (existing?.lastUpdated || null),
+          dataStatus:currentPrice>0 ? 'auto' : (existing?.dataStatus || 'pending'),
+          dataSource:selectedMarketData?.source || existing?.dataSource || null
+        };
+        if (existing) Object.assign(existing,next); else {
+          state.assets.push(next);
+          if (next.quantity > 0) state.transactions.push({id:uid('tx'),assetId:next.id,type:'buy',date:isoDate(),quantity:next.quantity,price:next.avgCost,fee:0,currency:next.currency});
+        }
+        state.demo=false;
+        saveState();
+        closeModal();
+        renderPage();
+        showToast(existing?'Varlık güncellendi':'Varlık eklendi');
+        if (state.settings.autoRefresh || !(next.price>0)) refreshAll({silent:true,onlyAssetId:next.id});
+      } catch (error) {
+        setStatus(error.message || 'Varlık kaydedilemedi.', 'error');
+      } finally {
+        saveButton.disabled = false;
+        saveButton.textContent = 'Kaydet';
+      }
     });
     $('#deleteAsset')?.addEventListener('click',()=>confirmDeleteAsset(existing.id));
   }
 
   function confirmDeleteAsset(assetId) {
     const a = assetById(assetId); if (!a) return;
-    showModal(`${modalHeader('Varlığı sil')}<div class="empty-text" style="font-size:11px;margin:0">${esc(a.symbol)} ve bu varlığa bağlı tüm işlemler/temettüler silinecek. Bu işlem geri alınamaz.</div><div class="button-row"><button class="secondary-btn modal-close">Vazgeç</button><button class="danger-btn" id="confirmDelete">Kalıcı olarak sil</button></div>`);
+    showModal(`${modalHeader('Varlığı sil')}<div class="empty-text" style="font-size:11px;margin:0">${esc(a.symbol)} ve bu varlığa bağlı tüm işlemler/temettüler silinecek. Bu işlem geri alınamaz.</div><div class="button-row"><button class="secondary-btn" data-modal-close>Vazgeç</button><button class="danger-btn" id="confirmDelete">Kalıcı olarak sil</button></div>`);
     $('#confirmDelete').addEventListener('click',()=>{
       state.assets=state.assets.filter(x=>x.id!==assetId);
       state.transactions=state.transactions.filter(x=>x.assetId!==assetId);
@@ -691,7 +904,7 @@
     showModal(`${modalHeader('Yeni portföy işlemi')}<form id="txForm">
       <div class="field"><label>İşlem türü</label><div class="segmented" id="txSegments"><button type="button" class="active" data-tx="buy">Alış</button><button type="button" data-tx="sell">Satış</button><button type="button" data-tx="dividend">Temettü</button></div><input type="hidden" name="type" value="buy"></div>
       <div class="form-grid"><div class="field full"><label>Varlık</label><select name="assetId">${state.assets.map(a=>`<option value="${a.id}" ${a.id===assetId?'selected':''}>${esc(a.symbol)} · ${esc(a.name)}</option>`).join('')}</select></div><div class="field"><label>Tarih</label><input type="date" name="date" value="${isoDate()}" required></div><div class="field"><label>Adet / pay</label><input type="number" step="any" min="0" name="quantity" required></div><div class="field"><label>Fiyat / pay</label><input type="number" step="any" min="0" name="price" required></div><div class="field"><label>Komisyon</label><input type="number" step="any" min="0" name="fee" value="0"></div></div>
-      <div class="button-row"><button type="button" class="secondary-btn modal-close">Vazgeç</button><button class="primary-btn">İşlemi kaydet</button></div></form>`);
+      <div class="button-row"><button type="button" class="secondary-btn" data-modal-close>Vazgeç</button><button class="primary-btn">İşlemi kaydet</button></div></form>`);
     $$('#txSegments button').forEach(b=>b.addEventListener('click',()=>{$$('#txSegments button').forEach(x=>x.classList.remove('active'));b.classList.add('active');$('#txForm').elements.type.value=b.dataset.tx;}));
     $('#txForm').addEventListener('submit',e=>{
       e.preventDefault(); const fd=new FormData(e.currentTarget); const a=assetById(fd.get('assetId')); if(!a)return;
@@ -713,7 +926,7 @@
       <div class="field"><label>Pay başına brüt tutar</label><input type="number" step="any" min="0" name="amount" required></div><div class="field"><label>Durum</label><select name="status"><option value="confirmed">Açıklanmış</option><option value="estimated">Tahmini</option></select></div>
       <div class="field"><label>Stopaj (%)</label><input type="number" step=".1" min="0" max="100" name="taxRate" placeholder="Varlık ayarı"></div><div class="field"><label>Kaynak/not</label><input name="source" value="Manuel kayıt"></div>
       <div class="field full"><div class="toggle-row" id="receivedToggle"><div class="toggle-main"><div class="toggle-title">Ödeme alındı</div><div class="toggle-note">Geçmiş temettü olarak kaydet</div></div><i class="switch"></i><input type="hidden" name="received" value="0"></div></div>
-      </div><div class="button-row"><button type="button" class="secondary-btn modal-close">Vazgeç</button><button class="primary-btn">Kaydet</button></div></form>`);
+      </div><div class="button-row"><button type="button" class="secondary-btn" data-modal-close>Vazgeç</button><button class="primary-btn">Kaydet</button></div></form>`);
     $('#receivedToggle').addEventListener('click',()=>{const sw=$('.switch','#receivedToggle');sw.classList.toggle('on');$('#divForm').elements.received.value=sw.classList.contains('on')?'1':'0';});
     $('#divForm').addEventListener('submit',e=>{e.preventDefault();const fd=new FormData(e.currentTarget);const a=assetById(fd.get('assetId'));if(!a)return;state.dividendEvents.push({id:uid('div'),assetId:a.id,exDate:String(fd.get('exDate')),payDate:String(fd.get('payDate')),amountPerShare:Number(fd.get('amount')||0),currency:a.currency,status:String(fd.get('status')),received:fd.get('received')==='1',taxRate:fd.get('taxRate')===''?undefined:Number(fd.get('taxRate')),source:String(fd.get('source')||'Manuel kayıt')});state.demo=false;saveState();closeModal();renderPage();showToast('Temettü olayı eklendi');scheduleEventNotifications();});
   }
@@ -734,13 +947,13 @@
   }
 
   function showTargetEditor() {
-    showModal(`${modalHeader('Hedef portföy ağırlıkları')}<form id="targetForm">${state.assets.map(a=>`<div class="field"><label>${esc(a.symbol)} hedefi (%)</label><input type="number" step=".1" min="0" max="100" name="${a.id}" value="${Number(a.targetWeight||0)}"></div>`).join('')}<div class="field-hint">Toplam hedefin %100 olması önerilir. Uygulama sadece farkı gösterir; alım-satım emri vermez.</div><div class="button-row"><button type="button" class="secondary-btn modal-close">Vazgeç</button><button class="primary-btn">Kaydet</button></div></form>`);
+    showModal(`${modalHeader('Hedef portföy ağırlıkları')}<form id="targetForm">${state.assets.map(a=>`<div class="field"><label>${esc(a.symbol)} hedefi (%)</label><input type="number" step=".1" min="0" max="100" name="${a.id}" value="${Number(a.targetWeight||0)}"></div>`).join('')}<div class="field-hint">Toplam hedefin %100 olması önerilir. Uygulama sadece farkı gösterir; alım-satım emri vermez.</div><div class="button-row"><button type="button" class="secondary-btn" data-modal-close>Vazgeç</button><button class="primary-btn">Kaydet</button></div></form>`);
     $('#targetForm').addEventListener('submit',e=>{e.preventDefault();const fd=new FormData(e.currentTarget);state.assets.forEach(a=>a.targetWeight=Number(fd.get(a.id)||0));saveState();closeModal();renderPage();showToast('Hedefler güncellendi');});
   }
 
   function showProjectionSettings() {
     const s=state.settings;
-    showModal(`${modalHeader('Özgürlük projeksiyonu')}<form id="projectionForm"><div class="form-grid"><div class="field"><label>Aylık yaşam gideri (₺)</label><input type="number" min="0" step="100" name="monthlyExpense" value="${s.monthlyExpense}"></div><div class="field"><label>Aylık yeni yatırım (₺)</label><input type="number" min="0" step="100" name="monthlyContribution" value="${s.monthlyContribution}"></div><div class="field"><label>Yıllık getiri varsayımı (%)</label><input type="number" step=".1" name="expectedReturn" value="${s.expectedReturn}"></div><div class="field"><label>Yıllık net temettü hedefi (₺)</label><input type="number" min="0" step="1000" name="dividendGoalAnnual" value="${s.dividendGoalAnnual}"></div></div><div class="disclaimer">Projeksiyon bir tahmindir; piyasa getirisi, kur ve temettü ödemeleri garanti değildir.</div><div class="button-row"><button type="button" class="secondary-btn modal-close">Vazgeç</button><button class="primary-btn">Kaydet</button></div></form>`);
+    showModal(`${modalHeader('Özgürlük projeksiyonu')}<form id="projectionForm"><div class="form-grid"><div class="field"><label>Aylık yaşam gideri (₺)</label><input type="number" min="0" step="100" name="monthlyExpense" value="${s.monthlyExpense}"></div><div class="field"><label>Aylık yeni yatırım (₺)</label><input type="number" min="0" step="100" name="monthlyContribution" value="${s.monthlyContribution}"></div><div class="field"><label>Yıllık getiri varsayımı (%)</label><input type="number" step=".1" name="expectedReturn" value="${s.expectedReturn}"></div><div class="field"><label>Yıllık net temettü hedefi (₺)</label><input type="number" min="0" step="1000" name="dividendGoalAnnual" value="${s.dividendGoalAnnual}"></div></div><div class="disclaimer">Projeksiyon bir tahmindir; piyasa getirisi, kur ve temettü ödemeleri garanti değildir.</div><div class="button-row"><button type="button" class="secondary-btn" data-modal-close>Vazgeç</button><button class="primary-btn">Kaydet</button></div></form>`);
     $('#projectionForm').addEventListener('submit',e=>{e.preventDefault();const fd=new FormData(e.currentTarget);['monthlyExpense','monthlyContribution','expectedReturn','dividendGoalAnnual'].forEach(k=>state.settings[k]=Number(fd.get(k)||0));saveState();closeModal();renderPage();showToast('Projeksiyon ayarları güncellendi');});
   }
 
@@ -778,7 +991,7 @@
 
   function showDataSettings() {
     const s=state.settings;
-    showModal(`${modalHeader('Kişisel veri sunucusu')}<form id="dataForm"><div class="field"><label>API adresi</label><input name="backendUrl" value="${esc(s.backendUrl)}" placeholder="https://alanadiniz.com/finansaleb/api.php"></div><div class="field"><label>API erişim anahtarı</label><input name="backendToken" value="${esc(s.backendToken)}" placeholder="Kişisel anahtar"></div><div class="field"><label>Otomatik yenileme aralığı</label><select name="refreshHours">${[1,3,6,12,24].map(v=>`<option value="${v}" ${Number(s.refreshHours)===v?'selected':''}>${v} saat</option>`).join('')}</select></div><div class="toggle-row" id="autoRefreshToggle"><div class="toggle-main"><div class="toggle-title">Uygulama açılınca yenile</div><div class="toggle-note">Son yenileme süresi dolduysa otomatik çalışır</div></div><i class="switch ${s.autoRefresh?'on':''}"></i><input type="hidden" name="autoRefresh" value="${s.autoRefresh?'1':'0'}"></div><div class="disclaimer">Sunucu adresi boşsa BIST/ABD/ETF ve maden fiyatlarında doğrudan piyasa kaynağı denenir. TEFAS ve güvenilir takvim için paket içindeki PHP uç noktası önerilir.</div><div class="button-row"><button type="button" class="secondary-btn modal-close">Vazgeç</button><button class="primary-btn">Kaydet ve test et</button></div></form>`);
+    showModal(`${modalHeader('Kişisel veri sunucusu')}<form id="dataForm"><div class="field"><label>API adresi</label><input name="backendUrl" value="${esc(s.backendUrl)}" placeholder="https://alanadiniz.com/finansaleb/api.php"></div><div class="field"><label>API erişim anahtarı</label><input name="backendToken" value="${esc(s.backendToken)}" placeholder="Kişisel anahtar"></div><div class="field"><label>Otomatik yenileme aralığı</label><select name="refreshHours">${[1,3,6,12,24].map(v=>`<option value="${v}" ${Number(s.refreshHours)===v?'selected':''}>${v} saat</option>`).join('')}</select></div><div class="toggle-row" id="autoRefreshToggle"><div class="toggle-main"><div class="toggle-title">Uygulama açılınca yenile</div><div class="toggle-note">Son yenileme süresi dolduysa otomatik çalışır</div></div><i class="switch ${s.autoRefresh?'on':''}"></i><input type="hidden" name="autoRefresh" value="${s.autoRefresh?'1':'0'}"></div><div class="disclaimer">APK; BIST/ABD/ETF aramasını, fiyatları ve TEFAS fon kodlarını kendi Android veri katmanından otomatik sorgular. Kişisel PHP sunucusu yalnızca önbellek, KAP ve ek dayanıklılık için isteğe bağlıdır.</div><div class="button-row"><button type="button" class="secondary-btn" data-modal-close>Vazgeç</button><button class="primary-btn">Kaydet ve test et</button></div></form>`);
     $('#autoRefreshToggle').addEventListener('click',()=>{const sw=$('.switch','#autoRefreshToggle');sw.classList.toggle('on');$('#dataForm').elements.autoRefresh.value=sw.classList.contains('on')?'1':'0';});
     $('#dataForm').addEventListener('submit',async e=>{e.preventDefault();const fd=new FormData(e.currentTarget);s.backendUrl=String(fd.get('backendUrl')).trim().replace(/\/$/,'');s.backendToken=String(fd.get('backendToken')).trim();s.refreshHours=Number(fd.get('refreshHours'));s.autoRefresh=fd.get('autoRefresh')==='1';saveState();closeModal();await refreshAll();});
   }
@@ -832,8 +1045,104 @@
   }
 
   function confirmReset() {
-    showModal(`${modalHeader('Tüm verileri sil')}<div class="empty-text" style="font-size:11px;margin:0">Portföy, işlemler, temettü takvimi ve ayarlar bu cihazdan kalıcı olarak silinecek. Önce yedek almak mantıklıdır.</div><div class="button-row"><button class="secondary-btn modal-close">Vazgeç</button><button class="danger-btn" id="resetConfirm">Tümünü sil</button></div>`);
+    showModal(`${modalHeader('Tüm verileri sil')}<div class="empty-text" style="font-size:11px;margin:0">Portföy, işlemler, temettü takvimi ve ayarlar bu cihazdan kalıcı olarak silinecek. Önce yedek almak mantıklıdır.</div><div class="button-row"><button class="secondary-btn" data-modal-close>Vazgeç</button><button class="danger-btn" id="resetConfirm">Tümünü sil</button></div>`);
     $('#resetConfirm').addEventListener('click',()=>{state=blankState();localStorage.removeItem(STORAGE_KEY);localStorage.setItem(ONBOARDING_KEY,'1');saveState();closeModal();renderPage();showToast('Tüm veriler silindi');});
+  }
+
+  function assetTypeSupportsLookup(type) {
+    return !['CUSTOM','CASH','BOND'].includes(String(type||'').toUpperCase());
+  }
+
+  function normalizeMarketSearchResult(item, fallbackType) {
+    const sourceSymbol=String(item?.sourceSymbol||item?.symbol||'').toUpperCase();
+    const type=String(item?.type||fallbackType||'BIST').toUpperCase();
+    const displaySymbol=String(item?.symbol || (type==='BIST'?sourceSymbol.replace(/\.IS$/,''):sourceSymbol)).toUpperCase();
+    return {
+      symbol:displaySymbol,
+      sourceSymbol:sourceSymbol || inferSourceSymbol(displaySymbol,type),
+      name:String(item?.name||item?.longname||item?.shortname||displaySymbol),
+      type,
+      currency:String(item?.currency||TYPE_META[type]?.currency||'TRY'),
+      exchange:String(item?.exchange||''),
+      price:Number(item?.price||item?.regularMarketPrice||0),
+      prevClose:Number(item?.prevClose||item?.regularMarketPreviousClose||0),
+      changePct:Number(item?.changePct||item?.regularMarketChangePercent||0),
+      source:String(item?.source||'Otomatik piyasa araması')
+    };
+  }
+
+  async function directYahooSearch(query,type) {
+    if(type==='TEFAS') {
+      const code=String(query).replace(/[^A-Z0-9]/gi,'').toUpperCase();
+      const quote=await tefasQuote(code);
+      return [normalizeMarketSearchResult({...quote,symbol:code,sourceSymbol:code,type:'TEFAS'},'TEFAS')];
+    }
+    if(type==='GOLD') {
+      const quote=await quoteForAsset({symbol:'GRAM ALTIN',sourceSymbol:'GRAM_ALTIN',type:'GOLD',currency:'TRY'});
+      return [normalizeMarketSearchResult({...quote,symbol:'GRAM ALTIN',sourceSymbol:'GRAM_ALTIN',name:'Gram Altın',type:'GOLD'},'GOLD')];
+    }
+    if(type==='SILVER') {
+      const quote=await quoteForAsset({symbol:'GRAM GÜMÜŞ',sourceSymbol:'GRAM_GUMUS',type:'SILVER',currency:'TRY'});
+      return [normalizeMarketSearchResult({...quote,symbol:'GRAM GÜMÜŞ',sourceSymbol:'GRAM_GUMUS',name:'Gram Gümüş',type:'SILVER'},'SILVER')];
+    }
+    const url=`https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=15&newsCount=0&listsCount=0&enableFuzzyQuery=true`;
+    const json=await fetchJson(url,{},15000);
+    const results=(json?.quotes||[]).filter(item=>{
+      const symbol=String(item.symbol||'').toUpperCase();
+      const quoteType=String(item.quoteType||'').toUpperCase();
+      const exchange=String(item.exchange||item.exchDisp||'').toUpperCase();
+      const currency=String(item.currency||'').toUpperCase();
+      if(type==='BIST')return symbol.endsWith('.IS')||exchange.includes('IST')||exchange.includes('BIST');
+      if(type==='ETF')return quoteType==='ETF';
+      if(type==='US')return quoteType==='EQUITY'&&!symbol.endsWith('.IS')&&(!currency||currency==='USD');
+      if(type==='CRYPTO')return quoteType.includes('CRYPTO')||symbol.endsWith('-USD');
+      if(type==='FX')return quoteType==='CURRENCY';
+      return true;
+    }).slice(0,10).map(item=>normalizeMarketSearchResult({
+      symbol:type==='BIST'?String(item.symbol||'').replace(/\.IS$/i,''):item.symbol,
+      sourceSymbol:item.symbol,
+      name:item.longname||item.shortname||item.symbol,
+      type,
+      currency:item.currency,
+      exchange:item.exchange||item.exchDisp,
+      price:item.regularMarketPrice,
+      prevClose:item.regularMarketPreviousClose,
+      changePct:item.regularMarketChangePercent,
+      source:'Piyasa sembol araması'
+    },type));
+    if(results.length)return results;
+    const display=String(query).trim().toUpperCase();
+    try {
+      const quote=await quoteForAsset({symbol:display,sourceSymbol:inferSourceSymbol(display,type),type,currency:TYPE_META[type]?.currency||'TRY'});
+      return [normalizeMarketSearchResult({...quote,symbol:display,sourceSymbol:inferSourceSymbol(display,type),type},type)];
+    } catch (_) { return []; }
+  }
+
+  async function searchAssetCandidates(query,type) {
+    const normalizedQuery=String(query||'').trim();
+    const normalizedType=String(type||'BIST').toUpperCase();
+    if(window.Android?.requestMarketData) {
+      try {
+        const response=await nativeMarketCall('search',{query:normalizedQuery,type:normalizedType},26000);
+        return (response?.data?.results||[]).map(item=>normalizeMarketSearchResult(item,normalizedType));
+      } catch(error) { console.warn('Native search fallback',error); }
+    }
+    if(state.settings.backendUrl) {
+      try {
+        const response=await backendCall({action:'search',query:normalizedQuery,type:normalizedType});
+        if(response?.ok)return (response.data?.results||[]).map(item=>normalizeMarketSearchResult(item,normalizedType));
+      } catch(error) { console.warn('Backend search fallback',error); }
+    }
+    return directYahooSearch(normalizedQuery,normalizedType);
+  }
+
+  async function lookupQuotePreview(candidate) {
+    return quoteForAsset({
+      symbol:candidate.symbol,
+      sourceSymbol:candidate.sourceSymbol||inferSourceSymbol(candidate.symbol,candidate.type),
+      type:candidate.type,
+      currency:candidate.currency||TYPE_META[candidate.type]?.currency||'TRY'
+    });
   }
 
   function inferSourceSymbol(symbol,type) {
@@ -868,22 +1177,26 @@
     const url=`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1mo&events=div%2Csplits&includeAdjustedClose=true`;
     const json=await fetchJson(url,{},15000);const result=json?.chart?.result?.[0];if(!result)throw new Error(json?.chart?.error?.description||'Piyasa verisi bulunamadı');
     const closes=(result.indicators?.quote?.[0]?.close||[]).map(Number).filter(Number.isFinite);const timestamps=result.timestamp||[];const meta=result.meta||{};const price=Number(meta.regularMarketPrice||closes.at(-1));const prev=Number(meta.chartPreviousClose||meta.previousClose||closes.at(-2)||price);const events=Object.values(result.events?.dividends||{}).map(e=>({date:isoDate(new Date(Number(e.date)*1000)),amount:Number(e.amount||0)}));
-    return {price,prevClose:prev,changePct:prev?(price-prev)/prev*100:0,currency:meta.currency||null,history:closes,timestamps,dividends:events,source:'Piyasa verisi'};
+    return {symbol,name:meta.shortName||meta.longName||symbol,price,prevClose:prev,changePct:prev?(price-prev)/prev*100:0,currency:meta.currency||null,exchange:meta.exchangeName||'',history:closes,timestamps,dividends:events,source:'Piyasa verisi'};
   }
 
   async function tefasQuote(code) {
     if(state.settings.backendUrl){const data=await backendCall({action:'tefas',code});if(data?.ok&&data.data)return data.data;throw new Error(data?.error||'TEFAS verisi alınamadı');}
     const end=new Date(),start=addDays(end,-14),body=new URLSearchParams({fontip:'YAT',bastarih:`${String(start.getDate()).padStart(2,'0')}.${String(start.getMonth()+1).padStart(2,'0')}.${start.getFullYear()}`,bittarih:`${String(end.getDate()).padStart(2,'0')}.${String(end.getMonth()+1).padStart(2,'0')}.${end.getFullYear()}`,fonkod:code});
-    const json=await fetchJson('https://www.tefas.gov.tr/api/DB/BindHistoryInfo',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8','X-Requested-With':'XMLHttpRequest'},body},15000);const rows=json?.data||[];if(!rows.length)throw new Error('TEFAS kaydı bulunamadı');const prices=rows.map(r=>Number(String(r.FIYAT).replace(',','.'))).filter(Number.isFinite);const price=prices.at(-1),prev=prices.at(-2)||price;return{price,prevClose:prev,changePct:prev?(price-prev)/prev*100:0,currency:'TRY',history:prices,dividends:[],source:'TEFAS'};
+    const json=await fetchJson('https://www.tefas.gov.tr/api/DB/BindHistoryInfo',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8','X-Requested-With':'XMLHttpRequest'},body},15000);const rows=json?.data||[];if(!rows.length)throw new Error('TEFAS kaydı bulunamadı');const prices=rows.map(r=>Number(String(r.FIYAT).replace(/\./g,'').replace(',','.'))).filter(Number.isFinite);const price=prices.at(-1),prev=prices.at(-2)||price,last=rows.at(-1)||{};return{symbol:code,name:last.FONUNVAN||last.FONUNVANI||code,price,prevClose:prev,changePct:prev?(price-prev)/prev*100:0,currency:'TRY',history:prices,dividends:[],source:'TEFAS'};
   }
 
   async function quoteForAsset(asset) {
+    const sourceSymbol=asset.sourceSymbol||inferSourceSymbol(asset.symbol,asset.type);
+    if(window.Android?.requestMarketData){
+      try {const response=await nativeMarketCall('quote',{symbol:sourceSymbol,type:asset.type},26000);if(response?.data)return response.data;}catch(error){console.warn('Native quote fallback',error);}
+    }
     if(state.settings.backendUrl){
-      try {const data=await backendCall({action:'quote',symbol:asset.sourceSymbol||inferSourceSymbol(asset.symbol,asset.type),type:asset.type});if(data?.ok&&data.data)return data.data;}catch(error){console.warn('Backend quote fallback',error);}
+      try {const data=await backendCall({action:'quote',symbol:sourceSymbol,type:asset.type});if(data?.ok&&data.data)return data.data;}catch(error){console.warn('Backend quote fallback',error);}
     }
     if(asset.type==='TEFAS')return tefasQuote(asset.symbol);
     if(asset.type==='CUSTOM'||asset.type==='CASH'||asset.type==='BOND')throw new Error('Manuel fiyatlı varlık');
-    const source=asset.sourceSymbol||inferSourceSymbol(asset.symbol,asset.type);
+    const source=sourceSymbol;
     if(source==='GRAM_ALTIN'||asset.type==='GOLD'){
       const [gold,tryFx]=await Promise.all([yahooQuote('GC=F'),yahooQuote('TRY=X')]);const price=gold.price*tryFx.price/TROY_OUNCE,prev=gold.prevClose*tryFx.prevClose/TROY_OUNCE;return{price,prevClose:prev,changePct:prev?(price-prev)/prev*100:0,currency:'TRY',history:gold.history.map((v,i)=>v*(tryFx.history[i]||tryFx.price)/TROY_OUNCE),dividends:[],source:'Altın ons + USD/TRY'};
     }
@@ -896,6 +1209,12 @@
   async function dividendFeedForAsset(asset) {
     if (!['BIST','US','ETF'].includes(asset.type)) return [];
     const symbol = asset.sourceSymbol || inferSourceSymbol(asset.symbol, asset.type);
+    if (window.Android?.requestMarketData) {
+      try {
+        const response=await nativeMarketCall('dividends',{symbol},28000);
+        if(Array.isArray(response?.data?.events))return response.data.events;
+      } catch(error) { console.warn('Native dividend fallback',error); }
+    }
     if (state.settings.backendUrl) {
       const result = await backendCall({action:'dividends', symbol});
       if (result?.ok && Array.isArray(result.data?.events)) return result.data.events;

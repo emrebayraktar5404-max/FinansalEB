@@ -30,6 +30,26 @@ storage_shim = """
     get length() { return memory.size; }
   };
   try { Object.defineProperty(window, 'localStorage', { value: store, configurable: true }); } catch (_) {}
+  window.Android = {
+    haptic() {},
+    saveWidgetState() {},
+    scheduleNotification() {},
+    getBackgroundPrices() { return ''; },
+    requestMarketData(requestId, action, rawParams) {
+      const params = JSON.parse(rawParams || '{}');
+      let data = {};
+      if (action === 'search' && params.type === 'TEFAS') {
+        data = {results:[{symbol:'TMG',sourceSymbol:'TMG',name:'Ak Portföy Yeni Teknolojiler Yabancı Hisse Fonu',type:'TEFAS',currency:'TRY',price:.0536,prevClose:.0532,changePct:.75,source:'TEFAS'}]};
+      } else if (action === 'search') {
+        data = {results:[{symbol:'DEVA',sourceSymbol:'DEVA.IS',name:'Deva Holding A.Ş.',type:'BIST',currency:'TRY',price:72.5,prevClose:71.8,changePct:.97,source:'Piyasa sembol araması'}]};
+      } else if (action === 'quote') {
+        data = {symbol:params.symbol,name:'Deva Holding A.Ş.',price:72.5,prevClose:71.8,changePct:.97,currency:'TRY',history:[70,71.8,72.5],dividends:[],source:'Piyasa verisi'};
+      } else if (action === 'dividends') {
+        data = {events:[]};
+      }
+      setTimeout(() => window.FinansalEBNative.onMarketResult(requestId, JSON.stringify({ok:true,data})), 15);
+    }
+  };
 })();
 </script>
 """
@@ -67,7 +87,7 @@ with sync_playwright() as p:
     assert "Ayarlar" in page.locator("#modalLayer").inner_text()
     assert "Temettü takvimini aktar" in page.locator("#modalLayer").inner_text()
     results["checks"].append({"settings": True, "ok": True})
-    page.click(".modal-close")
+    page.click(".modal-x")
 
     page.click('[data-page="calendar"]')
     with page.expect_download(timeout=3000) as info:
@@ -76,14 +96,35 @@ with sync_playwright() as p:
     assert download.suggested_filename.endswith(".ics")
     results["checks"].append({"ics_export": download.suggested_filename, "ok": True})
 
-    # Varlık formu ve temel alanlar
+    # Varlık formu, Vazgeç düğmesi ve otomatik piyasa araması
     page.click('[data-page="portfolio"]')
     page.click('[data-action="add-asset"]')
     form = page.locator("#assetForm")
     assert form.is_visible()
     for name in ["type", "currency", "symbol", "sourceSymbol", "name", "quantity", "avgCost", "price", "targetWeight", "dividendTax"]:
         assert form.locator(f'[name="{name}"]').count() == 1, f"Alan eksik: {name}"
-    results["checks"].append({"asset_form": True, "ok": True})
+    page.click("#assetCancelButton")
+    page.wait_for_timeout(220)
+    assert not page.locator("#modalLayer").evaluate("el => el.classList.contains('open')")
+    results["checks"].append({"asset_cancel": True, "ok": True})
+
+    page.click('[data-action="add-asset"]')
+    form = page.locator("#assetForm")
+    form.locator('[name="symbol"]').fill("DEVA")
+    page.click("#assetLookupBtn")
+    page.wait_for_function("document.querySelector('#assetForm [name=name]').value.includes('Deva Holding')")
+    assert form.locator('[name="sourceSymbol"]').input_value() == "DEVA.IS"
+    assert float(form.locator('[name="price"]').input_value()) == 72.5
+    assert "otomatik dolduruldu" in page.locator("#assetLookupStatus").inner_text()
+    results["checks"].append({"asset_auto_lookup": True, "ok": True})
+
+    # TEFAS kodu da isim ve fiyatla otomatik çözülmeli
+    form.locator('[name="type"]').select_option("TEFAS")
+    form.locator('[name="symbol"]').fill("TMG")
+    page.click("#assetLookupBtn")
+    page.wait_for_function("document.querySelector('#assetForm [name=name]').value.includes('Yeni Teknolojiler')")
+    assert float(form.locator('[name="price"]').input_value()) == 0.0536
+    results["checks"].append({"tefas_auto_lookup": True, "ok": True})
 
     results["title"] = page.title()
     results["errors"] = errors

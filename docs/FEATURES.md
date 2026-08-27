@@ -7,7 +7,9 @@
 - [x] Adet, ortalama maliyet, komisyon, stopaj
 - [x] Toplam değer, maliyet, gerçekleşmemiş kâr/zarar, günlük değişim
 - [x] Para birimi dönüşümü
-- [x] Arama ve varlık türü filtresi
+- [x] Portföy içi arama ve varlık türü filtresi
+- [x] BIST/ABD/ETF sembol araması ve otomatik şirket/fon adı-fiyat doldurma
+- [x] TEFAS fon kodundan otomatik fon adı ve son fiyat sorgusu
 - [x] Hedef ağırlık ve yeniden dengeleme farkı
 - [x] JSON yedekleme ve geri yükleme
 - [ ] Aracı kurum hesabına doğrudan bağlanma — ücretsiz ve güvenli ortak standart olmadığı için bilinçli olarak kapalı

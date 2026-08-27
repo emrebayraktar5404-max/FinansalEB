@@ -29,7 +29,15 @@
       "ok": true
     },
     {
-      "asset_form": true,
+      "asset_cancel": true,
+      "ok": true
+    },
+    {
+      "asset_auto_lookup": true,
+      "ok": true
+    },
+    {
+      "tefas_auto_lookup": true,
       "ok": true
     }
   ],

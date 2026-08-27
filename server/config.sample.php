@@ -12,5 +12,5 @@ return [
     'DIVIDEND_CACHE_SECONDS' => 21600,
     'ENABLE_KAP_SCRAPER' => true,
     'TIMEZONE' => 'Europe/Istanbul',
-    'USER_AGENT' => 'FinansalEB/0.1 (personal portfolio tracker)',
+    'USER_AGENT' => 'FinansalEB/0.2 (personal portfolio tracker)',
 ];

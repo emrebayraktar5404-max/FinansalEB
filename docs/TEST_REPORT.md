@@ -1,7 +1,7 @@
-# Finansal(EB) v0.1.0 Test Raporu
+# Finansal(EB) v0.2.0 Test Raporu
 
 **Test tarihi:** 27 Ağustos 2026  
-**Durum:** Kaynak, PWA ve sunucu katmanında smoke/statik testler başarılı. Android kaynak projesi statik olarak doğrulandı; bu çalışma ortamında Android SDK/Gradle bulunmadığı için APK binary derlemesi yerel olarak çalıştırılmadı.
+**Durum:** Kaynak, PWA ve sunucu katmanında smoke/statik testler başarılı. Android kaynak projesi statik olarak doğrulandı; piyasa istemcisi ayrıca `javac --release 17` ile derlendi. Bu çalışma ortamında Android SDK/Gradle bulunmadığı için APK binary derlemesi yerel olarak çalıştırılmadı.
 
 ## Başarılı kontroller
 
@@ -16,7 +16,11 @@
 - Dashboard, Portföy, Temettü, Takvim ve Analiz sayfalarının Chromium smoke testi
 - Ayarlar ekranı ve widget yardım ekranı
 - `.ics` temettü takvimi indirme testi
-- Yeni varlık formundaki zorunlu alanların varlığı
+- Yeni varlık formundaki alanların varlığı
+- Formun altındaki **Vazgeç** düğmesinin modalı kapatma testi
+- BIST `DEVA` sembolünün şirket adı, `.IS` veri sembolü ve fiyatla otomatik doldurma testi
+- TEFAS `TMG` kodunun fon adı ve fiyatla otomatik doldurma testi
+- Android yerel veri istemcisi Java 17 sözdizimi/tür kontrolü (org.json uyumlu stub ile)
 - Tarayıcı konsolu ve çalışma zamanı: hata yok
 
 ## Android derleme doğrulaması
@@ -28,8 +32,9 @@
 - Android Build Tools 35.0.0
 - Gradle 8.9
 - Android Gradle Plugin 8.7.3
+- Sabit kişisel JKS imzası (`android/signing/`)
 
-İş akışı `:app:assembleDebug` çalıştırır ve kurulabilir `FinansalEB-v0.1.0-debug.apk` artefaktını oluşturur. Binary oluşturulduktan sonra gerçek cihazda şu kontroller ayrıca yapılmalıdır:
+İş akışı `:app:assembleDebug` çalıştırır ve kurulabilir `FinansalEB-v0.2.0-debug.apk` artefaktını oluşturur. Binary oluşturulduktan sonra gerçek cihazda şu kontroller ayrıca yapılmalıdır:
 
 1. İlk açılış ve bildirim izni
 2. WebView yerel arayüzü
@@ -38,6 +43,8 @@
 5. Arka plan JobScheduler yenilemesi
 6. Telefon yeniden başlatıldıktan sonra görevlerin devamı
 7. Android 13, 14 ve 15 üzerinde bildirim/widget davranışı
+8. Gerçek ağda DEVA/TUPRS gibi BIST sembol araması
+9. Gerçek ağda TMG gibi TEFAS fon kodu sorgusu
 
 ## Bilinen sınırlar
 

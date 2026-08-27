@@ -97,13 +97,31 @@ if not any(e.startswith('Asset sync:') for e in errors): ok('Web/Android asset s
 required = [
     ROOT / '.github/workflows/build-apk.yml', ROOT / 'README.md', ROOT / 'LICENSE.txt',
     ROOT / 'scripts/sync-assets.sh', ROOT / 'android/app/build.gradle',
+    ROOT / 'android/signing/finansaleb-personal.jks', ROOT / 'android/signing/keystore.properties',
     ROOT / 'android/app/src/main/java/com/finansaleb/app/MainActivity.java',
+    ROOT / 'android/app/src/main/java/com/finansaleb/app/AppBridge.java',
+    ROOT / 'android/app/src/main/java/com/finansaleb/app/MarketDataClient.java',
     ROOT / 'android/app/src/main/java/com/finansaleb/app/PortfolioWidgetProvider.java',
     ROOT / 'android/app/src/main/java/com/finansaleb/app/DividendWidgetProvider.java',
 ]
 missing = [str(p.relative_to(ROOT)) for p in required if not p.exists()]
 if missing: fail('Required files', ', '.join(missing))
 else: ok('Required files', f'{len(required)} dosya')
+
+# Native market bridge wiring
+app_bridge = (ROOT / 'android/app/src/main/java/com/finansaleb/app/AppBridge.java').read_text(encoding='utf-8')
+main_activity = (ROOT / 'android/app/src/main/java/com/finansaleb/app/MainActivity.java').read_text(encoding='utf-8')
+web_js = (ROOT / 'web/app.js').read_text(encoding='utf-8')
+if 'requestMarketData' not in app_bridge or 'deliverMarketResult' not in main_activity or 'FinansalEBNative' not in web_js:
+    fail('Native market bridge', 'Android-JavaScript veri köprüsü eksik')
+else:
+    ok('Native market bridge', 'arama/fiyat/temettü geri çağrısı bağlı')
+
+build_gradle = (ROOT / 'android/app/build.gradle').read_text(encoding='utf-8')
+if 'signingConfigs' not in build_gradle or 'signingConfig signingConfigs.personal' not in build_gradle:
+    fail('Stable APK signing', 'kişisel sabit imza yapılandırması bağlı değil')
+else:
+    ok('Stable APK signing', 'v0.2.0 sonrası güncellemeler aynı anahtarla imzalanır')
 
 report = {"ok": not errors, "checks": checks, "errors": errors}
 print(json.dumps(report, ensure_ascii=False, indent=2))

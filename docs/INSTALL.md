@@ -29,7 +29,7 @@ Depo kökünde bulunan `.github/workflows/build-apk.yml` dosyası şunları otom
 - PWA dosyalarının APK varlıklarına kopyalanması
 - Debug APK derleme ve SHA-256 özeti oluşturma
 
-Çıktı adı: `FinansalEB-v0.1.0-debug.apk`.
+Çıktı adı: `FinansalEB-v0.2.0-debug.apk`.
 
 ### Android Studio
 
@@ -47,7 +47,19 @@ Depo kökünde bulunan `.github/workflows/build-apk.yml` dosyası şunları otom
 3. APK'yı açıp kurulumu tamamlayın.
 4. İlk açılışta **Kendi portföyüm** seçeneği gerçek ve boş veri alanı açar; **Örneği incele** yalnız demo verisidir.
 
-## 4. Widget ekleme
+## 4. v0.1.1'den v0.2.0'a ilk geçiş
+
+v0.1.1 GitHub'ın geçici debug sertifikasıyla derlenmişti. v0.2.0 ise gelecekteki güncellemelerde değişmeyecek kişisel imza anahtarını kullanır. Android sertifika değiştiği için ilk geçişte doğrudan üzerine kurulum reddedilebilir.
+
+1. Eski uygulamada **Ayarlar → Verilerimi dışa aktar** ile JSON yedeği alın.
+2. Eski Finansal(EB) uygulamasını kaldırın.
+3. `FinansalEB-v0.2.0-debug.apk` dosyasını kurun.
+4. Ayarlardan JSON yedeğini geri yükleyin.
+5. v0.2.0'dan sonraki sürümleri artık kaldırmadan üzerine kurun.
+
+`android/signing/` klasörü kişisel imza anahtarını içerir. GitHub deposunu **Private** tutun ve bu klasörü herkese açık yerde paylaşmayın.
+
+## 5. Widget ekleme
 
 1. Uygulamayı en az bir kez açın ve portföyü kaydedin.
 2. Telefon ana ekranında boş bir alana basılı tutun.
@@ -55,7 +67,7 @@ Depo kökünde bulunan `.github/workflows/build-apk.yml` dosyası şunları otom
 4. `Portföy Özeti` veya `Sıradaki Temettü` widget'ını ekleyin.
 5. Widget üzerindeki yenile simgesi arka plan veri görevini tetikler.
 
-## 5. Sunucu kurulumu
+## 6. Sunucu kurulumu
 
 PHP gereksinimleri:
 
@@ -70,6 +82,6 @@ PHP gereksinimleri:
 
 Uygulama sunucusuz da çalışır. Kişisel sunucu; önbellek, TEFAS/KAP bağdaştırıcısı ve dış kaynağa daha kontrollü erişim sağlar.
 
-## 6. Yedek ve geri yükleme
+## 7. Yedek ve geri yükleme
 
 **Ayarlar → Verilerimi dışa aktar** ile JSON yedeği alın. Android APK'da dosya `İndirilenler/FinansalEB` klasörüne kaydedilir. Geri yüklemeden önce mevcut verinin ayrıca yedeğini almak güvenlidir.

@@ -1,7 +1,13 @@
-FINANSALEB - GITHUB YUKLEME PAKETI
+FINANSALEB v0.2.0 - GITHUB GUNCELLEME PAKETI
+
+Bu surum iki ana sorunu duzeltir:
+1) Varlik formundaki Vazgec dugmesi artik calisir.
+2) BIST/ABD/ETF sembolleri ile TEFAS fon kodlari APK icinden otomatik aranir;
+   varlik adi, veri sembolu ve guncel fiyat doldurulur.
 
 Bu ZIP dosyasini bilgisayarinizda cikartin.
-Cikartilan klasorun ICINDEKI tum dosya ve klasorleri GitHub'a yukleyin.
+Cikartilan klasorun ICINDEKI tum dosya ve klasorleri mevcut GitHub deponuza yukleyin.
+Ayni yoldaki eski dosyalarin uzerine yazilmasina izin verin.
 
 GitHub ana dizininde dogrudan sunlar gorunmelidir:
 .github
@@ -15,3 +21,15 @@ README.md
 
 ZIP dosyasinin kendisini GitHub'a yuklemeyin.
 .github klasoru gorunmuyorsa Windows Gezgini'nde Gorunum > Goster > Gizli ogeler secenegini acin.
+
+Yukleme tamamlaninca GitHub Actions otomatik baslar.
+Basarili cikti adi: FinansalEB-v0.2.0-APK
+Kurulacak dosya: FinansalEB-v0.2.0-debug.apk
+
+ONEMLI - v0.1.1'DEN ILK GECIS:
+Onceki APK gecici GitHub debug anahtariyla imzalanmisti. Bu nedenle Android v0.2.0'i
+dogrudan uzerine kurmayi reddedebilir. Once mevcut uygulamadan JSON yedegi alin,
+eski uygulamayi kaldirin, v0.2.0'i kurun ve yedegi geri yukleyin.
+
+v0.2.0 sabit kisisel imza anahtari icerir. Bundan sonraki surumler kaldirmadan
+mevcut uygulamanin uzerine kurulabilecektir. GitHub deposunu PRIVATE tutun.

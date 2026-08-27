@@ -167,20 +167,21 @@ public final class MarketRefreshJobService extends JobService {
     private Quote fetchAssetQuote(String sourceSymbol, String type, String backendUrl, String backendToken) throws Exception {
         if (!backendUrl.trim().isEmpty()) {
             try { return backendQuote(backendUrl, backendToken, sourceSymbol, type); }
-            catch (Exception ignored) { /* doğrudan kaynağa düş */ }
+            catch (Exception ignored) { /* kişisel sunucu geçici kapalıysa APK içi kaynağa düş */ }
         }
-        if ("TEFAS".equals(type) || "CUSTOM".equals(type) || "CASH".equals(type) || "BOND".equals(type)) return null;
-        if ("GOLD".equals(type) || "GRAM_ALTIN".equals(sourceSymbol)) {
-            Quote metal = yahooQuote("GC=F");
-            Quote tryFx = yahooQuote("TRY=X");
-            return compositeMetal(metal, tryFx);
-        }
-        if ("SILVER".equals(type) || "GRAM_GUMUS".equals(sourceSymbol)) {
-            Quote metal = yahooQuote("SI=F");
-            Quote tryFx = yahooQuote("TRY=X");
-            return compositeMetal(metal, tryFx);
-        }
-        return yahooQuote(sourceSymbol);
+        if ("CUSTOM".equals(type) || "CASH".equals(type) || "BOND".equals(type)) return null;
+        JSONObject response = MarketDataClient.execute("quote", new JSONObject()
+                .put("symbol", sourceSymbol)
+                .put("type", type));
+        JSONObject data = response.optJSONObject("data");
+        if (!response.optBoolean("ok", false) || data == null) return null;
+        double price = data.optDouble("price", 0);
+        if (price <= 0) return null;
+        return new Quote(
+                price,
+                data.optDouble("prevClose", price),
+                data.optDouble("changePct", 0)
+        );
     }
 
     private double getFxRate(String currency, String backendUrl, String backendToken, Map<String, Double> cache) {
@@ -194,9 +195,8 @@ public final class MarketRefreshJobService extends JobService {
         };
         if (symbol == null) return 1;
         try {
-            Quote quote = !backendUrl.trim().isEmpty()
-                    ? backendQuote(backendUrl, backendToken, symbol, "FX")
-                    : yahooQuote(symbol);
+            Quote quote = fetchAssetQuote(symbol, "FX", backendUrl, backendToken);
+            if (quote == null) throw new IllegalStateException("Kur verisi alınamadı");
             cache.put(currency, quote.price);
             return quote.price;
         } catch (Exception ignored) {
@@ -253,7 +253,7 @@ public final class MarketRefreshJobService extends JobService {
         connection.setReadTimeout(15_000);
         connection.setRequestMethod("GET");
         connection.setRequestProperty("Accept", "application/json");
-        connection.setRequestProperty("User-Agent", "FinansalEB/0.1 Android Widget");
+        connection.setRequestProperty("User-Agent", "FinansalEB/0.2 Android Widget");
         if (token != null && !token.trim().isEmpty()) connection.setRequestProperty("X-Api-Token", token.trim());
         int code = connection.getResponseCode();
         InputStream stream = code >= 200 && code < 300 ? connection.getInputStream() : connection.getErrorStream();

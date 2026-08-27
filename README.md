@@ -1,4 +1,4 @@
-# Finansal(EB) v0.1.0
+# Finansal(EB) v0.2.0
 
 **Finansal(EB)**, Emre Bayraktar için hazırlanmış; BIST, ABD hisseleri, ETF, TEFAS fonu, altın, gümüş, döviz, kripto, tahvil/eurobond, nakit ve özel varlıkları aynı portföyde takip eden Türkçe kişisel yatırım uygulamasıdır.
 
@@ -9,6 +9,8 @@ Arayüz; Stock Events'in hızlı temettü akışı ile Snowball Analytics'in por
 - Toplam portföy değeri, maliyet, kâr/zarar, günlük değişim ve kur dönüşümü
 - Alış, satış ve temettü işlemleri; adet, ortalama maliyet, komisyon ve stopaj kaydı
 - BIST, ABD hissesi, ETF, TEFAS, altın, gümüş, döviz, kripto, tahvil/eurobond, nakit ve özel varlık
+- BIST/ABD/ETF sembol araması; TEFAS kodundan otomatik fon adı ve fiyat doldurma
+- APK içindeki Android veri köprüsü sayesinde kişisel sunucu kurmadan otomatik fiyat sorgusu
 - Önümüzdeki 12 ay brüt/net temettü, aylık ortalama, temettü verimi ve maliyete göre verim
 - **Açıklanmış**, **şirket teklifi**, **tahmini** ve **geçmiş** ödeme ayrımı
 - Aylık temettü nakit akışı, ödeme/hak kullanım takvimi ve yaklaşan ödemeler
@@ -40,10 +42,12 @@ FinansalEB/
 
 1. Bu klasörün tamamını özel bir GitHub deposuna yükleyin.
 2. Depoda **Actions → FinansalEB Android APK → Run workflow** yolunu açın.
-3. İş tamamlanınca **FinansalEB-v0.1.0-APK** artefaktını indirin.
-4. Zip içindeki `FinansalEB-v0.1.0-debug.apk` dosyasını telefona kurun.
+3. İş tamamlanınca **FinansalEB-v0.2.0-APK** artefaktını indirin.
+4. Zip içindeki `FinansalEB-v0.2.0-debug.apk` dosyasını telefona kurun.
 
-Bu debug APK Android tarafından geliştirme anahtarıyla imzalanır ve doğrudan kurulabilir. Kalıcı dağıtım anahtarıyla release imzası sonraki sürümde eklenebilir.
+Bu sürüm, `android/signing/` altında projeye ait sabit kişisel imza anahtarıyla imzalanır. Böylece **v0.2.0 ve sonraki sürümler** aynı uygulamanın üzerine kurulabilir. Depo özel tutulmalı; imza dosyaları herkese açık bir depoda paylaşılmamalıdır.
+
+> **v0.1.1’den ilk geçiş:** Önceki GitHub derlemesi geçici debug anahtarıyla imzalandığı için Android v0.2.0’ı doğrudan üzerine kurmayı reddedebilir. Mevcut uygulamada **Ayarlar → JSON yedeği** alın, eski uygulamayı kaldırın, v0.2.0’ı kurun ve yedeği geri yükleyin. Bu işlem yalnızca bir kez gerekir.
 
 ### Android Studio ile
 
@@ -61,7 +65,7 @@ Bu debug APK Android tarafından geliştirme anahtarıyla imzalanır ve doğruda
 5. Tarayıcıda `api.php?action=health&token=ANAHTAR` çağrısının `ok: true` döndürdüğünü kontrol edin.
 6. Uygulamada **Ayarlar → Kişisel veri sunucusu** alanına `.../api.php` adresini ve token'ı girin.
 
-Sunucu zorunlu değildir. Ancak TEFAS/KAP isteklerini önbelleğe almak, ücretsiz kaynakların hız sınırına daha az takılmak ve veri kurallarını kendi kontrolünüzde tutmak için önerilir.
+Sunucu zorunlu değildir. APK sürümü BIST/ABD/ETF aramasını, fiyatları, geçmiş temettü olaylarını ve TEFAS fon kodu sorgusunu Android'in yerel ağ katmanından yapar. Kişisel sunucu; önbellek, KAP bağdaştırıcısı ve dış kaynakların hız sınırlarına karşı ek dayanıklılık için isteğe bağlıdır.
 
 ## Veri doğruluğu
 

@@ -1,0 +1,36 @@
+FINANSALEB v0.2.0 GUNCELLEME
+
+DUZELTILENLER
+- Vazgec dugmesi artik formu kapatir.
+- BIST/ABD/ETF sembol aramasi APK icinde gercekten calisir.
+- TEFAS fon kodu yazilinca fon adi ve son fiyat otomatik dolar.
+- Guncel fiyatlar WebView CORS engeline takilmadan Android yerel ag katmanindan alinir.
+- v0.2.0 ve sonraki APK'lar sabit kisisel anahtarla imzalanir.
+
+GITHUB'A YUKLEME
+1. Bu ZIP'i bilgisayarda cikartin.
+2. Cikartilan klasorun ICINDEKI tum dosya ve klasorleri mevcut FinansalEB GitHub deponuza yukleyin.
+3. Ayni isimli dosyalarin degistirilmesine izin verin.
+4. .github ve android/signing klasorlerinin de yuklendigini kontrol edin.
+5. Commit mesaji: FinansalEB v0.2.0 otomatik veri duzeltmesi
+6. Actions otomatik baslayacak.
+7. Yesil tikten sonra Artifacts > FinansalEB-v0.2.0-APK paketini indirin.
+8. ZIP icindeki FinansalEB-v0.2.0-debug.apk dosyasini kurun.
+
+ONEMLI - v0.1.1'DEN ILK GECIS
+Onceki APK, GitHub'in gecici debug anahtariyla imzalanmisti. Bu nedenle Android yeni APK'yi
+eski uygulamanin uzerine kurmayi reddedebilir.
+
+Mevcut uygulamada kayit varsa:
+1. Ayarlar > Verilerimi disa aktar ile JSON yedegi alin.
+2. Eski Finansal(EB) uygulamasini kaldirin.
+3. v0.2.0 APK'yi kurun.
+4. JSON yedegini geri yukleyin.
+
+Bu imza gecisi yalnizca bir kez gerekir. v0.2.0'dan sonraki surumler kaldirmadan uzerine kurulur.
+GitHub deposunu PRIVATE tutun; android/signing klasoru kisisel imza anahtarini icerir.
+
+KONTROL
+- BIST hissesi secip DEVA yazin: Deva Holding ve fiyat otomatik dolmali.
+- TEFAS fonu secip TMG yazin: fon adi ve fiyat otomatik dolmali.
+- Vazgec dugmesi formu kapatmali.

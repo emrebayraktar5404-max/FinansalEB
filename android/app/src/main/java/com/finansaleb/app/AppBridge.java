@@ -20,12 +20,43 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public final class AppBridge {
+    private static final ExecutorService NETWORK_EXECUTOR = Executors.newFixedThreadPool(3);
     private final MainActivity activity;
 
     AppBridge(MainActivity activity) {
         this.activity = activity;
+    }
+
+
+    /**
+     * Web arayüzünden gelen piyasa isteğini Android ağ katmanında çalıştırır.
+     * Yöntem hemen döner; sonuç requestId ile JavaScript'e geri gönderilir.
+     */
+    @JavascriptInterface
+    public void requestMarketData(String requestId, String action, String paramsJson) {
+        final String safeRequestId = requestId == null ? "" : requestId.trim();
+        if (safeRequestId.isEmpty()) return;
+        NETWORK_EXECUTOR.execute(() -> {
+            JSONObject response;
+            try {
+                JSONObject params = paramsJson == null || paramsJson.trim().isEmpty()
+                        ? new JSONObject() : new JSONObject(paramsJson);
+                response = MarketDataClient.execute(action, params);
+            } catch (Exception error) {
+                try {
+                    response = new JSONObject()
+                            .put("ok", false)
+                            .put("error", error.getMessage() == null ? "Piyasa verisi alınamadı" : error.getMessage());
+                } catch (Exception ignored) {
+                    response = new JSONObject();
+                }
+            }
+            activity.deliverMarketResult(safeRequestId, response.toString());
+        });
     }
 
     @JavascriptInterface

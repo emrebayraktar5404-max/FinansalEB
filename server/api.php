@@ -7,6 +7,7 @@ declare(strict_types=1);
  *
  * İşlevler:
  *   ?action=health
+ *   ?action=search&query=DEVA&type=BIST
  *   ?action=quote&symbol=TUPRS.IS&type=BIST
  *   ?action=tefas&code=TMG
  *   ?action=dividends&symbol=SCHD
@@ -14,7 +15,7 @@ declare(strict_types=1);
  *   ?action=batch&items=[{"symbol":"TUPRS.IS","type":"BIST"}]
  */
 
-const APP_VERSION = '0.1.0';
+const APP_VERSION = '0.2.0';
 
 $configFile = __DIR__ . '/config.php';
 $config = is_file($configFile) ? require $configFile : [
@@ -26,7 +27,7 @@ $config = is_file($configFile) ? require $configFile : [
     'DIVIDEND_CACHE_SECONDS' => 21600,
     'ENABLE_KAP_SCRAPER' => true,
     'TIMEZONE' => 'Europe/Istanbul',
-    'USER_AGENT' => 'FinansalEB/0.1 (personal portfolio tracker)',
+    'USER_AGENT' => 'FinansalEB/0.2 (personal portfolio tracker)',
 ];
 
 $config = array_merge([
@@ -38,7 +39,7 @@ $config = array_merge([
     'DIVIDEND_CACHE_SECONDS' => 21600,
     'ENABLE_KAP_SCRAPER' => true,
     'TIMEZONE' => 'Europe/Istanbul',
-    'USER_AGENT' => 'FinansalEB/0.1 (personal portfolio tracker)',
+    'USER_AGENT' => 'FinansalEB/0.2 (personal portfolio tracker)',
 ], $config);
 
 date_default_timezone_set((string)$config['TIMEZONE']);
@@ -67,12 +68,25 @@ try {
                 'time' => date(DATE_ATOM),
                 'php' => PHP_VERSION,
                 'capabilities' => [
+                    'search' => true,
                     'quotes' => true,
                     'tefas' => function_exists('curl_init'),
                     'kap_best_effort' => (bool)$config['ENABLE_KAP_SCRAPER'],
                     'cache' => is_writable((string)$config['CACHE_DIR']),
                 ],
             ]);
+            break;
+
+        case 'search':
+            $query = trim((string)($_GET['query'] ?? ''));
+            $type = strtoupper(trim((string)($_GET['type'] ?? 'BIST')));
+            if (mb_strlen($query) < 2) fail('query en az 2 karakter olmalıdır', 422);
+            $data = cached(
+                'search_' . $type . '_' . $query,
+                1800,
+                fn() => searchAssets($query, $type, $config)
+            );
+            respond(['ok' => true, 'data' => $data]);
             break;
 
         case 'quote':
@@ -282,6 +296,66 @@ function getJson(string $url, array $config): array
     $json = json_decode($res['body'], true, flags: JSON_THROW_ON_ERROR);
     if (!is_array($json)) throw new RuntimeException('JSON yanıtı geçersiz');
     return $json;
+}
+
+function searchAssets(string $query, string $type, array $config): array
+{
+    $type = strtoupper(trim($type));
+    if ($type === 'TEFAS') {
+        $code = strtoupper(preg_replace('/[^A-Z0-9]/i', '', $query) ?? '');
+        if (strlen($code) < 3) throw new RuntimeException('TEFAS fon kodunu en az 3 karakter yazın');
+        $quote = fetchTefas($code, $config);
+        return ['query' => $query, 'type' => $type, 'results' => [[
+            'symbol' => $code,
+            'sourceSymbol' => $code,
+            'name' => $quote['name'] ?? $code,
+            'type' => 'TEFAS',
+            'currency' => 'TRY',
+            'price' => $quote['price'] ?? 0,
+            'prevClose' => $quote['prevClose'] ?? 0,
+            'changePct' => $quote['changePct'] ?? 0,
+            'source' => $quote['source'] ?? 'TEFAS',
+        ]]];
+    }
+
+    $json = getJson(
+        'https://query1.finance.yahoo.com/v1/finance/search?q=' . rawurlencode($query)
+        . '&quotesCount=15&newsCount=0&listsCount=0&enableFuzzyQuery=true',
+        $config
+    );
+    $results = [];
+    foreach (($json['quotes'] ?? []) as $item) {
+        if (!is_array($item)) continue;
+        $source = strtoupper((string)($item['symbol'] ?? ''));
+        $quoteType = strtoupper((string)($item['quoteType'] ?? ''));
+        $exchange = strtoupper((string)($item['exchange'] ?? $item['exchDisp'] ?? ''));
+        $currency = strtoupper((string)($item['currency'] ?? ''));
+        if ($source === '') continue;
+        $match = match ($type) {
+            'BIST' => str_ends_with($source, '.IS') || str_contains($exchange, 'IST') || str_contains($exchange, 'BIST'),
+            'ETF' => $quoteType === 'ETF',
+            'US' => $quoteType === 'EQUITY' && !str_ends_with($source, '.IS') && ($currency === '' || $currency === 'USD'),
+            'CRYPTO' => str_contains($quoteType, 'CRYPTO') || str_ends_with($source, '-USD'),
+            'FX' => $quoteType === 'CURRENCY',
+            default => true,
+        };
+        if (!$match) continue;
+        $display = $type === 'BIST' && str_ends_with($source, '.IS') ? substr($source, 0, -3) : $source;
+        $results[] = [
+            'symbol' => $display,
+            'sourceSymbol' => $source,
+            'name' => $item['longname'] ?? $item['shortname'] ?? $display,
+            'type' => $type,
+            'currency' => $currency ?: ($type === 'BIST' ? 'TRY' : 'USD'),
+            'exchange' => $item['exchange'] ?? $item['exchDisp'] ?? null,
+            'price' => (float)($item['regularMarketPrice'] ?? 0),
+            'prevClose' => (float)($item['regularMarketPreviousClose'] ?? 0),
+            'changePct' => (float)($item['regularMarketChangePercent'] ?? 0),
+            'source' => 'Piyasa sembol araması',
+        ];
+        if (count($results) >= 10) break;
+    }
+    return ['query' => $query, 'type' => $type, 'results' => $results];
 }
 
 function quoteByType(string $symbol, string $type, array $config): array

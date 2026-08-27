@@ -2,11 +2,13 @@
 
 Finansal(EB), herhangi bir ücretli veri aboneliğini zorunlu tutmamak için kaynakları varlık türüne göre ayırır.
 
+APK sürümünde piyasa istekleri WebView içinden değil, Android yerel ağ katmanından yapılır. Böylece tarayıcı CORS kısıtları otomatik aramayı ve fiyat yenilemeyi engellemez. Kişisel PHP sunucusu isteğe bağlı yedek/önbellek katmanıdır.
+
 | Varlık | Birincil yöntem | Uygulama davranışı |
 |---|---|---|
-| BIST | Gecikmeli piyasa fiyatı; sembol `.IS` ile | Fiyat, önceki kapanış ve geçmiş temettü olayları |
-| ABD / ETF | Gecikmeli piyasa fiyatı | Fiyat, geçmiş seri, temettü olayları |
-| TEFAS | TEFAS tarihsel fon verisi, tercihen kişisel PHP geçidi | Son fiyat ve kısa geçmiş seri |
+| BIST | APK içi sembol araması ve gecikmeli piyasa fiyatı; `.IS` otomatik | Şirket adı, fiyat, önceki kapanış ve geçmiş temettü olayları |
+| ABD / ETF | APK içi sembol araması ve gecikmeli piyasa fiyatı | Şirket/fon adı, fiyat, geçmiş seri ve temettü olayları |
+| TEFAS | Fon koduyla APK içinden TEFAS tarihsel veri sorgusu | Fon adı, son fiyat ve kısa geçmiş seri |
 | Gram altın | Altın ons × USD/TRY ÷ 31,1034768 | TRY/gram bileşik fiyat |
 | Gram gümüş | Gümüş ons × USD/TRY ÷ 31,1034768 | TRY/gram bileşik fiyat |
 | Döviz | İlgili döviz/TRY çifti | Baz para dönüşümü |

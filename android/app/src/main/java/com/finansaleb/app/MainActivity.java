@@ -23,6 +23,8 @@ import android.webkit.WebViewClient;
 import android.net.http.SslError;
 import android.widget.Toast;
 
+import org.json.JSONObject;
+
 public final class MainActivity extends Activity {
     private static final int FILE_CHOOSER_REQUEST = 1204;
     private static final int NOTIFICATION_PERMISSION_REQUEST = 1205;
@@ -68,7 +70,7 @@ public final class MainActivity extends Activity {
         settings.setMediaPlaybackRequiresUserGesture(true);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        settings.setUserAgentString(settings.getUserAgentString() + " FinansalEB/0.1 Android");
+        settings.setUserAgentString(settings.getUserAgentString() + " FinansalEB/0.2 Android");
         // Yerel APK varlıklarının HTTPS veri kaynaklarına erişebilmesi için gereklidir.
         settings.setAllowFileAccessFromFileURLs(true);
         settings.setAllowUniversalAccessFromFileURLs(true);
@@ -126,6 +128,15 @@ public final class MainActivity extends Activity {
         webView.loadUrl("file:///android_asset/index.html");
     }
 
+    void deliverMarketResult(String requestId, String responseJson) {
+        runOnUiThread(() -> {
+            if (webView == null) return;
+            String script = "window.FinansalEBNative && window.FinansalEBNative.onMarketResult("
+                    + JSONObject.quote(requestId) + "," + JSONObject.quote(responseJson) + ");";
+            webView.evaluateJavascript(script, null);
+        });
+    }
+
     private void requestNotificationPermissionIfNeeded() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
                 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
@@ -144,6 +155,20 @@ public final class MainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
+        if (webView == null) {
+            super.onBackPressed();
+            return;
+        }
+        webView.evaluateJavascript(
+                "window.FinansalEBHandleBack ? String(window.FinansalEBHandleBack()) : 'false'",
+                value -> {
+                    if ("\"true\"".equals(value) || "true".equals(value)) return;
+                    continueBackNavigation();
+                }
+        );
+    }
+
+    private void continueBackNavigation() {
         if (webView != null && webView.canGoBack()) webView.goBack();
         else super.onBackPressed();
     }
