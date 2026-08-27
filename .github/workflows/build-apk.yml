@@ -1,0 +1,64 @@
+name: FinansalEB Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+    paths:
+      - "android/**"
+      - "web/**"
+      - "scripts/**"
+      - ".github/workflows/build-apk.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-debug-apk:
+    name: Kurulabilir debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: Android 35 paketlerini kur
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Gradle 8.9 kur
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Web arayüzünü Android varlıklarına eşitle
+        run: bash scripts/sync-assets.sh
+
+      - name: APK derle
+        working-directory: android
+        run: gradle --no-daemon --stacktrace :app:assembleDebug
+
+      - name: APK dosyasını adlandır
+        run: |
+          mkdir -p dist
+          cp android/app/build/outputs/apk/debug/app-debug.apk dist/FinansalEB-v0.1.0-debug.apk
+          sha256sum dist/FinansalEB-v0.1.0-debug.apk > dist/FinansalEB-v0.1.0-debug.apk.sha256
+
+      - name: APK artefaktını yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: FinansalEB-v0.1.0-APK
+          path: |
+            dist/FinansalEB-v0.1.0-debug.apk
+            dist/FinansalEB-v0.1.0-debug.apk.sha256
+          if-no-files-found: error
+          retention-days: 30
