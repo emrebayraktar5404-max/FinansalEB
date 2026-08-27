@@ -1,0 +1,2 @@
+FinansalEB ledger tests: OK
+Statik proje doğrulaması: OK

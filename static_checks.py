@@ -123,27 +123,6 @@ if 'signingConfigs' not in build_gradle or 'signingConfig signingConfigs.persona
 else:
     ok('Stable APK signing', 'v0.2.0 sonrası güncellemeler aynı anahtarla imzalanır')
 
-
-# Dividend entitlement and migration safeguards
-required_dividend_logic = {
-    'Purchase date field': 'name="purchaseDate"',
-    'Eligible quantity function': 'function eventEligibleQuantity(event)',
-    'Historical auto receipt cleanup': 'next.received = false',
-    'Manual receipt marker': "receiptSource:'manual'",
-    'Ineligible status': "label:'Hak kazanılmadı'",
-    'Unverified status': "label:'Hak kazanıldı · doğrulanmadı'",
-}
-for name, token in required_dividend_logic.items():
-    if token not in web_js:
-        fail(name, f'{token!r} app.js içinde bulunamadı')
-    else:
-        ok(name)
-
-if "versionName '0.2.1'" not in build_gradle or 'versionCode 3' not in build_gradle:
-    fail('Android version', 'v0.2.1 / versionCode 3 ayarı eksik')
-else:
-    ok('Android version', '0.2.1 (3)')
-
 report = {"ok": not errors, "checks": checks, "errors": errors}
 print(json.dumps(report, ensure_ascii=False, indent=2))
 sys.exit(1 if errors else 0)

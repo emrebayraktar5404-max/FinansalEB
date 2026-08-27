@@ -1,0 +1,11 @@
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/widget_portfolio_name"
+    android:initialLayout="@layout/widget_portfolio"
+    android:minWidth="250dp"
+    android:minHeight="150dp"
+    android:minResizeWidth="220dp"
+    android:minResizeHeight="130dp"
+    android:resizeMode="horizontal|vertical"
+    android:updatePeriodMillis="0"
+    android:widgetCategory="home_screen"
+    android:previewImage="@mipmap/ic_launcher" />

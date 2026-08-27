@@ -1,42 +1,16 @@
-FINANSALEB v0.2.1 - GITHUB GUNCELLEME PAKETI
+FINANSAL(EB) v0.3.0 — GITHUB GÜNCELLEMESİ
 
-BU SURUMDE DUZELEN KRITIK SORUN:
-- Internetten bulunan eski sirket temettuleri artik otomatik olarak "alinmis" sayilmaz.
-- Varlik formuna Ilk alis tarihi eklendi.
-- Temettu hakki, hak kullanim tarihinden once elde bulunan gercek pay adedine gore hesaplanir.
-- Hisse hak kullanim tarihinden sonra alinmissa olay "Hak kazanilmadi" gorunur ve rapora girmez.
-- Eski v0.2.0 yanlis kayitlari ilk acilista otomatik duzeltilir.
+1) Bu ZIP'i bilgisayarda ayıkla.
+2) GitHub > FinansalEB > Code > Add file > Upload files bölümünü aç.
+3) Ayıklanan klasörün İÇİNDEKİ tüm dosya ve klasörleri sürükle.
+4) Aynı adlı dosyaların değiştirilmesi normaldir.
+5) Commit mesajı: FinansalEB v0.3.0 işlem ve temettü düzeltmesi
+6) Actions > FinansalEB Android APK bölümüne gir.
+7) Yeşil tikten sonra Artifacts > FinansalEB-v0.3.0-APK paketini indir.
+8) ZIP içindeki FinansalEB-v0.3.0-debug.apk dosyasını kur.
 
-YUKLEME:
-1. Bu ZIP dosyasini bilgisayarda cikartin.
-2. Cikartilan klasorun ICINDEKI tum dosya ve klasorleri mevcut ozel GitHub deponuza yukleyin.
-3. Ayni yoldaki eski dosyalarin degistirilmesine izin verin.
-4. Commit changes ile kaydedin. GitHub Actions otomatik baslar.
-
-GitHub ana dizininde dogrudan sunlar gorunmelidir:
-.github
-android
-docs
-scripts
-server
-tests
-web
-README.md
-
-ZIP dosyasinin kendisini GitHub'a yuklemeyin.
-.github klasoru gorunmuyorsa Windows Gezgini'nde Gorunum > Goster > Gizli ogeler secenegini acin.
-
-Basarili cikti adi: FinansalEB-v0.2.1-APK
-Kurulacak dosya: FinansalEB-v0.2.1-debug.apk
-
-v0.2.0 UZERINE GUNCELLEME:
-Eski uygulamayi KALDIRMAYIN. v0.2.1 ayni kisisel imza anahtarini kullanir ve dogrudan
-mevcut uygulamanin uzerine kurulur. Veriler korunur. Yine de guncellemeden once JSON
-yedegi almak tavsiye edilir.
-
-ILK ACILISTAN SONRA:
-Portfoydeki her mevcut varligin gercek "Ilk alis tarihi" bilgisini bir kez kontrol edin.
-Eski surum, varligi uygulamaya eklediginiz tarihi kaydetmis olabilir. Gercek alis tarihi
-farkliysa Portfoy > Varlik > Duzenle ekranindan duzeltin.
-
-GitHub deposunu PRIVATE tutun; android/signing klasoru kisisel imza anahtarini icerir.
+ÖNEMLİ:
+- Kurulu uygulamada Ayarlar > JSON yedeği al işlemini önce yap.
+- Uygulama güncelleme olarak kurulmazsa imza değişmiştir; eski APK'yı kaldırmadan önce mutlaka yedek al.
+- İlk açılışta eski kayıtlar için alış tarihi kontrol uyarısı çıkarsa gerçek tarihleri gir.
+- Geçmiş temettü kaynağı bulunması, o temettünün alındığı anlamına gelmez.

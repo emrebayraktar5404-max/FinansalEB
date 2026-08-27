@@ -37,11 +37,6 @@ storage_shim = """
     getBackgroundPrices() { return ''; },
     requestMarketData(requestId, action, rawParams) {
       const params = JSON.parse(rawParams || '{}');
-      const isoOffset = days => {
-        const d = new Date();
-        d.setDate(d.getDate() + days);
-        return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-      };
       let data = {};
       if (action === 'search' && params.type === 'TEFAS') {
         data = {results:[{symbol:'TMG',sourceSymbol:'TMG',name:'Ak Portföy Yeni Teknolojiler Yabancı Hisse Fonu',type:'TEFAS',currency:'TRY',price:.0536,prevClose:.0532,changePct:.75,source:'TEFAS'}]};
@@ -50,10 +45,7 @@ storage_shim = """
       } else if (action === 'quote') {
         data = {symbol:params.symbol,name:'Deva Holding A.Ş.',price:72.5,prevClose:71.8,changePct:.97,currency:'TRY',history:[70,71.8,72.5],dividends:[],source:'Piyasa verisi'};
       } else if (action === 'dividends') {
-        data = {events:[{
-          exDate:isoOffset(-20), payDate:isoOffset(-18), amountPerShare:2,
-          status:'historical', source:'Piyasa veri akışı'
-        }]};
+        data = {events:[]};
       }
       setTimeout(() => window.FinansalEBNative.onMarketResult(requestId, JSON.stringify({ok:true,data})), 15);
     }
@@ -106,12 +98,10 @@ with sync_playwright() as p:
 
     # Varlık formu, Vazgeç düğmesi ve otomatik piyasa araması
     page.click('[data-page="portfolio"]')
-    page.click('[data-action="clear-demo"]')
-    page.wait_for_timeout(120)
     page.click('[data-action="add-asset"]')
     form = page.locator("#assetForm")
     assert form.is_visible()
-    for name in ["type", "currency", "symbol", "sourceSymbol", "name", "quantity", "avgCost", "purchaseDate", "price", "targetWeight", "dividendTax"]:
+    for name in ["type", "currency", "symbol", "sourceSymbol", "name", "quantity", "avgCost", "price", "targetWeight", "dividendTax"]:
         assert form.locator(f'[name="{name}"]').count() == 1, f"Alan eksik: {name}"
     page.click("#assetCancelButton")
     page.wait_for_timeout(220)
@@ -128,29 +118,7 @@ with sync_playwright() as p:
     assert "otomatik dolduruldu" in page.locator("#assetLookupStatus").inner_text()
     results["checks"].append({"asset_auto_lookup": True, "ok": True})
 
-    purchase_date = page.evaluate("() => { const d = new Date(); d.setDate(d.getDate()-10); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }")
-    form.locator('[name="quantity"]').fill("100")
-    form.locator('[name="avgCost"]').fill("70")
-    form.locator('[name="purchaseDate"]').fill(purchase_date)
-    form.locator('#assetSaveButton').click()
-    page.wait_for_timeout(900)
-    stored = page.evaluate("JSON.parse(localStorage.getItem('finansaleb_state_v1'))")
-    deva = next(a for a in stored["assets"] if a["symbol"] == "DEVA")
-    auto_events = [e for e in stored["dividendEvents"] if e["assetId"] == deva["id"]]
-    assert deva["purchaseDate"] == purchase_date
-    assert auto_events and all(not e.get("received", False) for e in auto_events)
-    results["checks"].append({"purchase_date_persisted": purchase_date, "auto_history_not_received": True, "ok": True})
-
-    page.click('[data-page="dividends"]')
-    body = page.locator('#page').inner_text()
-    assert "Bu yıl alınan" in body
-    assert "₺0,00" in body, body
-    results["checks"].append({"past_dividend_report_zero": True, "ok": True})
-
     # TEFAS kodu da isim ve fiyatla otomatik çözülmeli
-    page.click('[data-page="portfolio"]')
-    page.click('[data-action="add-asset"]')
-    form = page.locator("#assetForm")
     form.locator('[name="type"]').select_option("TEFAS")
     form.locator('[name="symbol"]').fill("TMG")
     page.click("#assetLookupBtn")

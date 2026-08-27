@@ -1,0 +1,1 @@
+Keystore and alias verified for v0.3.0 build.

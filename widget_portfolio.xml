@@ -1,0 +1,9 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:gravity="center_vertical" android:background="@drawable/widget_bg" android:padding="16dp">
+  <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Finansal(EB) · Portföy" android:textColor="#8FA7AF" android:textSize="11sp" android:textStyle="bold"/>
+  <TextView android:id="@+id/widget_total" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="7dp" android:text="₺0,00" android:textColor="#F4F8F9" android:textSize="25sp" android:textStyle="bold"/>
+  <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="8dp">
+    <TextView android:id="@+id/widget_daily" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Günlük ₺0" android:textColor="#42DFC7" android:textSize="11sp"/>
+    <TextView android:id="@+id/widget_cash" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Nakit ₺0" android:textColor="#8FA7AF" android:textSize="11sp"/>
+  </LinearLayout>
+  <TextView android:id="@+id/widget_updated" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="7dp" android:text="Uygulamayı açarak yenile" android:textColor="#607B83" android:textSize="9sp"/>
+</LinearLayout>

@@ -1,0 +1,5 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:gravity="center_vertical" android:background="@drawable/widget_bg" android:padding="16dp">
+  <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="SIRADAKİ TEMETTÜ" android:textColor="#42DFC7" android:textSize="10sp" android:textStyle="bold"/>
+  <TextView android:id="@+id/widget_next_dividend" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="9dp" android:text="Yaklaşan ödeme yok" android:textColor="#F4F8F9" android:textSize="17sp" android:textStyle="bold" android:maxLines="2"/>
+  <TextView android:id="@+id/widget_year_dividend" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Yıllık ₺0" android:textColor="#8FA7AF" android:textSize="11sp"/>
+</LinearLayout>

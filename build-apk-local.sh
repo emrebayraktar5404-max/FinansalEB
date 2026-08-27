@@ -12,5 +12,5 @@ else
   exit 1
 fi
 mkdir -p "$ROOT/dist"
-cp app/build/outputs/apk/debug/app-debug.apk "$ROOT/dist/FinansalEB-v0.2.1-debug.apk"
-echo "APK: $ROOT/dist/FinansalEB-v0.2.1-debug.apk"
+cp app/build/outputs/apk/debug/app-debug.apk "$ROOT/dist/FinansalEB-v0.2.0-debug.apk"
+echo "APK: $ROOT/dist/FinansalEB-v0.2.0-debug.apk"
