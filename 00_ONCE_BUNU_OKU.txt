@@ -1,13 +1,17 @@
-FINANSALEB v0.2.0 - GITHUB GUNCELLEME PAKETI
+FINANSALEB v0.2.1 - GITHUB GUNCELLEME PAKETI
 
-Bu surum iki ana sorunu duzeltir:
-1) Varlik formundaki Vazgec dugmesi artik calisir.
-2) BIST/ABD/ETF sembolleri ile TEFAS fon kodlari APK icinden otomatik aranir;
-   varlik adi, veri sembolu ve guncel fiyat doldurulur.
+BU SURUMDE DUZELEN KRITIK SORUN:
+- Internetten bulunan eski sirket temettuleri artik otomatik olarak "alinmis" sayilmaz.
+- Varlik formuna Ilk alis tarihi eklendi.
+- Temettu hakki, hak kullanim tarihinden once elde bulunan gercek pay adedine gore hesaplanir.
+- Hisse hak kullanim tarihinden sonra alinmissa olay "Hak kazanilmadi" gorunur ve rapora girmez.
+- Eski v0.2.0 yanlis kayitlari ilk acilista otomatik duzeltilir.
 
-Bu ZIP dosyasini bilgisayarinizda cikartin.
-Cikartilan klasorun ICINDEKI tum dosya ve klasorleri mevcut GitHub deponuza yukleyin.
-Ayni yoldaki eski dosyalarin uzerine yazilmasina izin verin.
+YUKLEME:
+1. Bu ZIP dosyasini bilgisayarda cikartin.
+2. Cikartilan klasorun ICINDEKI tum dosya ve klasorleri mevcut ozel GitHub deponuza yukleyin.
+3. Ayni yoldaki eski dosyalarin degistirilmesine izin verin.
+4. Commit changes ile kaydedin. GitHub Actions otomatik baslar.
 
 GitHub ana dizininde dogrudan sunlar gorunmelidir:
 .github
@@ -22,14 +26,17 @@ README.md
 ZIP dosyasinin kendisini GitHub'a yuklemeyin.
 .github klasoru gorunmuyorsa Windows Gezgini'nde Gorunum > Goster > Gizli ogeler secenegini acin.
 
-Yukleme tamamlaninca GitHub Actions otomatik baslar.
-Basarili cikti adi: FinansalEB-v0.2.0-APK
-Kurulacak dosya: FinansalEB-v0.2.0-debug.apk
+Basarili cikti adi: FinansalEB-v0.2.1-APK
+Kurulacak dosya: FinansalEB-v0.2.1-debug.apk
 
-ONEMLI - v0.1.1'DEN ILK GECIS:
-Onceki APK gecici GitHub debug anahtariyla imzalanmisti. Bu nedenle Android v0.2.0'i
-dogrudan uzerine kurmayi reddedebilir. Once mevcut uygulamadan JSON yedegi alin,
-eski uygulamayi kaldirin, v0.2.0'i kurun ve yedegi geri yukleyin.
+v0.2.0 UZERINE GUNCELLEME:
+Eski uygulamayi KALDIRMAYIN. v0.2.1 ayni kisisel imza anahtarini kullanir ve dogrudan
+mevcut uygulamanin uzerine kurulur. Veriler korunur. Yine de guncellemeden once JSON
+yedegi almak tavsiye edilir.
 
-v0.2.0 sabit kisisel imza anahtari icerir. Bundan sonraki surumler kaldirmadan
-mevcut uygulamanin uzerine kurulabilecektir. GitHub deposunu PRIVATE tutun.
+ILK ACILISTAN SONRA:
+Portfoydeki her mevcut varligin gercek "Ilk alis tarihi" bilgisini bir kez kontrol edin.
+Eski surum, varligi uygulamaya eklediginiz tarihi kaydetmis olabilir. Gercek alis tarihi
+farkliysa Portfoy > Varlik > Duzenle ekranindan duzeltin.
+
+GitHub deposunu PRIVATE tutun; android/signing klasoru kisisel imza anahtarini icerir.

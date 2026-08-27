@@ -1,5 +1,18 @@
 # Değişiklik Günlüğü
 
+## v0.2.1 — Alış tarihi ve doğru temettü hak edişi
+
+- Varlık ekleme/düzenleme formuna zorunlu **İlk alış tarihi** alanı eklendi.
+- Temettü tutarı artık bugünkü adetle değil, hak kullanım tarihinden önce elde bulunan pay adediyle hesaplanır.
+- Hak kullanım tarihinde veya sonrasında yapılan alışlar ilgili temettüye hak kazandırmaz.
+- Sonraki alış ve satış işlemleri geçmiş temettü miktarını geriye dönük değiştirmez.
+- İnternetten çekilen geçmiş şirket temettüleri otomatik olarak “alındı” işaretlenmez.
+- V0.2.0’daki yanlış otomatik “alındı” kayıtları ilk açılışta temizlenir; manuel girilmiş gerçek ödemeler korunur.
+- Hak kazanılmayan olaylar **Hak kazanılmadı**, hak kazanılmış ancak kullanıcıca doğrulanmamış eski olaylar **Hak kazanıldı · doğrulanmadı** etiketiyle gösterilir.
+- “Bu yıl alınan” raporu yalnız kullanıcının gerçekten kaydettiği/doğruladığı ödemeleri toplar.
+- Geçmiş, hak kazanılmamış olaylar yıllık tahmini gelir ve yaklaşan ödeme hesaplarına girmez.
+- Geçiş ve hak ediş senaryoları Chromium smoke testine eklendi.
+
 ## v0.2.0 — Otomatik varlık bulma ve form düzeltmeleri
 
 - BIST, ABD hissesi, ETF ve kripto için APK içinden çalışan gerçek sembol araması eklendi.
