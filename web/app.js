@@ -5,7 +5,7 @@
 (() => {
   'use strict';
 
-  const APP_VERSION = '0.2.0';
+  const APP_VERSION = '0.3.0';
   const STORAGE_KEY = 'finansaleb_state_v1';
   const ONBOARDING_KEY = 'finansaleb_onboarded_v1';
   const DAY = 86_400_000;
