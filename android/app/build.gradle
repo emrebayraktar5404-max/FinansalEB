@@ -2,12 +2,20 @@ plugins {
     id 'com.android.application'
 }
 
+/*
+ * Kişisel imzalama isteğe bağlıdır.
+ *
+ * GitHub Actions'ta kişisel keystore bulunmuyorsa
+ * debug APK Android'in varsayılan debug keystore'u ile oluşturulur.
+ */
+
 def signingProperties = new Properties()
 def signingPropertiesFile = rootProject.file('signing/keystore.properties')
-if (!signingPropertiesFile.exists()) {
-    throw new GradleException('Kişisel imzalama ayarı bulunamadı: android/signing/keystore.properties')
+def hasPersonalSigning = signingPropertiesFile.exists()
+
+if (hasPersonalSigning) {
+    signingProperties.load(new FileInputStream(signingPropertiesFile))
 }
-signingProperties.load(new FileInputStream(signingPropertiesFile))
 
 android {
     namespace 'com.finansaleb.app'
@@ -21,16 +29,23 @@ android {
         applicationId 'com.finansaleb.app'
         minSdk 26
         targetSdk 35
-        versionCode 2
-        versionName '0.2.0'
+
+        // v0.3.0
+        versionCode 3
+        versionName '0.3.0'
     }
 
+    /*
+     * Kişisel imza sadece dosya mevcutsa oluşturulur.
+     */
     signingConfigs {
-        personal {
-            storeFile rootProject.file("signing/${signingProperties['storeFile']}")
-            storePassword signingProperties['storePassword']
-            keyAlias signingProperties['keyAlias']
-            keyPassword signingProperties['keyPassword']
+        if (hasPersonalSigning) {
+            personal {
+                storeFile rootProject.file("signing/${signingProperties['storeFile']}")
+                storePassword signingProperties['storePassword']
+                keyAlias signingProperties['keyAlias']
+                keyPassword signingProperties['keyPassword']
+            }
         }
     }
 
@@ -38,12 +53,31 @@ android {
         debug {
             applicationIdSuffix '.debug'
             versionNameSuffix '-debug'
-            signingConfig signingConfigs.personal
+
+            /*
+             * Kişisel imza varsa onu kullan.
+             * Yoksa Android'in standart debug imzasını kullan.
+             */
+            if (hasPersonalSigning) {
+                signingConfig signingConfigs.personal
+            }
         }
+
         release {
             minifyEnabled false
-            signingConfig signingConfigs.personal
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+
+            /*
+             * Kişisel keystore varsa release'i onunla imzala.
+             * Yoksa release APK'nın derlenmesini engelleme.
+             */
+            if (hasPersonalSigning) {
+                signingConfig signingConfigs.personal
+            }
+
+            proguardFiles(
+                getDefaultProguardFile('proguard-android-optimize.txt'),
+                'proguard-rules.pro'
+            )
         }
     }
 
