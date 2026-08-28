@@ -1,0 +1,24 @@
+FinansalEB v0.3.0 - APK derleme hatası düzeltmesi
+
+GitHub Actions hatası:
+Kişisel imzalama ayarı bulunamadı: android/signing/keystore.properties
+
+NEDEN:
+GitHub deposundaki android/app/build.gradle eski bir sürümse, debug APK için kişisel
+keystore dosyasını zorunlu tutuyor. Bu dosya kaynak pakete dahil edilmemelidir.
+
+DÜZELTME:
+Bu paketteki android/app/build.gradle debug build için Android'in otomatik debug
+keystore'unu kullanır. android/signing/keystore.properties gerekmez.
+
+GITHUB'TA YAPILACAK:
+1) Bu paketin içindeki android/app/build.gradle dosyasını kesinlikle aynı yol üzerine yükleyin.
+2) GitHub'da android/app/build.gradle dosyasını açıp eski 'keystore.properties',
+   'finansaleb-personal.jks' veya 'signing' zorunluluğu içeren satırların kalmadığını kontrol edin.
+3) Eski android/signing/ klasörü varsa silin (gerekli değil).
+4) Actions -> Kurulabilir debug APK çalışmasını bekleyin.
+
+BEKLENEN APK:
+FinansalEB-v0.3.0-debug.apk
+versionCode: 3
+versionName: 0.3.0
