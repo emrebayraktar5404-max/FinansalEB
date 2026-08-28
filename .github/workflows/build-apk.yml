@@ -50,15 +50,15 @@ jobs:
       - name: APK dosyasını adlandır
         run: |
           mkdir -p dist
-          cp android/app/build/outputs/apk/debug/app-debug.apk dist/FinansalEB-v0.3.0-debug.apk
-          sha256sum dist/FinansalEB-v0.3.0-debug.apk > dist/FinansalEB-v0.3.0-debug.apk.sha256
+          cp android/app/build/outputs/apk/debug/app-debug.apk dist/FinansalEB-v0.3.1-debug.apk
+          sha256sum dist/FinansalEB-v0.3.1-debug.apk > dist/FinansalEB-v0.3.1-debug.apk.sha256
 
       - name: APK artefaktını yükle
         uses: actions/upload-artifact@v4
         with:
-          name: FinansalEB-v0.3.0-APK
+          name: FinansalEB-v0.3.1-APK
           path: |
-            dist/FinansalEB-v0.3.0-debug.apk
-            dist/FinansalEB-v0.3.0-debug.apk.sha256
+            dist/FinansalEB-v0.3.1-debug.apk
+            dist/FinansalEB-v0.3.1-debug.apk.sha256
           if-no-files-found: error
           retention-days: 30
