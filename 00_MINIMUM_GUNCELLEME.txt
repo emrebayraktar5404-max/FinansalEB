@@ -1,0 +1,19 @@
+FinansalEB v0.3.0 minimum güncelleme
+
+Sadece bu paketin içindeki dosyaları GitHub deposunun köküne yükleyin.
+Klasör yapısını koruyun:
+.github/workflows/build-apk.yml
+web/app.js
+web/index.html
+web/styles.css
+web/sw.js
+server/api.php
+server/config.sample.php
+
+android/app/build.gradle dosyanızda şunlar zaten olmalı:
+versionCode 3
+versionName '0.3.0'
+ve debug build kişisel keystore zorunlu olmamalı.
+
+Commit sonrası Actions otomatik çalışır.
+Doğru artifact adı: FinansalEB-v0.3.0-APK
