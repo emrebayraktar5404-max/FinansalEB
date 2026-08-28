@@ -1,0 +1,32 @@
+Finansal(EB) v0.3.0
+
+BU SÜRÜMDE:
+- Gerçek v0.3.0 versionCode/versionName
+- Piyasa > Haberler
+- Piyasa > Türkiye ekonomik takvimi (TCMB + TÜİK)
+- Yatırımcılar > kamuya açık SEC 13F örnek portföyleri
+- Veri kaynakları ve son güncelleme bilgisi
+- Haber/takvim/portföy içeriği için server/api.php?action=content
+- APK workflow adı ve çıktı adı v0.3.0
+- APK için repo içinde kişisel keystore zorunluluğu kaldırıldı; GitHub Actions kendi debug anahtarını üretir.
+
+ÖNEMLİ:
+1) Mevcut v0.2.x debug APK kişisel imzalıysa v0.3.0 ilk kurulumda üzerine kurulmayabilir. Önce JSON yedeği alın, eski uygulamayı kaldırın, v0.3.0 kurun, JSON geri yükleyin.
+2) Haber/takvim/yatırımcı verileri için PHP sunucusunu hosting'e yükleyin.
+3) server/config.sample.php dosyasını config.php olarak kopyalayın ve API_TOKEN belirleyin.
+4) Ayarlar > Kişisel veri sunucusu bölümüne https://SIZINALANINIZ/finansaleb/server/api.php adresini girin.
+5) SEC_USER_AGENT alanına gerçek bir iletişim e-postası içeren tanımlayıcı koymanız önerilir.
+6) GitHub'da eski android/signing/finansaleb-personal.jks ve keystore.properties dosyalarını repodan kaldırın; v0.3.0 artık bunlara ihtiyaç duymaz.
+
+VERİ KAYNAKLARI:
+- Yahoo Finance: gecikmeli piyasa/temettü verileri
+- TEFAS: fon tarihsel verileri
+- KAP: resmi şirket bildirimleri/temettü bağdaştırıcısı
+- Google News RSS: haber başlıkları
+- TCMB: resmi PPK/rapor takvimi
+- TÜİK: Ulusal Veri Yayımlama Takvimi
+- SEC EDGAR: 13F kurumsal bildirimleri
+
+KULLANIM:
+- Actions > FinansalEB Android APK > Run workflow
+- Yeşil başarı sonrası Artifacts > FinansalEB-v0.3.0-APK

@@ -3,140 +3,50 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-  <meta name="theme-color" content="#071c24">
-  <meta name="description" content="Kişisel, Türkçe yatırım ve temettü takip uygulaması">
+  <meta name="theme-color" content="#07131b">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Finansal(EB)</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon-192.png">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header class="topbar">
-    <div>
-      <div class="eyebrow">KİŞİSEL YATIRIM PANELİ</div>
-      <h1>Finansal<span>(EB)</span></h1>
-    </div>
-    <div class="top-actions">
-      <button class="icon-button" id="privacyBtn" aria-label="Tutarları gizle">◉</button>
-      <button class="icon-button" id="refreshBtn" aria-label="Verileri yenile">↻</button>
-    </div>
-  </header>
-
-  <div id="migrationBanner" class="banner warning hidden"></div>
-  <div id="statusBanner" class="banner hidden"></div>
-
-  <main id="appMain">
-    <section class="view active" data-view="dashboard">
-      <div class="hero-card">
-        <div class="hero-head"><span>Toplam portföy</span><span id="lastUpdate">Henüz güncellenmedi</span></div>
-        <div class="hero-value money" id="totalPortfolio">₺0,00</div>
-        <div class="hero-meta">
-          <div><span>Toplam getiri</span><strong class="money" id="totalReturn">₺0,00</strong></div>
-          <div><span>Nakit</span><strong class="money" id="cashTotal">₺0,00</strong></div>
+  <div id="app" class="app-shell">
+    <header class="topbar">
+      <div class="brand-wrap">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 48 48"><path d="M10 34V15.5c0-2.5 2-4.5 4.5-4.5H31l7 7v16c0 2.2-1.8 4-4 4H14c-2.2 0-4-1.8-4-4Z"/><path d="M18 30.5 23 25l4 3 6-8"/><path d="m30 20 3-1-1 3"/></svg>
+        </div>
+        <div>
+          <div class="brand-name">Finansal<span>(EB)</span></div>
+          <div id="syncText" class="sync-line">Yerel ve özel portföy</div>
         </div>
       </div>
-
-      <div class="metric-grid">
-        <article class="metric"><span>Gerçekleşen K/Z</span><strong class="money" id="realizedPnl">₺0,00</strong><small>Satışı tamamlanan işlemler</small></article>
-        <article class="metric"><span>Gerçekleşmemiş K/Z</span><strong class="money" id="unrealizedPnl">₺0,00</strong><small>Eldeki yatırımlar</small></article>
-        <article class="metric"><span>Alınan net temettü</span><strong class="money" id="receivedDividend">₺0,00</strong><small>Nakde geçmiş ödemeler</small></article>
-        <article class="metric"><span>Beklenen temettü</span><strong class="money" id="expectedDividend">₺0,00</strong><small>Önümüzdeki 12 ay</small></article>
+      <div class="top-actions">
+        <button id="privacyBtn" class="icon-btn" aria-label="Gizlilik modu" title="Gizlilik modu"></button>
+        <button id="syncBtn" class="icon-btn sync-btn" aria-label="Verileri yenile" title="Verileri yenile"></button>
+        <button id="moreBtn" class="avatar-btn" aria-label="Ayarlar">EB</button>
       </div>
+    </header>
 
-      <div class="section-head"><div><span class="eyebrow">GÜNCEL DURUM</span><h2>Varlıklarım</h2></div><button class="primary small" data-action="add-instrument">+ Varlık ekle</button></div>
-      <div id="dashboardAssets" class="card-list"></div>
+    <main id="page" class="page" aria-live="polite"></main>
 
-      <div class="section-head"><div><span class="eyebrow">NAKİT AKIŞI</span><h2>Nakit hesapları</h2></div><button class="ghost small" data-action="cash-transaction">+ Nakit işlemi</button></div>
-      <div id="cashCards" class="cash-grid"></div>
-    </section>
+    <button id="fab" class="fab" aria-label="Yeni işlem ekle"></button>
 
-    <section class="view" data-view="portfolio">
-      <div class="section-head sticky-head"><div><span class="eyebrow">PORTFÖY</span><h2>Yatırımlar</h2></div><button class="primary small" data-action="add-instrument">+ Ekle</button></div>
-      <div class="segmented" id="portfolioFilter">
-        <button class="active" data-filter="ALL">Tümü</button><button data-filter="BIST">BIST</button><button data-filter="US">ABD/ETF</button><button data-filter="TEFAS">Fon</button><button data-filter="OTHER">Diğer</button>
-      </div>
-      <div id="portfolioList" class="portfolio-list"></div>
-      <div class="report-card">
-        <h3>Portföy röntgeni</h3>
-        <div id="allocationBars" class="bars"></div>
-      </div>
-    </section>
-
-    <section class="view" data-view="transactions">
-      <div class="section-head sticky-head"><div><span class="eyebrow">İŞLEM DEFTERİ</span><h2>Alış, satış ve nakit</h2></div><button class="primary small" data-action="new-transaction">+ İşlem</button></div>
-      <div class="metric-grid compact">
-        <article class="metric"><span>Toplam satış</span><strong class="money" id="sellTurnover">₺0,00</strong></article>
-        <article class="metric"><span>Gerçekleşen K/Z</span><strong class="money" id="txRealizedPnl">₺0,00</strong></article>
-        <article class="metric"><span>Komisyonlar</span><strong class="money" id="totalCommissions">₺0,00</strong></article>
-        <article class="metric"><span>Temettü nakit girişi</span><strong class="money" id="txDividend">₺0,00</strong></article>
-      </div>
-      <div class="segmented" id="transactionFilter"><button class="active" data-filter="ALL">Tümü</button><button data-filter="BUY">Alış</button><button data-filter="SELL">Satış</button><button data-filter="DIVIDEND">Temettü</button><button data-filter="CASH">Nakit</button></div>
-      <div id="transactionList" class="timeline"></div>
-    </section>
-
-    <section class="view" data-view="dividends">
-      <div class="section-head sticky-head"><div><span class="eyebrow">TEMETTÜ MERKEZİ</span><h2>Hak ediş ve ödemeler</h2></div><button class="primary small" data-action="add-dividend">+ Temettü</button></div>
-      <div class="notice-card">
-        <strong>Yeni güvenli hesaplama</strong>
-        <p>Bir ödeme yalnızca hak kullanım tarihinden önce elde bulunan pay, doğrulanmış ödeme tarihi ve tekil olay kaydı birlikte varsa “alındı” sayılır.</p>
-      </div>
-      <div class="metric-grid compact">
-        <article class="metric"><span>Bu yıl alınan</span><strong class="money" id="divYearReceived">₺0,00</strong></article>
-        <article class="metric"><span>12 ay beklenen</span><strong class="money" id="divNext12">₺0,00</strong></article>
-        <article class="metric"><span>Hak edilmedi</span><strong id="divNotEntitled">0 olay</strong></article>
-        <article class="metric"><span>Kontrol gereken</span><strong id="divNeedsReview">0 olay</strong></article>
-      </div>
-      <div class="segmented" id="dividendFilter"><button class="active" data-filter="ALL">Tümü</button><button data-filter="RECEIVED">Alınan</button><button data-filter="UPCOMING">Yaklaşan</button><button data-filter="NOT_ENTITLED">Hak edilmedi</button><button data-filter="ESTIMATED">Tahmini</button></div>
-      <div id="dividendList" class="event-list"></div>
-    </section>
-
-    <section class="view" data-view="market">
-      <div class="section-head sticky-head"><div><span class="eyebrow">PİYASA VE GÖRÜŞLER</span><h2>Gündem</h2></div><button class="ghost small" id="newsRefresh">↻ Yenile</button></div>
-      <div class="segmented two-row" id="marketTabs"><button class="active" data-market="portfolio">Portföyüm</button><button data-market="market">Piyasa</button><button data-market="dividend">Temettü/KAP</button><button data-market="writers">Yazılar</button><button data-market="portfolios">Açık portföyler</button></div>
-      <div id="marketInfo" class="source-note"></div>
-      <div id="newsList" class="news-list"></div>
-      <div id="publicPortfolioPanel" class="hidden">
-        <div class="notice-card"><strong>Kamuya açık örnek portföyler</strong><p>Bu bölüm gerçek zamanlı portföy değildir. Yalnızca resmî kamu bildirimlerinden alınan, gecikmeli ve kapsamı sınırlı veriyi gösterir; yatırım tavsiyesi değildir.</p></div>
-        <div id="managerCards" class="manager-grid"></div>
-        <div id="managerHoldings" class="holdings-table"></div>
-      </div>
-    </section>
-
-    <section class="view" data-view="settings">
-      <div class="section-head"><div><span class="eyebrow">AYARLAR</span><h2>Uygulama ve veriler</h2></div></div>
-      <div class="settings-card">
-        <label>Rapor para birimi<select id="baseCurrency"><option>TRY</option><option>USD</option><option>EUR</option><option>GBP</option></select></label>
-        <label class="switch-row"><span><strong>Temettüyü otomatik nakde aktar</strong><small>Yalnız doğrulanmış ödeme ve hak ediş varsa</small></span><input id="autoPostDividends" type="checkbox"></label>
-        <label class="switch-row"><span><strong>Tutarları gizle</strong><small>Uygulama ve widget gizlilik modu</small></span><input id="privacyMode" type="checkbox"></label>
-        <label>Web/PWA kişisel sunucu adresi<input id="apiBaseUrl" placeholder="https://alanadiniz.com/finansaleb"></label>
-      </div>
-      <div class="settings-card">
-        <h3>Yedekleme</h3>
-        <p>Veriler cihazda saklanır. APK kaldırılmadan önce yedek alın.</p>
-        <div class="button-row"><button class="primary" id="exportBtn">JSON yedeği al</button><label class="ghost file-label">Yedeği geri yükle<input type="file" id="importInput" accept="application/json,.json"></label></div>
-      </div>
-      <div class="settings-card danger-zone"><h3>Bakım</h3><button class="ghost" id="runMigrationReview">Eski alış tarihlerini kontrol et</button><button class="danger" id="resetBtn">Tüm verileri sıfırla</button></div>
-      <div class="source-note"><strong>Finansal(EB) v0.3.0</strong><br>Portföy verileri cihazında tutulur. Fiyat, haber ve kamu bildirimi sorgularında yalnız sembol veya arama ifadesi dış kaynağa gönderilir.</div>
-    </section>
-  </main>
-
-  <nav class="bottom-nav">
-    <button class="active" data-nav="dashboard"><span>⌂</span>Özet</button>
-    <button data-nav="portfolio"><span>◫</span>Portföy</button>
-    <button data-nav="transactions"><span>⇄</span>İşlemler</button>
-    <button data-nav="dividends"><span>◷</span>Temettü</button>
-    <button data-nav="market"><span>◎</span>Piyasa</button>
-    <button data-nav="settings"><span>⚙</span>Ayarlar</button>
-  </nav>
-
-  <div class="modal-backdrop hidden" id="modalBackdrop">
-    <div class="modal-sheet" role="dialog" aria-modal="true">
-      <div class="modal-handle"></div>
-      <div id="modalContent"></div>
-    </div>
+    <nav id="bottomNav" class="bottom-nav" aria-label="Ana menü">
+      <button data-page="dashboard" class="nav-item active"><span class="nav-icon" data-icon="home"></span><span>Özet</span></button>
+      <button data-page="portfolio" class="nav-item"><span class="nav-icon" data-icon="portfolio"></span><span>Portföy</span></button>
+      <button data-page="dividends" class="nav-item"><span class="nav-icon" data-icon="dividend"></span><span>Temettü</span></button>
+      <button data-page="calendar" class="nav-item"><span class="nav-icon" data-icon="calendar"></span><span>Takvim</span></button>
+      <button data-page="market" class="nav-item"><span class="nav-icon" data-icon="news"></span><span>Piyasa</span></button>
+      <button data-page="analytics" class="nav-item"><span class="nav-icon" data-icon="analytics"></span><span>Analiz</span></button>
+    </nav>
   </div>
-  <div id="toast" class="toast hidden"></div>
 
-  <script src="ledger.js"></script>
-  <script src="data.js"></script>
+  <div id="modalLayer" class="modal-layer" aria-hidden="true"></div>
+  <div id="toast" class="toast" role="status"></div>
+  <input id="importInput" type="file" accept="application/json,.json" hidden>
   <script src="app.js"></script>
 </body>
 </html>

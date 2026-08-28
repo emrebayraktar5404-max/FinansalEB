@@ -1,0 +1,43 @@
+Finansal(EB) v0.3.0 — GitHub yükleme paketi
+
+DEĞİŞEN DOSYALAR
+1. .github/workflows/build-apk.yml
+   - APK adı v0.3.0
+   - Artifacts adı v0.3.0
+2. android/app/build.gradle
+   - versionCode 3
+   - versionName 0.3.0
+   - repo içi kişisel keystore bağımlılığı kaldırıldı
+3. android/app/src/main/assets/app.js
+   - v0.3.0 arayüz/veri merkezi
+4. android/app/src/main/assets/index.html
+   - Piyasa menüsü
+5. android/app/src/main/assets/styles.css
+   - haber/takvim/yatırımcı kartları
+6. web/app.js
+   - Piyasa + Yatırımcı ekranları
+   - content API entegrasyonu
+7. web/index.html
+   - Piyasa menüsü
+8. web/styles.css
+   - yeni içerik kartları
+9. server/api.php
+   - action=content
+   - Google News RSS
+   - TCMB takvimi
+   - TÜİK takvimi
+   - SEC 13F örnek portföyleri
+   - cache
+10. server/config.sample.php
+   - SEC_USER_AGENT
+11. 00_V0.3.0_KURULUM.txt
+12. CHANGELOG_V0.3.0.md
+
+KAYNAK PAKETTEN ÇIKARILANLAR
+- android/signing/finansaleb-personal.jks
+- android/signing/keystore.properties
+
+Bunlar güvenlik nedeniyle yeni pakette bulunmuyor.
+
+NOT
+Mevcut GitHub deposunda bu iki eski imza dosyası zaten bulunuyorsa GitHub üzerinden ayrıca silinmelidir. Git geçmişinde kaldıkları için gerçekten gizli kabul edilmemelidir; yeni bir kişisel release imzası ileride GitHub Secrets ile yapılmalıdır.
