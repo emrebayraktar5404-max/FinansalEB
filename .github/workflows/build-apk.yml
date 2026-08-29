@@ -60,31 +60,14 @@ jobs:
           test -n "$STORE_PASSWORD" || (echo "FINANSALEB_KEYSTORE_PASSWORD secret eksik" && exit 1)
           test -n "$KEY_ALIAS" || (echo "FINANSALEB_KEY_ALIAS secret eksik" && exit 1)
           test -n "$KEY_PASSWORD" || (echo "FINANSALEB_KEY_PASSWORD secret eksik" && exit 1)
+
           mkdir -p android/signing
-          printf '%s' "$KEYSTORE_B64" | base64 --decode > android/signing/finansaleb-release.jks
-          cat > android/signing/keystore.properties <<EOF
-          storeFile=finansaleb-release.jks
-          storePassword=$STORE_PASSWORD
-          keyAlias=$KEY_ALIAS
-          keyPassword=$KEY_PASSWORD
-          EOF
 
-      - name: İmzalı APK derle
-        working-directory: android
-        run: gradle --no-daemon --stacktrace :app:assembleRelease
+          python3 - <<'PY'
+          import os
+          import base64
+          import re
 
-      - name: APK dosyasını adlandır
-        run: |
-          mkdir -p dist
-          cp android/app/build/outputs/apk/release/app-release.apk dist/FinansalEB-v0.3.4.apk
-          sha256sum dist/FinansalEB-v0.3.4.apk > dist/FinansalEB-v0.3.4.apk.sha256
+          value = os.environ["KEYSTORE_B64"].strip()
 
-      - name: APK artefaktını yükle
-        uses: actions/upload-artifact@v4
-        with:
-          name: FinansalEB-v0.3.4-APK
-          path: |
-            dist/FinansalEB-v0.3.4.apk
-            dist/FinansalEB-v0.3.4.apk.sha256
-          if-no-files-found: error
-          retention-days: 30
+         
