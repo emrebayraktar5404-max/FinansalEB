@@ -64,6 +64,8 @@ jobs:
           value = value.strip().strip('"').strip("'")
           value = re.sub(r"\s+", "", value)
 
+          value += "=" * (-len(value) % 4)
+
           data = base64.b64decode(value)
 
           with open("android/signing/finansaleb-release.jks", "wb") as f:
