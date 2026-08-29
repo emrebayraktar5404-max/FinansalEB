@@ -1,0 +1,90 @@
+name: FinansalEB Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+    paths:
+      - "android/**"
+      - "web/**"
+      - "scripts/**"
+      - ".github/workflows/build-apk.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-release-apk:
+    name: İmzalı güncellenebilir APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: Android 35 paketlerini kur
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Gradle 8.9 kur
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Web arayüzünü Android varlıklarına eşitle
+        run: bash scripts/sync-assets.sh
+
+      - name: Sürüm doğrula
+        run: |
+          grep -q "APP_VERSION = '0.3.4'" web/app.js
+          grep -q "versionName '0.3.4'" android/app/build.gradle
+          echo "v0.3.4 kaynakları doğrulandı"
+
+      - name: Kalıcı imza anahtarını hazırla
+        env:
+          KEYSTORE_B64: ${{ secrets.FINANSALEB_KEYSTORE_B64 }}
+          STORE_PASSWORD: ${{ secrets.FINANSALEB_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.FINANSALEB_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.FINANSALEB_KEY_PASSWORD }}
+        run: |
+          test -n "$KEYSTORE_B64" || (echo "FINANSALEB_KEYSTORE_B64 secret eksik" && exit 1)
+          test -n "$STORE_PASSWORD" || (echo "FINANSALEB_KEYSTORE_PASSWORD secret eksik" && exit 1)
+          test -n "$KEY_ALIAS" || (echo "FINANSALEB_KEY_ALIAS secret eksik" && exit 1)
+          test -n "$KEY_PASSWORD" || (echo "FINANSALEB_KEY_PASSWORD secret eksik" && exit 1)
+          mkdir -p android/signing
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > android/signing/finansaleb-release.jks
+          cat > android/signing/keystore.properties <<EOF
+          storeFile=finansaleb-release.jks
+          storePassword=$STORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
+
+      - name: İmzalı APK derle
+        working-directory: android
+        run: gradle --no-daemon --stacktrace :app:assembleRelease
+
+      - name: APK dosyasını adlandır
+        run: |
+          mkdir -p dist
+          cp android/app/build/outputs/apk/release/app-release.apk dist/FinansalEB-v0.3.4.apk
+          sha256sum dist/FinansalEB-v0.3.4.apk > dist/FinansalEB-v0.3.4.apk.sha256
+
+      - name: APK artefaktını yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: FinansalEB-v0.3.4-APK
+          path: |
+            dist/FinansalEB-v0.3.4.apk
+            dist/FinansalEB-v0.3.4.apk.sha256
+          if-no-files-found: error
+          retention-days: 30
