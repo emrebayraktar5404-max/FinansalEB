@@ -2,13 +2,6 @@ name: FinansalEB Android APK
 
 on:
   workflow_dispatch:
-  push:
-    branches: ["main"]
-    paths:
-      - "android/**"
-      - "web/**"
-      - "scripts/**"
-      - ".github/workflows/build-apk.yml"
 
 permissions:
   contents: read
@@ -35,6 +28,75 @@ jobs:
       - name: Android 35 paketlerini kur
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
+      - name: Gradle 8.9 kur
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Web arayüzünü Android varlıklarına eşitle
+        run: bash scripts/sync-assets.sh
+
+      - name: Sürüm doğrula
+        run: |
+          grep -q "APP_VERSION = '0.3.4'" web/app.js
+          grep -q "versionName '0.3.4'" android/app/build.gradle
+          echo "v0.3.4 kaynakları doğrulandı"
+
+      - name: Kalıcı imza anahtarını hazırla
+        env:
+          KEYSTORE_B64: ${{ secrets.FINANSALEB_KEYSTORE_B64 }}
+          STORE_PASSWORD: ${{ secrets.FINANSALEB_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.FINANSALEB_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.FINANSALEB_KEY_PASSWORD }}
+        run: |
+          mkdir -p android/signing
+
+          python3 - <<'PY'
+          import os
+          import base64
+          import re
+
+          value = os.environ["KEYSTORE_B64"].strip()
+
+          if value.startswith("FINANSALEB_KEYSTORE_B64="):
+              value = value.split("=", 1)[1]
+
+          value = value.strip().strip('"').strip("'")
+          value = re.sub(r"\s+", "", value)
+
+          data = base64.b64decode(value)
+
+          with open("android/signing/finansaleb-release.jks", "wb") as f:
+              f.write(data)
+
+          print("Keystore oluşturuldu:", len(data), "byte")
+          PY
+
+          cat > android/signing/keystore.properties <<EOF
+          storeFile=finansaleb-release.jks
+          storePassword=$STORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
+
+      - name: İmzalı APK derle
+        working-directory: android
+        run: gradle --no-daemon --stacktrace :app:assembleRelease
+
+      - name: APK dosyasını hazırla
+        run: |
+          mkdir -p dist
+          cp android/app/build/outputs/apk/release/app-release.apk dist/FinansalEB-v0.3.4.apk
+          sha256sum dist/FinansalEB-v0.3.4.apk > dist/FinansalEB-v0.3.4.apk.sha256
+          ls -lh dist
+
+      - name: APK artefaktını yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: FinansalEB-v0.3.4-APK
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
       - name: Gradle 8.9 kur
         uses: gradle/actions/setup-gradle@v4
         with:
