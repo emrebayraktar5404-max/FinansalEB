@@ -44,38 +44,26 @@ jobs:
 
       - name: Kalıcı imza anahtarını hazırla
         env:
-          KEYSTORE_B64: ${{ secrets.FINANSALEB_KEYSTORE_B64 }}
+          FILE_PASSWORD: ${{ secrets.FINANSALEB_KEYSTORE_FILE_PASSWORD }}
           STORE_PASSWORD: ${{ secrets.FINANSALEB_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.FINANSALEB_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.FINANSALEB_KEY_PASSWORD }}
         run: |
           mkdir -p android/signing
 
-          python3 - <<'PY'
-          import os
-          import base64
-          import re
+          openssl enc -d -aes-256-cbc -pbkdf2 \
+            -in android/signing/finansaleb-release.p12.enc \
+            -out android/signing/finansaleb-release.p12 \
+            -pass env:FILE_PASSWORD
 
-          value = os.environ["KEYSTORE_B64"].strip()
-
-          if value.startswith("FINANSALEB_KEYSTORE_B64="):
-              value = value.split("=", 1)[1]
-
-          value = value.strip().strip('"').strip("'")
-          value = re.sub(r"\s+", "", value)
-
-          value += "=" * (-len(value) % 4)
-
-          data = base64.b64decode(value)
-
-          with open("android/signing/finansaleb-release.jks", "wb") as f:
-              f.write(data)
-
-          print("Keystore oluşturuldu:", len(data), "byte")
-          PY
+          keytool -list \
+            -keystore android/signing/finansaleb-release.p12 \
+            -storetype PKCS12 \
+            -storepass "$STORE_PASSWORD" \
+            -alias "$KEY_ALIAS" >/dev/null
 
           cat > android/signing/keystore.properties <<EOF
-          storeFile=finansaleb-release.jks
+          storeFile=finansaleb-release.p12
           storePassword=$STORE_PASSWORD
           keyAlias=$KEY_ALIAS
           keyPassword=$KEY_PASSWORD
@@ -90,7 +78,6 @@ jobs:
           mkdir -p dist
           cp android/app/build/outputs/apk/release/app-release.apk dist/FinansalEB-v0.3.4.apk
           sha256sum dist/FinansalEB-v0.3.4.apk > dist/FinansalEB-v0.3.4.apk.sha256
-          ls -lh dist
 
       - name: APK artefaktını yükle
         uses: actions/upload-artifact@v4
@@ -99,39 +86,3 @@ jobs:
           path: dist/
           if-no-files-found: error
           retention-days: 30
-      - name: Gradle 8.9 kur
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "8.9"
-
-      - name: Web arayüzünü Android varlıklarına eşitle
-        run: bash scripts/sync-assets.sh
-
-      - name: Sürüm doğrula
-        run: |
-          grep -q "APP_VERSION = '0.3.4'" web/app.js
-          grep -q "versionName '0.3.4'" android/app/build.gradle
-          echo "v0.3.4 kaynakları doğrulandı"
-
-      - name: Kalıcı imza anahtarını hazırla
-        env:
-          KEYSTORE_B64: ${{ secrets.FINANSALEB_KEYSTORE_B64 }}
-          STORE_PASSWORD: ${{ secrets.FINANSALEB_KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.FINANSALEB_KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.FINANSALEB_KEY_PASSWORD }}
-        run: |
-          test -n "$KEYSTORE_B64" || (echo "FINANSALEB_KEYSTORE_B64 secret eksik" && exit 1)
-          test -n "$STORE_PASSWORD" || (echo "FINANSALEB_KEYSTORE_PASSWORD secret eksik" && exit 1)
-          test -n "$KEY_ALIAS" || (echo "FINANSALEB_KEY_ALIAS secret eksik" && exit 1)
-          test -n "$KEY_PASSWORD" || (echo "FINANSALEB_KEY_PASSWORD secret eksik" && exit 1)
-
-          mkdir -p android/signing
-
-          python3 - <<'PY'
-          import os
-          import base64
-          import re
-
-          value = os.environ["KEYSTORE_B64"].strip()
-
-         
