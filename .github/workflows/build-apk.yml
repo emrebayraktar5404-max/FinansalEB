@@ -38,9 +38,9 @@ jobs:
 
       - name: Sürüm doğrula
         run: |
-          grep -q "APP_VERSION = '0.3.15'" web/app.js
-          grep -q "versionName '0.3.15'" android/app/build.gradle
-          echo "v0.3.15 kaynakları doğrulandı"
+          grep -q "APP_VERSION = '0.3.16'" web/app.js
+          grep -q "versionName '0.3.16'" android/app/build.gradle
+          echo "v0.3.16 kaynakları doğrulandı"
 
       - name: Kalıcı imza anahtarını hazırla
         env:
@@ -76,13 +76,13 @@ jobs:
       - name: APK dosyasını hazırla
         run: |
           mkdir -p dist
-          cp android/app/build/outputs/apk/release/app-release.apk dist/FinansalEB-v0.3.15.apk
-          sha256sum dist/FinansalEB-v0.3.15.apk > dist/FinansalEB-v0.3.15.apk.sha256
+          cp android/app/build/outputs/apk/release/app-release.apk dist/FinansalEB-v0.3.16.apk
+          sha256sum dist/FinansalEB-v0.3.16.apk > dist/FinansalEB-v0.3.16.apk.sha256
 
       - name: APK artefaktını yükle
         uses: actions/upload-artifact@v4
         with:
-          name: FinansalEB-v0.3.15-APK
+          name: FinansalEB-v0.3.16-APK
           path: dist/
           if-no-files-found: error
           retention-days: 30
