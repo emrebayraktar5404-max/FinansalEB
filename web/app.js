@@ -5,7 +5,7 @@
 (() => {
   'use strict';
 
-  const APP_VERSION = '0.3.16';
+  const APP_VERSION = '0.3.17';
   const DEFAULT_BACKEND_URL = 'https://baykarturizm.com/finansaleb-api/api.php';
   const STORAGE_KEY = 'finansaleb_state_v1';
   const ONBOARDING_KEY = 'finansaleb_onboarded_v1';
@@ -119,6 +119,7 @@
         backendUrl: DEFAULT_BACKEND_URL,
         backendToken: '',
         refreshHours: 6,
+        refreshMinutes: 15,
         notifications: true,
         autoRefresh: true,
         privacy: false,
@@ -243,6 +244,8 @@
   let analyticsPeriod = '1Y';
   let toastTimer = null;
   let refreshController = null;
+  let contentRefreshPromise = null;
+  let autoRefreshTimer = null;
   const nativeMarketRequests = new Map();
   let nativeMarketSequence = 0;
 
@@ -1043,36 +1046,47 @@
 
   function renderInvestors() { return renderMarket(); }
 
-  async function refreshContent() {
-    try {
-      let result;
-      if (window.Android?.requestMarketData && state.settings.backendUrl) {
-        result = await nativeMarketCall('backendcontent', {
-          backendUrl: state.settings.backendUrl,
-          backendToken: state.settings.backendToken || ''
-        }, 45000);
-      } else {
-        result = await backendCall({action:'content'}, 20000);
+  async function refreshContent({silent=false}={}) {
+    if (contentRefreshPromise) return contentRefreshPromise;
+    contentRefreshPromise = (async () => {
+      try {
+        let result;
+        if (window.Android?.requestMarketData && state.settings.backendUrl) {
+          result = await nativeMarketCall('backendcontent', {
+            backendUrl: state.settings.backendUrl,
+            backendToken: state.settings.backendToken || ''
+          }, 18000);
+        } else {
+          result = await backendCall({action:'content'}, 15000);
+        }
+        if (!result?.ok) throw new Error(result?.error||'İçerik alınamadı');
+        state.market.news = result.data?.news || [];
+        state.market.macroEvents = result.data?.macroEvents || [];
+        state.market.expertViews = result.data?.expertViews || [];
+        state.market.investorPortfolios = result.data?.investorPortfolios || [];
+        state.market.domesticPortfolios = result.data?.domesticPortfolios || [];
+        state.market.fundSources = result.data?.fundSources || [];
+        state.market.portfolioComparison = result.data?.portfolioComparison || {commonStocks:[],institutions:[]};
+        state.market.sourceCatalog = result.data?.sources || [];
+        state.market.ipoItems = result.data?.ipoItems || [];
+        state.market.ipoNews = result.data?.ipoNews || [];
+        state.market.ipoSources = result.data?.ipoSources || [];
+        state.market.lastContentSync = new Date().toISOString();
+        state.market.contentError = null;
+        saveState();
+        if (currentPage === 'market') renderPage(false); else updateSyncText();
+        if (!silent) showToast('Haber ve piyasa içerikleri güncellendi');
+        return true;
+      } catch (e) {
+        state.market.contentError = e.message || 'İçerik alınamadı';
+        saveState();
+        if (!silent) showToast(`İçerik alınamadı: ${state.market.contentError}`, 4200);
+        return false;
+      } finally {
+        contentRefreshPromise = null;
       }
-      if (!result?.ok) throw new Error(result?.error||'İçerik alınamadı');
-      state.market.news = result.data?.news || [];
-      state.market.macroEvents = result.data?.macroEvents || [];
-      state.market.expertViews = result.data?.expertViews || [];
-      state.market.investorPortfolios = result.data?.investorPortfolios || [];
-      state.market.domesticPortfolios = result.data?.domesticPortfolios || [];
-      state.market.fundSources = result.data?.fundSources || [];
-      state.market.portfolioComparison = result.data?.portfolioComparison || {commonStocks:[],institutions:[]};
-      state.market.sourceCatalog = result.data?.sources || [];
-      state.market.ipoItems = result.data?.ipoItems || [];
-      state.market.ipoNews = result.data?.ipoNews || [];
-      state.market.ipoSources = result.data?.ipoSources || [];
-      state.market.lastContentSync = new Date().toISOString();
-      state.market.contentError = null;
-      saveState(); renderPage(); showToast('Haber ve piyasa verileri güncellendi');
-    } catch (e) {
-      state.market.contentError = e.message || 'İçerik alınamadı';
-      saveState(); showToast(`İçerik alınamadı: ${state.market.contentError}`, 4200);
-    }
+    })();
+    return contentRefreshPromise;
   }
 
   function renderPage(resetScroll = true) {
@@ -1546,7 +1560,7 @@
       <div class="setting-row" id="resetData"><div class="setting-icon" style="color:var(--negative);background:rgba(255,102,127,.08)">${ICONS.trash}</div><div><div class="setting-name" style="color:var(--negative)">Tüm verileri sil</div><div class="setting-value">Cihazdaki yerel portföyü sıfırla</div></div><span class="setting-chevron">›</span></div>
     </div></div><div class="disclaimer">Finansal(EB) v${APP_VERSION}. Yatırım tavsiyesi değildir. Fiyat ve temettü kayıtlarını işlem yapmadan önce aracı kurum/KAP verisiyle doğrula.</div>`,{className:'settings-modal'});
     $('#dataSettings').addEventListener('click',showDataSettings);
-    $('#refreshNow').addEventListener('click',()=>{closeModal();refreshAll();});
+    $('#refreshNow').addEventListener('click',()=>{closeModal();refreshAll({includeContent:true});});
     $('#sourceStatus').addEventListener('click',showSourceStatus);
     $('#privacySetting').addEventListener('click',()=>{state.settings.privacy=!state.settings.privacy;saveState();showSettings();renderPage();});
     $('#notificationSetting').addEventListener('click',()=>{state.settings.notifications=!state.settings.notifications;saveState();showSettings();scheduleEventNotifications();});
@@ -1560,9 +1574,9 @@
 
   function showDataSettings() {
     const s=state.settings;
-    showModal(`${modalHeader('Kişisel veri sunucusu')}<form id="dataForm"><div class="field"><label>API adresi</label><input name="backendUrl" value="${esc(s.backendUrl)}" placeholder="https://alanadiniz.com/finansaleb/api.php"></div><div class="field"><label>API erişim anahtarı</label><input name="backendToken" value="${esc(s.backendToken)}" placeholder="Kişisel anahtar"></div><div class="field"><label>Otomatik yenileme aralığı</label><select name="refreshHours">${[1,3,6,12,24].map(v=>`<option value="${v}" ${Number(s.refreshHours)===v?'selected':''}>${v} saat</option>`).join('')}</select></div><div class="toggle-row" id="autoRefreshToggle"><div class="toggle-main"><div class="toggle-title">Uygulama açılınca yenile</div><div class="toggle-note">Son yenileme süresi dolduysa otomatik çalışır</div></div><i class="switch ${s.autoRefresh?'on':''}"></i><input type="hidden" name="autoRefresh" value="${s.autoRefresh?'1':'0'}"></div><div class="disclaimer">APK; BIST/ABD/ETF aramasını, fiyatları ve TEFAS fon kodlarını kendi Android veri katmanından otomatik sorgular. Kişisel PHP sunucusu yalnızca önbellek, KAP ve ek dayanıklılık için isteğe bağlıdır.</div><div class="button-row"><button type="button" class="secondary-btn" data-modal-close>Vazgeç</button><button class="primary-btn">Kaydet ve test et</button></div></form>`);
+    showModal(`${modalHeader('Kişisel veri sunucusu')}<form id="dataForm"><div class="field"><label>API adresi</label><input name="backendUrl" value="${esc(s.backendUrl)}" placeholder="https://alanadiniz.com/finansaleb/api.php"></div><div class="field"><label>API erişim anahtarı</label><input name="backendToken" value="${esc(s.backendToken)}" placeholder="Kişisel anahtar"></div><div class="field"><label>Otomatik yenileme aralığı</label><select name="refreshMinutes">${[[15,'15 dakika'],[30,'30 dakika'],[60,'1 saat'],[180,'3 saat'],[360,'6 saat']].map(([v,l])=>`<option value="${v}" ${Number(s.refreshMinutes||((s.refreshHours||6)*60))===v?'selected':''}>${l}</option>`).join('')}</select></div><div class="toggle-row" id="autoRefreshToggle"><div class="toggle-main"><div class="toggle-title">Uygulama açılınca yenile</div><div class="toggle-note">Son yenileme süresi dolduysa otomatik çalışır</div></div><i class="switch ${s.autoRefresh?'on':''}"></i><input type="hidden" name="autoRefresh" value="${s.autoRefresh?'1':'0'}"></div><div class="disclaimer">APK; BIST/ABD/ETF aramasını, fiyatları ve TEFAS fon kodlarını kendi Android veri katmanından otomatik sorgular. Kişisel PHP sunucusu yalnızca önbellek, KAP ve ek dayanıklılık için isteğe bağlıdır.</div><div class="button-row"><button type="button" class="secondary-btn" data-modal-close>Vazgeç</button><button class="primary-btn">Kaydet ve test et</button></div></form>`);
     $('#autoRefreshToggle').addEventListener('click',()=>{const sw=$('.switch','#autoRefreshToggle');sw.classList.toggle('on');$('#dataForm').elements.autoRefresh.value=sw.classList.contains('on')?'1':'0';});
-    $('#dataForm').addEventListener('submit',async e=>{e.preventDefault();const fd=new FormData(e.currentTarget);s.backendUrl=String(fd.get('backendUrl')).trim().replace(/\/$/,'');s.backendToken=String(fd.get('backendToken')).trim();s.refreshHours=Number(fd.get('refreshHours'));s.autoRefresh=fd.get('autoRefresh')==='1';saveState();closeModal();await refreshAll();});
+    $('#dataForm').addEventListener('submit',async e=>{e.preventDefault();const fd=new FormData(e.currentTarget);s.backendUrl=String(fd.get('backendUrl')).trim().replace(/\/$/,'');s.backendToken=String(fd.get('backendToken')).trim();s.refreshMinutes=Math.max(15,Number(fd.get('refreshMinutes')||15));s.refreshHours=Math.max(1,Math.round(s.refreshMinutes/60));s.autoRefresh=fd.get('autoRefresh')==='1';saveState();closeModal();await refreshAll();});
   }
 
   function showSourceStatus() {
@@ -1772,7 +1786,7 @@
   async function quoteForAsset(asset) {
     const sourceSymbol=asset.sourceSymbol||inferSourceSymbol(asset.symbol,asset.type);
     if(window.Android?.requestMarketData){
-      try {const response=await nativeMarketCall('quote',{symbol:sourceSymbol,type:asset.type},26000);if(response?.data)return response.data;}catch(error){console.warn('Native quote fallback',error);}
+      try {const response=await nativeMarketCall('quote',{symbol:sourceSymbol,type:asset.type},10000);if(response?.data)return response.data;}catch(error){console.warn('Native quote fallback',error);}
     }
     if(state.settings.backendUrl){
       try {const data=await backendCall({action:'quote',symbol:sourceSymbol,type:asset.type});if(data?.ok&&data.data)return data.data;}catch(error){console.warn('Backend quote fallback',error);}
@@ -1849,46 +1863,101 @@
     const intervals=[];for(let i=1;i<recent.length;i++)intervals.push((parseDate(recent[i].date)-parseDate(recent[i-1].date))/DAY);intervals.sort((a,b)=>a-b);const median=intervals[Math.floor(intervals.length/2)]||90;const normalized=median<50?30:median<140?91:median<270?182:365;const amounts=recent.slice(-4).map(d=>d.amount).sort((a,b)=>a-b);const amount=amounts[Math.floor(amounts.length/2)]||recent.at(-1).amount;let next=parseDate(recent.at(-1).date);while(next<addDays(new Date(),-1))next=addDays(next,normalized);const horizon=addDays(new Date(),370);while(next<=horizon){const date=isoDate(next);const exists=state.dividendEvents.some(e=>e.assetId===asset.id&&Math.abs(parseDate(e.exDate)-next)<10*DAY);if(!exists)state.dividendEvents.push({id:uid('div'),assetId:asset.id,exDate:date,payDate:isoDate(addDays(next,asset.type==='US'||asset.type==='ETF'?14:2)),amountPerShare:amount,currency:asset.currency,status:'estimated',received:false,source:'Geçmiş ödeme düzeni tahmini'});next=addDays(next,normalized);}
   }
 
-  async function refreshAll({silent=false,onlyAssetId=null}={}) {
-    if(refreshController){showToast('Yenileme zaten çalışıyor');return;}
-    refreshController={cancelled:false};const btn=$('#syncBtn');btn?.classList.add('loading');if(!silent)showToast('Piyasa verileri yenileniyor…',1800);
-    const assets=state.assets.filter(a=>!onlyAssetId||a.id===onlyAssetId);let success=0,failed=[];
-    for(const asset of assets){
-      if(refreshController.cancelled)break;
-      try{const q=await quoteForAsset(asset);if(Number.isFinite(Number(q.price))&&Number(q.price)>0){asset.price=Number(q.price);asset.prevClose=Number(q.prevClose||q.price);asset.changePct=Number(q.changePct||0);asset.history=(q.history||[]).map(Number).filter(Number.isFinite).slice(-120);asset.historyDates=Array.isArray(q.timestamps)?q.timestamps.slice(-120).map(t=>isoDate(new Date(Number(t)*1000))):((asset.historyDates||[]).slice(-asset.history.length));asset.lastUpdated=new Date().toISOString();asset.dataStatus='auto';asset.dataSource=q.source||'Otomatik';if(q.currency&&asset.type!=='GOLD'&&asset.type!=='SILVER')asset.currency=q.currency;mergeDividendHistory(asset,q.dividends);
-        try {
-          const feed = await dividendFeedForAsset(asset);
-          mergeExternalDividendEvents(asset, feed);
-          const kapFeed = await officialKapFeed(asset);
-          mergeExternalDividendEvents(asset, kapFeed);
-          // Geçmiş ödemelerden tahmin üret; resmî kayıtlar varsa aynı tarihe yakın tahmin eklenmez.
-          mergeDividendHistory(asset, feed.map(e=>({date:e.exDate||e.date,amount:e.amountPerShare??e.amount,status:e.status})));
-        } catch(dividendError) { console.warn('Dividend feed',asset.symbol,dividendError); }
-        success++;}}
-      catch(error){asset.dataStatus=asset.price?'cached':'error';asset.dataError=error.message;failed.push(`${asset.symbol}: ${error.message}`);}
-      await sleep(120);
-    }
-    if(!onlyAssetId && Array.isArray(state.watchlist)){
-      for(const w of state.watchlist){
-        try{const pseudo={...w,sourceSymbol:w.sourceSymbol||inferSourceSymbol(w.symbol,w.type)};const q=await quoteForAsset(pseudo);if(Number(q.price)>0){w.price=Number(q.price);w.prevClose=Number(q.prevClose||q.price);w.changePct=Number(q.changePct||0);w.currency=q.currency||w.currency;w.sourceSymbol=pseudo.sourceSymbol;w.lastUpdated=new Date().toISOString();}}catch(error){w.dataError=error.message;}
+  async function enrichAssetEvents(asset) {
+    try {
+      const [feed, kapFeed] = await Promise.all([
+        dividendFeedForAsset(asset).catch(()=>[]),
+        officialKapFeed(asset).catch(()=>[])
+      ]);
+      mergeExternalDividendEvents(asset, feed);
+      mergeExternalDividendEvents(asset, kapFeed);
+      mergeDividendHistory(asset, feed.map(e=>({date:e.exDate||e.date,amount:e.amountPerShare??e.amount,status:e.status})));
+    } catch(error) { console.warn('Dividend enrichment', asset.symbol, error); }
+  }
+
+  async function refreshOneAssetPrice(asset) {
+    const q = await quoteForAsset(asset);
+    if (!(Number.isFinite(Number(q.price)) && Number(q.price)>0)) throw new Error('Geçerli fiyat alınamadı');
+    asset.price=Number(q.price);
+    asset.prevClose=Number(q.prevClose||q.price);
+    asset.changePct=Number(q.changePct||0);
+    asset.history=(q.history||[]).map(Number).filter(Number.isFinite).slice(-120);
+    asset.historyDates=Array.isArray(q.timestamps)?q.timestamps.slice(-120).map(t=>isoDate(new Date(Number(t)*1000))):((asset.historyDates||[]).slice(-asset.history.length));
+    asset.lastUpdated=new Date().toISOString();
+    asset.dataStatus='auto'; asset.dataSource=q.source||'Otomatik'; asset.dataError=null;
+    if(q.currency&&asset.type!=='GOLD'&&asset.type!=='SILVER')asset.currency=q.currency;
+    mergeDividendHistory(asset,q.dividends);
+    return true;
+  }
+
+  async function runWithConcurrency(items, worker, limit=4) {
+    let index=0;
+    const runners=Array.from({length:Math.min(limit,items.length)}, async()=>{
+      while(index<items.length){
+        const current=items[index++];
+        await worker(current);
       }
+    });
+    await Promise.all(runners);
+  }
+
+  async function refreshAll({silent=false,onlyAssetId=null,includeContent=false}={}) {
+    if(refreshController){if(!silent)showToast('Yenileme zaten çalışıyor');return;}
+    refreshController={cancelled:false};
+    const btn=$('#syncBtn'); btn?.classList.add('loading');
+    if(!silent)showToast('Fiyatlar hızlıca güncelleniyor…',1400);
+    const assets=state.assets.filter(a=>!onlyAssetId||a.id===onlyAssetId), failed=[]; let success=0;
+    const contentTask = (!onlyAssetId && includeContent) ? refreshContent({silent:true}) : Promise.resolve();
+    await runWithConcurrency(assets, async asset=>{
+      if(refreshController?.cancelled)return;
+      try{await refreshOneAssetPrice(asset);success++;}
+      catch(error){asset.dataStatus=asset.price?'cached':'error';asset.dataError=error.message;failed.push(`${asset.symbol}: ${error.message}`);}
+    },4);
+    if(!onlyAssetId && Array.isArray(state.watchlist) && state.watchlist.length){
+      await runWithConcurrency(state.watchlist, async w=>{
+        try{const pseudo={...w,sourceSymbol:w.sourceSymbol||inferSourceSymbol(w.symbol,w.type)};const q=await quoteForAsset(pseudo);if(Number(q.price)>0){w.price=Number(q.price);w.prevClose=Number(q.prevClose||q.price);w.changePct=Number(q.changePct||0);w.currency=q.currency||w.currency;w.sourceSymbol=pseudo.sourceSymbol;w.lastUpdated=new Date().toISOString();w.dataError=null;}}catch(error){w.dataError=error.message;}
+      },4);
     }
     if(success){state.market.lastSync=new Date().toISOString();state.market.lastError=failed.length?`${failed.length} varlık son değerle gösteriliyor`:null;}
     else if(failed.length)state.market.lastError=failed[0];
-    saveState();refreshController=null;btn?.classList.remove('loading');renderPage();updateSyncText();scheduleEventNotifications();
-    if(!silent)showToast(success?`${success} varlık güncellendi${failed.length?`, ${failed.length} son değerle kaldı`:''}`:`Veri alınamadı; son kayıtlar korundu`,3300);
+    saveState(); refreshController=null; btn?.classList.remove('loading'); renderPage(false); updateSyncText(); scheduleEventNotifications(); syncNativeWidget();
+    // Temettü/KAP gibi ağır işler fiyat ekranını bekletmeden arka planda tamamlanır.
+    if(!onlyAssetId && assets.length) setTimeout(()=>runWithConcurrency(assets, enrichAssetEvents, 2).then(()=>saveState()).catch(()=>{}),300);
+    await contentTask.catch(()=>{});
+    if(!silent)showToast(success?`${success} varlık güncellendi${failed.length?`, ${failed.length} son değerle kaldı`:''}`:`Veri alınamadı; son kayıtlar korundu`,3000);
+  }
+
+  function refreshIntervalMinutes() {
+    return Math.max(15, Number(state.settings.refreshMinutes || ((state.settings.refreshHours||6)*60) || 15));
   }
 
   function shouldAutoRefresh() {
     if(!state.settings.autoRefresh||!state.assets.length)return false;
     const last=state.market.lastSync?new Date(state.market.lastSync).getTime():0;
-    return Date.now()-last>Number(state.settings.refreshHours||6)*3_600_000;
+    return Date.now()-last>refreshIntervalMinutes()*60_000;
+  }
+
+  function shouldAutoRefreshContent() {
+    if(!state.settings.autoRefresh)return false;
+    const last=state.market.lastContentSync?new Date(state.market.lastContentSync).getTime():0;
+    return Date.now()-last>refreshIntervalMinutes()*60_000;
+  }
+
+  function triggerAutoRefresh() {
+    if(!navigator.onLine)return;
+    if(shouldAutoRefresh()) refreshAll({silent:true,includeContent:shouldAutoRefreshContent()});
+    else if(shouldAutoRefreshContent()) refreshContent({silent:true});
+  }
+
+  function startAutoRefreshLoop() {
+    if(autoRefreshTimer) clearInterval(autoRefreshTimer);
+    autoRefreshTimer=setInterval(triggerAutoRefresh,60_000);
   }
 
   function syncNativeWidget() {
     try {
       if(!window.Android?.saveWidgetState)return;
-      const m=portfolioMetrics(),next=upcomingEvents(1)[0],payload={total:m.total,dailyPct:m.dailyPct,daily:m.daily,annualDividend:m.annualDividend,nextSymbol:next?assetById(next.assetId)?.symbol:'',nextAmount:next?eventNet(next):0,nextDate:next?(next.payDate||next.exDate):'',lastSync:state.market.lastSync,privacy:state.settings.privacy,backendUrl:state.settings.backendUrl,backendToken:state.settings.backendToken,refreshHours:Number(state.settings.refreshHours||6),fx:{...state.market.fx},assets:state.assets.map(a=>({id:a.id,symbol:a.symbol,sourceSymbol:a.sourceSymbol,type:a.type,currency:a.currency,quantity:a.quantity,price:a.price,baseValue:assetValue(a)}))};
+      const m=portfolioMetrics(),next=upcomingEvents(1)[0],payload={total:m.total,dailyPct:m.dailyPct,daily:m.daily,annualDividend:m.annualDividend,nextSymbol:next?assetById(next.assetId)?.symbol:'',nextAmount:next?eventNet(next):0,nextDate:next?(next.payDate||next.exDate):'',lastSync:state.market.lastSync,privacy:state.settings.privacy,backendUrl:state.settings.backendUrl,backendToken:state.settings.backendToken,refreshHours:Number(state.settings.refreshHours||6),refreshMinutes:refreshIntervalMinutes(),fx:{...state.market.fx},assets:state.assets.map(a=>({id:a.id,symbol:a.symbol,sourceSymbol:a.sourceSymbol,type:a.type,currency:a.currency,quantity:a.quantity,price:a.price,baseValue:assetValue(a)}))};
       window.Android.saveWidgetState(JSON.stringify(payload));
     } catch(error){console.warn('Widget bridge error',error);}
   }
@@ -1935,10 +2004,12 @@
     $$('.nav-item').forEach(btn=>btn.addEventListener('click',()=>navigate(btn.dataset.page)));
     $('#fab').addEventListener('click',()=>state.assets.length?showTransactionForm():showAssetForm());
     $('#privacyBtn').addEventListener('click',()=>{state.settings.privacy=!state.settings.privacy;saveState();renderPage();showToast(state.settings.privacy?'Tutarlar gizlendi':'Tutarlar gösteriliyor');});
-    $('#syncBtn').addEventListener('click',()=>refreshAll());
+    $('#syncBtn').addEventListener('click',()=>refreshAll({includeContent:true}));
     $('#moreBtn').addEventListener('click',showSettings);
     $('#importInput').addEventListener('change',e=>{const file=e.target.files?.[0];if(file)importData(file);e.target.value='';});
-    window.addEventListener('online',()=>{showToast('İnternet bağlantısı geri geldi');if(shouldAutoRefresh())refreshAll({silent:true});});
+    window.addEventListener('online',()=>{showToast('İnternet bağlantısı geri geldi');triggerAutoRefresh();});
+    document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')setTimeout(triggerAutoRefresh,250);});
+    window.addEventListener('focus',()=>setTimeout(triggerAutoRefresh,250));
     window.addEventListener('offline',()=>showToast('Çevrimdışı: son veriler gösteriliyor'));
     document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();});
   }
@@ -1955,8 +2026,8 @@
       localStorage.setItem(ONBOARDING_KEY, '1');
       saveState();
     }
-    renderIcons();setupGlobalEvents();renderPage();if(state.settings.autoRefresh&&state.settings.backendUrl)setTimeout(()=>refreshContent().catch(()=>{}),1200);showOnboarding();initPwa();scheduleEventNotifications();
-    if(shouldAutoRefresh() && params.get('demo') !== '1')setTimeout(()=>refreshAll({silent:true}),800);
+    renderIcons();setupGlobalEvents();renderPage();showOnboarding();initPwa();scheduleEventNotifications();startAutoRefreshLoop();
+    if(params.get('demo') !== '1')setTimeout(triggerAutoRefresh,350);
   }
 
   document.addEventListener('DOMContentLoaded',init);
