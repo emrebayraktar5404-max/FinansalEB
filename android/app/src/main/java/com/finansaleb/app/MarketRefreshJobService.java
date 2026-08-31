@@ -25,7 +25,7 @@ import java.util.Map;
 public final class MarketRefreshJobService extends JobService {
     private static final int PERIODIC_JOB_ID = 77801;
     private static final int IMMEDIATE_JOB_ID = 77802;
-    private static final long HOUR = 60L * 60L * 1000L;
+    private static final long MINUTE = 60L * 1000L;
     private static final double TROY_OUNCE = 31.1034768;
     private volatile boolean cancelled;
 
@@ -33,9 +33,12 @@ public final class MarketRefreshJobService extends JobService {
         JobScheduler scheduler = (JobScheduler) context.getSystemService(Context.JOB_SCHEDULER_SERVICE);
         if (scheduler == null) return;
         JSONObject payload = WidgetUtils.readPayload(context);
-        long hours = Math.max(1L, Math.min(24L, payload.optLong("refreshHours", 6L)));
-        long interval = hours * HOUR;
-        long flex = Math.min(30L * 60L * 1000L, Math.max(5L * 60L * 1000L, interval / 10L));
+        long minutes = payload.optLong("refreshMinutes", -1L);
+        if (minutes <= 0L) minutes = payload.optLong("refreshHours", 6L) * 60L;
+        // Android JobScheduler periyodik işler için 15 dakikadan daha kısa aralığı garanti etmez.
+        minutes = Math.max(15L, Math.min(24L * 60L, minutes));
+        long interval = minutes * MINUTE;
+        long flex = Math.min(15L * MINUTE, Math.max(5L * MINUTE, interval / 10L));
         JobInfo info = new JobInfo.Builder(PERIODIC_JOB_ID, new ComponentName(context, MarketRefreshJobService.class))
                 .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
                 .setPersisted(true)
