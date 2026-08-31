@@ -15,7 +15,7 @@ declare(strict_types=1);
  *   ?action=batch&items=[{"symbol":"TUPRS.IS","type":"BIST"}]
  */
 
-const APP_VERSION = '0.3.16';
+const APP_VERSION = '0.3.18';
 
 $configFile = __DIR__ . '/config.php';
 $config = is_file($configFile) ? require $configFile : [
@@ -27,7 +27,7 @@ $config = is_file($configFile) ? require $configFile : [
     'DIVIDEND_CACHE_SECONDS' => 21600,
     'ENABLE_KAP_SCRAPER' => true,
     'TIMEZONE' => 'Europe/Istanbul',
-    'USER_AGENT' => 'FinansalEB/0.3.16 (personal portfolio tracker)',
+    'USER_AGENT' => 'FinansalEB/0.3.18 (personal portfolio tracker)',
     'SEC_USER_AGENT' => '',
 ];
 
@@ -40,7 +40,7 @@ $config = array_merge([
     'DIVIDEND_CACHE_SECONDS' => 21600,
     'ENABLE_KAP_SCRAPER' => true,
     'TIMEZONE' => 'Europe/Istanbul',
-    'USER_AGENT' => 'FinansalEB/0.3.16 (personal portfolio tracker)',
+    'USER_AGENT' => 'FinansalEB/0.3.18 (personal portfolio tracker)',
     'SEC_USER_AGENT' => '',
 ], $config);
 
@@ -150,7 +150,7 @@ try {
             break;
 
         case 'content':
-            $data = cached('content_v16', 900, fn() => fetchContentBundle($config));
+            $data = cached('content_v18', 900, fn() => fetchContentBundle($config));
             respond(['ok' => true, 'data' => $data]);
             break;
 
@@ -474,6 +474,8 @@ function fetchContentBundle(array $config): array
     // jeopolitik, enerji, savunma ve güvenlik başlıkları da piyasa etkisi nedeniyle izlenir.
     // Google News TR dizini kullanılır; yabancı başlıklar aşağıda tek toplu istekte Türkçeleştirilmeye çalışılır.
     $queries = [
+        ['q' => '(BIST OR Borsa İstanbul OR BIST 100) (düştü OR yükseldi OR satış OR alım OR neden OR bugün OR bankacılık OR faiz OR TCMB OR CDS)', 'source' => 'BIST hareketi', 'country'=>'Türkiye', 'category'=>'Piyasa · BIST'],
+        ['q' => '(altın OR ons altın OR gram altın OR gümüş) (düştü OR yükseldi OR neden OR Fed OR dolar OR tahvil)', 'source' => 'Altın ve metaller', 'country'=>'Küresel', 'category'=>'Altın · emtia'],
         ['q' => '(ekonomi OR borsa OR faiz OR enflasyon OR maaş OR işsizlik OR eğitim OR enerji OR petrol OR siyaset OR savaş) Türkiye', 'source' => 'Türkiye gündemi', 'country'=>'Türkiye', 'category'=>'Türkiye · hayat · ekonomi'],
         ['q' => '(site:aa.com.tr OR site:trthaber.com OR site:cnbe.com OR site:bloomberght.com OR site:ekonomim.com) (ekonomi OR istihdam OR eğitim OR enerji OR siyaset OR spor)', 'source' => 'Türkiye kaynakları', 'country'=>'Türkiye', 'category'=>'Ekonomi · hayat'],
         ['q' => 'site:reuters.com (markets OR economy OR politics OR war OR energy OR oil OR jobs OR technology OR health OR sports)', 'source' => 'Reuters', 'country'=>'Küresel', 'category'=>'Küresel gündem'],
