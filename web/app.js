@@ -5,7 +5,7 @@
 (() => {
   'use strict';
 
-  const APP_VERSION = '0.3.18';
+  const APP_VERSION = '0.3.19';
   const DEFAULT_BACKEND_URL = 'https://baykarturizm.com/finansaleb-api/api.php';
   const STORAGE_KEY = 'finansaleb_state_v1';
   const ONBOARDING_KEY = 'finansaleb_onboarded_v1';
@@ -938,36 +938,38 @@
     const portfolio=matches.length?`Doğrudan eşleşenler: ${matches.map(a=>a.symbol).join(', ')}.`:'Portföyünde haber metniyle doğrudan eşleşen varlık bulunamadı.';
     return `<div class="impact-grid"><div><b>👤 Günlük hayatım</b><span>${esc(life)}</span></div><div><b>🇹🇷 Türkiye</b><span>${esc(tr)}</span></div><div><b>📈 Piyasalar</b><span>${esc(market)}</span></div><div><b>💼 Portföyüm</b><span>${esc(portfolio)}</span></div></div>`;
   }
+  function freshNews(items,maxHours=168){
+    const now=Date.now(), max=maxHours*3600000;
+    return (items||[]).filter(n=>{const t=Date.parse(n.publishedAt||'');return Number.isFinite(t)&&t<=now+3600000&&(now-t)<=max;}).sort((a,b)=>Date.parse(b.publishedAt||0)-Date.parse(a.publishedAt||0));
+  }
   function marketPulse(all){
-    const assets=(state.assets||[]).filter(a=>Number.isFinite(Number(a.changePct)));
-    const bist=assets.filter(a=>['BIST','BIST100','HISSE'].includes(String(a.market||a.type||'').toUpperCase()) || /\.IS$/i.test(String(a.symbol||'')));
-    const metals=assets.filter(a=>/ALTIN|GOLD|XAU|GÜMÜŞ|SILVER|XAG/i.test(`${a.symbol||''} ${a.name||''}`));
-    const avg=list=>list.length?list.reduce((t,a)=>t+Number(a.changePct||0),0)/list.length:null;
-    const bistAvg=avg(bist), metalAvg=avg(metals);
-    const movers=assets.slice().sort((a,b)=>Math.abs(Number(b.changePct||0))-Math.abs(Number(a.changePct||0))).slice(0,4);
-    const focus=[];
-    if(bistAvg!==null && Math.abs(bistAvg)>=1) focus.push('bist');
-    if(metalAvg!==null && Math.abs(metalAvg)>=0.7) focus.push('metal');
-    const related=(all||[]).filter(n=>{const t=`${n.titleTr||n.title||''} ${n.summary||''}`.toLocaleLowerCase('tr-TR');return focus.some(k=>k==='bist'?/bist|borsa istanbul|hisse|bankacılık|tcmb|faiz|risk primi|cds|siyasi|satış/.test(t):/altın|gold|xau|gümüş|ons|fed|dolar|tahvil/.test(t));}).slice(0,5);
-    let headline='Piyasalarda olağan dışı güçlü bir hareket algılanmadı.';
-    if(bistAvg!==null && bistAvg<=-1) headline=`BIST varlıklarında belirgin satış var · portföy ortalaması ${pct(bistAvg)}`;
-    else if(bistAvg!==null && bistAvg>=1) headline=`BIST varlıklarında güçlü yükseliş var · portföy ortalaması ${pct(bistAvg)}`;
-    else if(metalAvg!==null && Math.abs(metalAvg)>=0.7) headline=`Değerli metallerde dikkat çeken hareket var · ortalama ${pct(metalAvg)}`;
-    const reasons=related.map(n=>`<button type="button" class="pulse-reason" data-action="open-external" data-url="${esc(n.url||'')}"><span>${esc(n.publisher||n.source||'Kaynak')}</span><b>${esc(n.titleTr||n.title||'Gelişme')}</b></button>`).join('');
-    const moverHtml=movers.map(a=>`<span class="pulse-mover ${Number(a.changePct)>=0?'positive':'negative'}">${esc(a.symbol)} ${pct(Number(a.changePct||0))}</span>`).join('');
-    return `<section class="card market-card market-pulse"><div class="pulse-kicker">📍 ŞU ANDA NE OLUYOR?</div><div class="pulse-headline">${esc(headline)}</div>${moverHtml?`<div class="pulse-movers">${moverHtml}</div>`:''}<div class="section-note">FinansalEB fiyat hareketini önce algılar; aşağıdaki haberleri olası nedenleri araştırmak için eşleştirir. Tek haber kesin neden olarak kabul edilmez.</div>${reasons?`<div class="pulse-reasons"><div class="content-kicker">Hareketle ilişkili güncel gelişmeler</div>${reasons}</div>`:`<div class="pulse-warning">⚠️ Bu hareketi açıklayan yeterince ilgili güncel haber bulunamadı. Haber motoru yenilenmeye devam edecek.</div>`}</section>`;
+    const recent=freshNews(all,48);
+    const bistNews=recent.filter(n=>/bist|borsa istanbul|bist 100|bankacılık|açığa satış/i.test(`${n.titleTr||n.title||''} ${n.summary||''}`));
+    const metalNews=recent.filter(n=>/altın|gold|xau|gümüş|ons/i.test(`${n.titleTr||n.title||''} ${n.summary||''}`));
+    const down=bistNews.filter(n=>/düşt|düşüş|satış|gerile|kayıp|eksi|negatif/i.test(`${n.titleTr||n.title||''} ${n.summary||''}`)).length;
+    const up=bistNews.filter(n=>/yüksel|artış|ralli|kazanç|pozitif/i.test(`${n.titleTr||n.title||''} ${n.summary||''}`)).length;
+    let headline='Son 48 saatte piyasayı açıklayan güncel gelişmeler';
+    if(bistNews.length && down>up) headline='BIST’te satış baskısı gündemde';
+    else if(bistNews.length && up>down) headline='BIST’te yükseliş gündemde';
+    else if(bistNews.length) headline='BIST’te önemli hareketlilik var';
+    else if(metalNews.length) headline='Altın ve değerli metallerde önemli hareketlilik var';
+    const related=[...bistNews,...metalNews,...recent.filter(n=>newsImportance(n)[1]==='high')].filter((n,i,a)=>a.findIndex(x=>(x.url||x.title)===(n.url||n.title))===i).slice(0,6);
+    const reasons=related.map(n=>`<button type="button" class="pulse-reason" data-action="open-external" data-url="${esc(n.url||'')}"><span>${esc(n.publisher||n.source||'Kaynak')} · ${n.publishedAt?timeAgo(n.publishedAt):''}</span><b>${esc(n.titleTr||n.title||'Gelişme')}</b><em>Aç →</em></button>`).join('');
+    return `<section class="card market-card market-pulse"><div class="pulse-kicker">📍 ŞU ANDA NE OLUYOR?</div><div class="pulse-headline">${esc(headline)}</div><div class="section-note">Başlık portföyündeki toplam kâr/zarardan değil, son 48 saatteki güncel piyasa haberlerinden oluşturulur. Kaynaklar olası nedenleri karşılaştırmak içindir.</div>${reasons?`<div class="pulse-reasons"><div class="content-kicker">Son dakika ve ilişkili gelişmeler</div>${reasons}<button type="button" class="secondary-btn pulse-all" data-action="news-mode" data-news-mode="important">Tüm önemli haberleri gör</button></div>`:`<div class="pulse-warning">⚠️ Son 48 saatte yeterli güncel piyasa haberi bulunamadı.</div>`}</section>`;
   }
 
   function newsHub(all){
     const tabs=[['important','🔥 Önemli'],['portfolio','💼 Portföyüm'],['life','👤 Hayatım'],['tr','🇹🇷 Türkiye'],['world','🌍 Dünya'],['all','Tümü']];
-    let items=all.slice();
+    let items=freshNews(all,168);
     if(marketNewsMode==='important') items=items.filter(n=>newsImportance(n)[1]!=='low');
     if(marketNewsMode==='portfolio') items=items.filter(n=>portfolioNewsMatch(n).length);
     if(marketNewsMode==='life') items=items.filter(n=>['life','energy','sport'].includes(newsTopic(n)[1]));
     if(marketNewsMode==='tr') items=items.filter(n=>String(n.country||'').includes('Türkiye'));
     if(marketNewsMode==='world') items=items.filter(n=>!String(n.country||'').includes('Türkiye'));
     const cards=items.slice(0,18).map(n=>{const [topic,tone]=newsTopic(n),[imp,level]=newsImportance(n);return externalCard(n.url,`news-hub-card tone-${tone} level-${level}`,`<div class="news-card-top"><span class="impact-badge ${level}">${imp}</span><span class="topic-badge">${esc(topic)}</span></div><div class="content-kicker">${esc(n.publisher||n.source||'Haber')} · ${n.publishedAt?timeAgo(n.publishedAt):''}</div><div class="content-title">${esc(n.titleTr||n.title)}</div><div class="content-summary">${esc(n.summary||'Ayrıntılar için haberi aç.')}</div>${newsImpactDetail(n)}`)}).join('');
-    return `<section class="card market-card news-hub"><div class="section-head"><div><div class="section-title">📰 Haber Merkezi</div><div class="section-note">Hayatını, Türkiye’yi, piyasaları ve portföyünü etkileyebilecek gelişmeler.</div></div></div><div class="news-tabs">${tabs.map(([k,l])=>`<button type="button" class="${marketNewsMode===k?'active':''}" data-action="news-mode" data-news-mode="${k}">${l}</button>`).join('')}</div><div class="content-list">${cards||'<div class="ipo-empty"><b>Bu filtrede haber bulunamadı.</b><span>Yenile veya başka bir kategori seç.</span></div>'}</div><div class="news-legend"><span>🔴 yüksek etki</span><span>🟠 dikkat</span><span>🔵 bilgi</span></div></section>`;
+    const xAccounts=['piyasaTturkiye','parafesorfinans','arzhaber','kendinetemettu','itfo_','mehmetmesci','MELEKBORSA','BloombergHT','karavandaborsa'];
+    const xHtml=`<details class="x-sources"><summary>𝕏 Takip edilen kaynaklar (${xAccounts.length})</summary><div class="x-source-grid">${xAccounts.map(u=>`<button type="button" class="source-mini external-card" data-external-url="https://x.com/${esc(u)}"><span><b>@${esc(u)}</b><small>X kaynağını aç</small></span><em>↗</em></button>`).join('')}</div><div class="field-hint">X gönderilerinin uygulamaya anlık düşmesi için resmî X API erişimi gerekir. Bu hesaplar kaynak listesine hazırlandı; API erişimi olmadan gönderi içeriği otomatik çekilmez.</div></details>`;
+    return `<section class="card market-card news-hub"><div class="section-head"><div><div class="section-title">📰 Haber Merkezi</div><div class="section-note">Hayatını, Türkiye’yi, piyasaları ve portföyünü etkileyebilecek gelişmeler.</div></div></div><div class="news-tabs">${tabs.map(([k,l])=>`<button type="button" class="${marketNewsMode===k?'active':''}" data-action="news-mode" data-news-mode="${k}">${l}</button>`).join('')}</div><div class="content-list">${cards||'<div class="ipo-empty"><b>Bu filtrede haber bulunamadı.</b><span>Yenile veya başka bir kategori seç.</span></div>'}</div><div class="news-legend"><span>🔴 yüksek etki</span><span>🟠 dikkat</span><span>🔵 bilgi</span></div>${xHtml}</section>`;
   }
 
   function renderMarket() {
