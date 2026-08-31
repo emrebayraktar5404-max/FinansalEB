@@ -416,3 +416,12 @@ button.external-card{width:100%;text-align:left;font:inherit;color:inherit;borde
 .ipo-module{margin-top:14px}.summary-strip-portfolio+.ipo-module{margin-top:14px}
 .market-card,.card{transition:transform .15s ease,box-shadow .15s ease}.primary-btn,.secondary-btn,.header-action,.section-link{min-height:38px}.primary-btn{font-weight:780}.section-title{letter-spacing:-.01em}
 @media(max-width:370px){.impact-grid{grid-template-columns:1fr}.news-tabs button{padding:8px 10px}}
+
+
+/* v0.3.18 - Bugün Ne Oldu? */
+.market-pulse{border-left:4px solid var(--primary,#2563eb)}
+.pulse-kicker{font-size:12px;font-weight:800;letter-spacing:.04em;opacity:.72;margin-bottom:8px}
+.pulse-headline{font-size:18px;font-weight:800;line-height:1.35;margin-bottom:10px}
+.pulse-movers{display:flex;gap:7px;overflow-x:auto;padding:2px 0 10px}
+.pulse-mover{white-space:nowrap;border-radius:999px;padding:6px 9px;font-size:12px;font-weight:800;background:rgba(127,127,127,.1)}
+.pulse-reasons{display:grid;gap:8px;margin-top:12px}.pulse-reason{display:flex;flex-direction:column;gap:3px;text-align:left;border:1px solid rgba(127,127,127,.18);background:transparent;border-radius:12px;padding:10px;color:inherit}.pulse-reason span{font-size:11px;opacity:.65}.pulse-reason b{font-size:13px;line-height:1.35}.pulse-warning{margin-top:12px;padding:10px;border-radius:12px;background:rgba(245,158,11,.10);font-size:12px;line-height:1.45}

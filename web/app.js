@@ -5,7 +5,7 @@
 (() => {
   'use strict';
 
-  const APP_VERSION = '0.3.17';
+  const APP_VERSION = '0.3.18';
   const DEFAULT_BACKEND_URL = 'https://baykarturizm.com/finansaleb-api/api.php';
   const STORAGE_KEY = 'finansaleb_state_v1';
   const ONBOARDING_KEY = 'finansaleb_onboarded_v1';
@@ -938,6 +938,26 @@
     const portfolio=matches.length?`Doğrudan eşleşenler: ${matches.map(a=>a.symbol).join(', ')}.`:'Portföyünde haber metniyle doğrudan eşleşen varlık bulunamadı.';
     return `<div class="impact-grid"><div><b>👤 Günlük hayatım</b><span>${esc(life)}</span></div><div><b>🇹🇷 Türkiye</b><span>${esc(tr)}</span></div><div><b>📈 Piyasalar</b><span>${esc(market)}</span></div><div><b>💼 Portföyüm</b><span>${esc(portfolio)}</span></div></div>`;
   }
+  function marketPulse(all){
+    const assets=(state.assets||[]).filter(a=>Number.isFinite(Number(a.changePct)));
+    const bist=assets.filter(a=>['BIST','BIST100','HISSE'].includes(String(a.market||a.type||'').toUpperCase()) || /\.IS$/i.test(String(a.symbol||'')));
+    const metals=assets.filter(a=>/ALTIN|GOLD|XAU|GÜMÜŞ|SILVER|XAG/i.test(`${a.symbol||''} ${a.name||''}`));
+    const avg=list=>list.length?list.reduce((t,a)=>t+Number(a.changePct||0),0)/list.length:null;
+    const bistAvg=avg(bist), metalAvg=avg(metals);
+    const movers=assets.slice().sort((a,b)=>Math.abs(Number(b.changePct||0))-Math.abs(Number(a.changePct||0))).slice(0,4);
+    const focus=[];
+    if(bistAvg!==null && Math.abs(bistAvg)>=1) focus.push('bist');
+    if(metalAvg!==null && Math.abs(metalAvg)>=0.7) focus.push('metal');
+    const related=(all||[]).filter(n=>{const t=`${n.titleTr||n.title||''} ${n.summary||''}`.toLocaleLowerCase('tr-TR');return focus.some(k=>k==='bist'?/bist|borsa istanbul|hisse|bankacılık|tcmb|faiz|risk primi|cds|siyasi|satış/.test(t):/altın|gold|xau|gümüş|ons|fed|dolar|tahvil/.test(t));}).slice(0,5);
+    let headline='Piyasalarda olağan dışı güçlü bir hareket algılanmadı.';
+    if(bistAvg!==null && bistAvg<=-1) headline=`BIST varlıklarında belirgin satış var · portföy ortalaması ${pct(bistAvg)}`;
+    else if(bistAvg!==null && bistAvg>=1) headline=`BIST varlıklarında güçlü yükseliş var · portföy ortalaması ${pct(bistAvg)}`;
+    else if(metalAvg!==null && Math.abs(metalAvg)>=0.7) headline=`Değerli metallerde dikkat çeken hareket var · ortalama ${pct(metalAvg)}`;
+    const reasons=related.map(n=>`<button type="button" class="pulse-reason" data-action="open-external" data-url="${esc(n.url||'')}"><span>${esc(n.publisher||n.source||'Kaynak')}</span><b>${esc(n.titleTr||n.title||'Gelişme')}</b></button>`).join('');
+    const moverHtml=movers.map(a=>`<span class="pulse-mover ${Number(a.changePct)>=0?'positive':'negative'}">${esc(a.symbol)} ${pct(Number(a.changePct||0))}</span>`).join('');
+    return `<section class="card market-card market-pulse"><div class="pulse-kicker">📍 ŞU ANDA NE OLUYOR?</div><div class="pulse-headline">${esc(headline)}</div>${moverHtml?`<div class="pulse-movers">${moverHtml}</div>`:''}<div class="section-note">FinansalEB fiyat hareketini önce algılar; aşağıdaki haberleri olası nedenleri araştırmak için eşleştirir. Tek haber kesin neden olarak kabul edilmez.</div>${reasons?`<div class="pulse-reasons"><div class="content-kicker">Hareketle ilişkili güncel gelişmeler</div>${reasons}</div>`:`<div class="pulse-warning">⚠️ Bu hareketi açıklayan yeterince ilgili güncel haber bulunamadı. Haber motoru yenilenmeye devam edecek.</div>`}</section>`;
+  }
+
   function newsHub(all){
     const tabs=[['important','🔥 Önemli'],['portfolio','💼 Portföyüm'],['life','👤 Hayatım'],['tr','🇹🇷 Türkiye'],['world','🌍 Dünya'],['all','Tümü']];
     let items=all.slice();
@@ -1019,6 +1039,7 @@
 
     return `${pageHeader('Piyasa','Sade piyasa','Bugün ne oldu, yaklaşan tarihler ve profesyoneller ne izliyor?',`<button class="header-action" data-action="refresh-content">Yenile</button>`)}
       ${state.market.contentError?`<div class="market-notice"><strong>Bazı kaynaklar güncellenemedi</strong><span>${esc(state.market.contentError)}</span></div>`:''}
+      ${marketPulse(all)}
       ${newsHub(all)}
 
       <section class="card market-card market-calendar"><div class="section-head"><div><div class="section-title">📅 Yaklaşan önemli tarihler</div><div class="section-note">TCMB ve TÜİK verileri sade Türkçe başlıklarla.</div></div></div><div class="content-list">${macroCards || emptyState('calendar','Yaklaşan takvim verisi yok','Yenile düğmesine basın.')}</div>${moreButton(macroAll.length,'calendar')}</section>
