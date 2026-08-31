@@ -15,7 +15,7 @@ declare(strict_types=1);
  *   ?action=batch&items=[{"symbol":"TUPRS.IS","type":"BIST"}]
  */
 
-const APP_VERSION = '0.3.18';
+const APP_VERSION = '0.3.19';
 
 $configFile = __DIR__ . '/config.php';
 $config = is_file($configFile) ? require $configFile : [
@@ -27,7 +27,7 @@ $config = is_file($configFile) ? require $configFile : [
     'DIVIDEND_CACHE_SECONDS' => 21600,
     'ENABLE_KAP_SCRAPER' => true,
     'TIMEZONE' => 'Europe/Istanbul',
-    'USER_AGENT' => 'FinansalEB/0.3.18 (personal portfolio tracker)',
+    'USER_AGENT' => 'FinansalEB/0.3.19 (personal portfolio tracker)',
     'SEC_USER_AGENT' => '',
 ];
 
@@ -40,7 +40,7 @@ $config = array_merge([
     'DIVIDEND_CACHE_SECONDS' => 21600,
     'ENABLE_KAP_SCRAPER' => true,
     'TIMEZONE' => 'Europe/Istanbul',
-    'USER_AGENT' => 'FinansalEB/0.3.18 (personal portfolio tracker)',
+    'USER_AGENT' => 'FinansalEB/0.3.19 (personal portfolio tracker)',
     'SEC_USER_AGENT' => '',
 ], $config);
 
@@ -150,7 +150,7 @@ try {
             break;
 
         case 'content':
-            $data = cached('content_v18', 900, fn() => fetchContentBundle($config));
+            $data = cached('content_v19', 900, fn() => fetchContentBundle($config));
             respond(['ok' => true, 'data' => $data]);
             break;
 
@@ -496,8 +496,11 @@ function fetchContentBundle(array $config): array
     $news=[];
     for($i=0;$i<4;$i++) foreach($newsBuckets as $bucket) if(isset($bucket[$i])) $news[]=$bucket[$i];
     $news = dedupeNews($news);
-    // İlk ekranda tek yayıncı görünmesin: gerçek yayıncıya göre grupları tarih içinde sıralayıp sıra sıra birleştir.
-    $news = balanceNewsByPublisher($news, 30);
+    // Haber Merkezi güncel haber içindir: 7 günden eski arşiv kayıtlarını at ve kesin kronolojik sırala.
+    $cutoff = time() - (7 * 86400);
+    $news = array_values(array_filter($news, static function($n) use ($cutoff){ $t=strtotime((string)($n['publishedAt']??'')); return $t!==false && $t >= $cutoff && $t <= time()+3600; }));
+    usort($news, static fn($a,$b) => (strtotime((string)($b['publishedAt']??'')) ?: 0) <=> (strtotime((string)($a['publishedAt']??'')) ?: 0));
+    $news = array_slice($news,0,40);
     $news = translateForeignNewsTitlesTr($news, $config, 18);
 
     $macro = [];
