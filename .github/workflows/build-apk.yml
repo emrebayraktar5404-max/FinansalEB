@@ -1,6 +1,9 @@
 name: FinansalEB Android APK
 
 on:
+  push:
+    branches:
+      - finansaleb-2
   workflow_dispatch:
 
 permissions:
