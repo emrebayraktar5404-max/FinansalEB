@@ -1,5 +1,14 @@
 # Değişiklik Günlüğü
 
+## 2.0.0-alpha.1
+
+- `finansaleb-2` geliştirme dalı başlatıldı.
+- Mevcut `finansaleb_state_v1` kayıtları korunarak veri şeması v2'ye taşındı.
+- Tarihi geçmiş dış kaynak temettülerinin kullanıcı onayı olmadan "alındı" sayılması kaldırıldı.
+- Kullanıcının onayladığı net temettü TL tutarı, daha sonraki kur değişimlerinden etkilenmeyecek şekilde sabitlendi.
+- Dış kaynak yenilemesinin manuel temettü onayını ezmesi önlendi.
+- Finans çekirdeği için Node.js regresyon testleri APK iş akışına eklendi.
+
 ## 0.3.0
 
 - Alış tarihi zorunlu işlem modeli eklendi.

@@ -1,2057 +1,22 @@
-/* Finansal(EB) â€” kiÅŸisel portfÃ¶y ve temettÃ¼ takip uygulamasÄ±
- * Tamamen istemci tarafÄ±nda Ã§alÄ±ÅŸÄ±r; veriler cihazda saklanÄ±r.
- * Piyasa verileri ayarlanan kiÅŸisel PHP uÃ§ noktasÄ± veya desteklenen aÃ§Ä±k kaynaklar Ã¼zerinden yenilenir.
- */
-(() => {
-  'use strict';
-
-  const APP_VERSION = '0.3.19';
-  const DEFAULT_BACKEND_URL = 'https://baykarturizm.com/finansaleb-api/api.php';
-  const STORAGE_KEY = 'finansaleb_state_v1';
-  const ONBOARDING_KEY = 'finansaleb_onboarded_v1';
-  const DAY = 86_400_000;
-  const TROY_OUNCE = 31.1034768;
-  const MONTHS = ['Ocak','Åubat','Mart','Nisan','MayÄ±s','Haziran','Temmuz','AÄŸustos','EylÃ¼l','Ekim','KasÄ±m','AralÄ±k'];
-  const MONTHS_SHORT = ['Oca','Åub','Mar','Nis','May','Haz','Tem','AÄŸu','Eyl','Eki','Kas','Ara'];
-  const WEEKDAYS = ['Pzt','Sal','Ã‡ar','Per','Cum','Cmt','Paz'];
-  const COLORS = ['#25d5bd','#63a9ff','#ffc65a','#a985ff','#ff7c91','#65d58d','#ff9b55','#7bd7ed'];
-  const marketExpanded = {news:false, calendar:false, experts:false, portfolios:false, domestic:false, funds:false, sources:false};
-  let marketCompareMode = 'stocks';
-  let marketIpoMode = 'mine';
-  let marketNewsMode = 'important';
-
-  const TYPE_META = {
-    BIST: { label: 'BIST hissesi', currency: 'TRY' },
-    US: { label: 'ABD hissesi', currency: 'USD' },
-    ETF: { label: 'ETF', currency: 'USD' },
-    TEFAS: { label: 'TEFAS fonu', currency: 'TRY' },
-    GOLD: { label: 'AltÄ±n', currency: 'TRY' },
-    SILVER: { label: 'GÃ¼mÃ¼ÅŸ', currency: 'TRY' },
-    FX: { label: 'DÃ¶viz', currency: 'TRY' },
-    CRYPTO: { label: 'Kripto', currency: 'USD' },
-    BOND: { label: 'Tahvil / Eurobond', currency: 'USD' },
-    CASH: { label: 'Nakit', currency: 'TRY' },
-    CUSTOM: { label: 'Ã–zel varlÄ±k', currency: 'TRY' }
-  };
-
-  const ICONS = {
-    home: '<svg viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v9a2 2 0 0 1-2 2h-4v-7H9v7H5a2 2 0 0 1-2-2Z"/></svg>',
-    portfolio: '<svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M8 6V4h8v2M3 11h18M9 14h6"/></svg>',
-    dividend: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5c-.7-.8-1.8-1.2-3.3-1.2-1.8 0-3.2.9-3.2 2.3 0 3.4 6.4 1.3 6.4 4.8 0 1.5-1.4 2.4-3.4 2.4-1.6 0-2.8-.5-3.6-1.5M12 5v14"/></svg>',
-    calendar: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg>',
-    analytics: '<svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',
-    settings: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></svg>',
-    refresh: '<svg viewBox="0 0 24 24"><path d="M20 6v5h-5M4 18v-5h5"/><path d="M6.1 9a7 7 0 0 1 11.5-2.6L20 11M4 13l2.4 4.6A7 7 0 0 0 17.9 15"/></svg>',
-    eye: '<svg viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="2.5"/></svg>',
-    eyeOff: '<svg viewBox="0 0 24 24"><path d="m3 3 18 18M10.6 6.2A10.5 10.5 0 0 1 12 6c6.5 0 10 6 10 6a17 17 0 0 1-2.1 2.8M6.2 6.2C3.4 8.1 2 12 2 12s3.5 6 10 6c1.5 0 2.8-.3 4-.8M9.8 9.8a3 3 0 0 0 4.4 4.4"/></svg>',
-    plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
-    search: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>',
-    coin: '<svg viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/></svg>',
-    target: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></svg>',
-    bell: '<svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg>',
-    shield: '<svg viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 3.4 8.1 8 9 4.6-.9 8-4 8-9V6Z"/><path d="m9 12 2 2 4-5"/></svg>',
-    upload: '<svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></svg>',
-    download: '<svg viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5M4 20h16"/></svg>',
-    server: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="6" rx="2"/><rect x="3" y="14" width="18" height="6" rx="2"/><path d="M7 7h.01M7 17h.01M11 7h7M11 17h7"/></svg>',
-    trash: '<svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14M10 11v6M14 11v6"/></svg>',
-    edit: '<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4ZM13.5 6.5l4 4"/></svg>',
-    info: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/></svg>',
-    trend: '<svg viewBox="0 0 24 24"><path d="m3 17 6-6 4 4 8-9M16 6h5v5"/></svg>',
-    wallet: '<svg viewBox="0 0 24 24"><path d="M4 6h14a2 2 0 0 1 2 2v11H4a2 2 0 0 1-2-2V6a3 3 0 0 1 3-3h12"/><path d="M15 11h6v4h-6a2 2 0 0 1 0-4Z"/></svg>',
-    close: '<svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>',
-    chevronRight: '<svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>',
-    lock: '<svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>',
-    widget: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="5" rx="2"/><rect x="13" y="10" width="8" height="11" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/></svg>',
-    news: '<svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z"/><path d="M7 8h10M7 12h10M7 16h6"/></svg>',
-    market: '<svg viewBox="0 0 24 24"><path d="M3 18 8 13l4 3 7-9"/><path d="M15 7h4v4"/><path d="M3 21h18"/></svg>',
-    people: '<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="10" r="2.5"/><path d="M3 20c.4-4 2.5-6 6-6s5.6 2 6 6M14 15c3 0 5 1.6 6 5"/></svg>',
-    cashflow: '<svg viewBox="0 0 24 24"><path d="M7 3v15M3 7l4-4 4 4M17 21V6M13 17l4 4 4-4"/></svg>'
-  };
-
-  const $ = (selector, root = document) => root.querySelector(selector);
-  const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
-  const uid = (prefix = 'id') => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,8)}`;
-  const clamp = (n, min, max) => Math.max(min, Math.min(max, Number(n) || 0));
-  const round = (n, digits = 2) => Number(Number(n || 0).toFixed(digits));
-  const esc = (value) => String(value ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
-  const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-  const isoDate = (date = new Date()) => {
-    const d = new Date(date);
-    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-  };
-  const addDays = (date, days) => new Date(new Date(date).getTime() + days * DAY);
-  const parseDate = (value) => {
-    if (!value) return new Date();
-    if (value instanceof Date) return value;
-    const [y,m,d] = String(value).slice(0,10).split('-').map(Number);
-    return new Date(y, (m || 1)-1, d || 1, 12);
-  };
-  const sameDay = (a,b) => isoDate(a) === isoDate(b);
-  const currencySymbol = (c) => ({TRY:'â‚º',USD:'$',EUR:'â‚¬',GBP:'Â£',XAU:'gr',XAG:'gr'}[c] || c || '');
-  const numberFmt = (value, digits = 2) => new Intl.NumberFormat('tr-TR', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(Number(value || 0));
-  const compactFmt = (value) => new Intl.NumberFormat('tr-TR', { notation:'compact', maximumFractionDigits:1 }).format(Number(value || 0));
-  const money = (value, currency = 'TRY', compact = false, maxDigits = 2) => {
-    const n = Number(value || 0);
-    if (compact) return `${currencySymbol(currency)}${compactFmt(n)}`;
-    try {
-      return new Intl.NumberFormat('tr-TR', { style:'currency', currency, maximumFractionDigits:maxDigits, minimumFractionDigits:maxDigits }).format(n);
-    } catch (_) {
-      return `${numberFmt(n,maxDigits)} ${currency}`;
-    }
-  };
-  const pct = (value, digits = 2) => `${Number(value || 0) >= 0 ? '+' : ''}${numberFmt(value,digits)}%`;
-  const dateText = (value, options = {day:'2-digit',month:'short',year:'numeric'}) => parseDate(value).toLocaleDateString('tr-TR', options);
-  const timeAgo = (date) => {
-    if (!date) return 'HenÃ¼z yenilenmedi';
-    const diff = Date.now() - new Date(date).getTime();
-    if (diff < 60_000) return 'Az Ã¶nce gÃ¼ncellendi';
-    if (diff < 3_600_000) return `${Math.floor(diff/60_000)} dk Ã¶nce gÃ¼ncellendi`;
-    if (diff < DAY) return `${Math.floor(diff/3_600_000)} sa Ã¶nce gÃ¼ncellendi`;
-    return `${Math.floor(diff/DAY)} gÃ¼n Ã¶nce gÃ¼ncellendi`;
-  };
-
-  function blankState() {
-    return {
-      version: 1,
-      demo: false,
-      settings: {
-        baseCurrency: 'TRY',
-        backendUrl: DEFAULT_BACKEND_URL,
-        backendToken: '',
-        refreshHours: 6,
-        refreshMinutes: 15,
-        notifications: true,
-        autoRefresh: true,
-        privacy: false,
-        monthlyExpense: 50000,
-        monthlyContribution: 15000,
-        expectedReturn: 8,
-        expectedDividendGrowth: 6,
-        dividendGoalAnnual: 600000,
-        reinvestDividends: true,
-        theme: 'dark'
-      },
-      market: {
-        fx: { TRY: 1, USD: 41.5, EUR: 48.3, GBP: 55.8 },
-        lastSync: null,
-        lastError: null,
-        news: [],
-        macroEvents: [],
-        expertViews: [],
-        investorPortfolios: [],
-        domesticPortfolios: [],
-        fundSources: [],
-        portfolioComparison: { commonStocks: [], institutions: [] },
-        sourceCatalog: [],
-        ipoItems: [],
-        ipoNews: [],
-        ipoSources: [],
-        lastContentSync: null,
-        contentError: null
-      },
-      assets: [],
-      transactions: [],
-      dividendEvents: [],
-      cashflows: [],
-      watchlist: [],
-      cashLedger: [],
-      ipoTracked: [],
-      calendarView: { year: new Date().getFullYear(), month: new Date().getMonth(), selected: isoDate() }
-    };
-  }
-
-  function demoState() {
-    const s = blankState();
-    s.demo = true;
-    const today = new Date();
-    const currentYear = today.getFullYear();
-    const future = (days) => isoDate(addDays(today, days));
-    const past = (days) => isoDate(addDays(today, -days));
-    s.market.lastSync = new Date().toISOString();
-    s.assets = [
-      { id:'a_tuprs', symbol:'TUPRS', sourceSymbol:'TUPRS.IS', name:'TÃ¼praÅŸ', type:'BIST', currency:'TRY', quantity:260, avgCost:154.25, price:187.40, prevClose:184.10, changePct:1.79, targetWeight:22, dividendTax:15, annualDividendPerShare:17.13, history:[158,162,157,166,171,168,177,174,181,179,184,187.4] },
-      { id:'a_schd', symbol:'SCHD', sourceSymbol:'SCHD', name:'Schwab U.S. Dividend Equity ETF', type:'ETF', currency:'USD', quantity:115, avgCost:26.80, price:29.74, prevClose:29.55, changePct:.64, targetWeight:24, dividendTax:20, annualDividendPerShare:1.10, history:[25.6,26.1,25.9,26.7,27.3,27.0,28.1,28.5,28.2,29.1,29.5,29.74] },
-      { id:'a_o', symbol:'O', sourceSymbol:'O', name:'Realty Income', type:'US', currency:'USD', quantity:70, avgCost:55.10, price:60.25, prevClose:60.63, changePct:-.63, targetWeight:16, dividendTax:20, annualDividendPerShare:3.24, history:[54.2,55.5,56.1,55.7,57.3,58.0,57.5,59.1,58.6,59.8,60.6,60.25] },
-      { id:'a_tmg', symbol:'TMG', sourceSymbol:'TMG', name:'Ak PortfÃ¶y Yeni Teknolojiler YabancÄ± Hisse Fonu', type:'TEFAS', currency:'TRY', quantity:41000, avgCost:.0418, price:.0536, prevClose:.0532, changePct:.75, targetWeight:23, dividendTax:0, annualDividendPerShare:0, history:[.041,.042,.043,.044,.045,.046,.047,.048,.049,.051,.052,.0536] },
-      { id:'a_gold', symbol:'GRAM ALTIN', sourceSymbol:'GRAM_ALTIN', name:'Gram AltÄ±n', type:'GOLD', currency:'TRY', quantity:16.2, avgCost:4260, price:4935, prevClose:4901, changePct:.69, targetWeight:15, dividendTax:0, annualDividendPerShare:0, history:[4200,4280,4310,4405,4470,4540,4610,4690,4750,4825,4901,4935] }
-    ];
-    s.transactions = [
-      {id:'t1',assetId:'a_tuprs',type:'buy',date:past(360),quantity:260,price:154.25,fee:0,currency:'TRY'},
-      {id:'t2',assetId:'a_schd',type:'buy',date:past(300),quantity:115,price:26.80,fee:4.9,currency:'USD'},
-      {id:'t3',assetId:'a_o',type:'buy',date:past(270),quantity:70,price:55.10,fee:2.1,currency:'USD'},
-      {id:'t4',assetId:'a_tmg',type:'buy',date:past(250),quantity:41000,price:.0418,fee:0,currency:'TRY'},
-      {id:'t5',assetId:'a_gold',type:'buy',date:past(190),quantity:16.2,price:4260,fee:0,currency:'TRY'}
-    ];
-    s.dividendEvents = [
-      {id:'d1',assetId:'a_schd',exDate:past(125),payDate:past(115),amountPerShare:.248, currency:'USD',status:'confirmed',received:true,source:'Demo'},
-      {id:'d2',assetId:'a_o',exDate:past(95),payDate:past(80),amountPerShare:.264, currency:'USD',status:'confirmed',received:true,source:'Demo'},
-      {id:'d3',assetId:'a_o',exDate:past(65),payDate:past(50),amountPerShare:.264, currency:'USD',status:'confirmed',received:true,source:'Demo'},
-      {id:'d4',assetId:'a_tuprs',exDate:past(38),payDate:past(36),amountPerShare:10.3799, currency:'TRY',status:'confirmed',received:true,source:'Demo'},
-      {id:'d5',assetId:'a_schd',exDate:past(32),payDate:past(24),amountPerShare:.255, currency:'USD',status:'confirmed',received:true,source:'Demo'},
-      {id:'d6',assetId:'a_o',exDate:past(35),payDate:past(20),amountPerShare:.27, currency:'USD',status:'confirmed',received:true,source:'Demo'},
-      {id:'d7',assetId:'a_o',exDate:future(4),payDate:future(19),amountPerShare:.27, currency:'USD',status:'confirmed',received:false,source:'Demo'},
-      {id:'d8',assetId:'a_schd',exDate:future(24),payDate:future(31),amountPerShare:.258, currency:'USD',status:'estimated',received:false,source:'GeÃ§miÅŸ dÃ¼zen tahmini'},
-      {id:'d9',assetId:'a_tuprs',exDate:future(34),payDate:future(36),amountPerShare:6.7469, currency:'TRY',status:'confirmed',received:false,source:'Demo'},
-      {id:'d10',assetId:'a_o',exDate:future(35),payDate:future(50),amountPerShare:.27, currency:'USD',status:'estimated',received:false,source:'GeÃ§miÅŸ dÃ¼zen tahmini'},
-      {id:'d11',assetId:'a_o',exDate:future(66),payDate:future(81),amountPerShare:.27, currency:'USD',status:'estimated',received:false,source:'GeÃ§miÅŸ dÃ¼zen tahmini'},
-      {id:'d12',assetId:'a_schd',exDate:future(115),payDate:future(122),amountPerShare:.262, currency:'USD',status:'estimated',received:false,source:'GeÃ§miÅŸ dÃ¼zen tahmini'}
-    ];
-    s.cashflows = [
-      {id:'c1',type:'contribution',date:past(360),amount:40105,currency:'TRY',note:'BaÅŸlangÄ±Ã§ yatÄ±rÄ±mÄ±'},
-      {id:'c2',type:'contribution',date:past(300),amount:82820,currency:'TRY',note:'ABD portfÃ¶y katkÄ±sÄ±'},
-      {id:'c3',type:'contribution',date:past(250),amount:71300,currency:'TRY',note:'Fon katkÄ±sÄ±'}
-    ];
-    s.settings.dividendGoalAnnual = 600000;
-    s.settings.monthlyExpense = 50000;
-    return s;
-  }
-
-  function normalizeState(raw) {
-    const base = blankState();
-    if (!raw || typeof raw !== 'object') return base;
-    return {
-      ...base,
-      ...raw,
-      settings: { ...base.settings, ...(raw.settings || {}), backendUrl: String((raw.settings || {}).backendUrl || DEFAULT_BACKEND_URL) },
-      market: { ...base.market, ...(raw.market || {}), fx: { ...base.market.fx, ...((raw.market || {}).fx || {}) } },
-      assets: Array.isArray(raw.assets) ? raw.assets : [],
-      transactions: Array.isArray(raw.transactions) ? raw.transactions : [],
-      dividendEvents: Array.isArray(raw.dividendEvents) ? raw.dividendEvents : [],
-      cashflows: Array.isArray(raw.cashflows) ? raw.cashflows : [],
-      watchlist: Array.isArray(raw.watchlist) ? raw.watchlist : [],
-      cashLedger: Array.isArray(raw.cashLedger) ? raw.cashLedger : [],
-      ipoTracked: Array.isArray(raw.ipoTracked) ? raw.ipoTracked : [],
-      calendarView: { ...base.calendarView, ...(raw.calendarView || {}) }
-    };
-  }
-
-  function loadState() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      return raw ? normalizeState(JSON.parse(raw)) : blankState();
-    } catch (error) {
-      console.warn('State load error', error);
-      return blankState();
-    }
-  }
-
-  let state = loadState();
-  syncAllAssetLedgers();
-  let currentPage = 'dashboard';
-  let portfolioFilter = 'ALL';
-  let portfolioQuery = '';
-  let analyticsFilter = 'ALL';
-  let analyticsPeriod = '1Y';
-  let toastTimer = null;
-  let refreshController = null;
-  let contentRefreshPromise = null;
-  let autoRefreshTimer = null;
-  const nativeMarketRequests = new Map();
-  let nativeMarketSequence = 0;
-
-  window.FinansalEBNative = {
-    onMarketResult(requestId, payload) {
-      const pending = nativeMarketRequests.get(String(requestId));
-      if (!pending) return;
-      nativeMarketRequests.delete(String(requestId));
-      clearTimeout(pending.timer);
-      try {
-        const result = typeof payload === 'string' ? JSON.parse(payload) : payload;
-        if (!result?.ok) throw new Error(result?.error || 'Piyasa verisi alÄ±namadÄ±');
-        pending.resolve(result);
-      } catch (error) {
-        pending.reject(error instanceof Error ? error : new Error(String(error)));
-      }
-    }
-  };
-
-  function nativeMarketCall(action, params = {}, timeout = 22000) {
-    if (!window.Android?.requestMarketData) return Promise.reject(new Error('Android veri kÃ¶prÃ¼sÃ¼ kullanÄ±lamÄ±yor'));
-    const requestId = `market_${Date.now().toString(36)}_${++nativeMarketSequence}`;
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        nativeMarketRequests.delete(requestId);
-        reject(new Error('Piyasa veri isteÄŸi zaman aÅŸÄ±mÄ±na uÄŸradÄ±'));
-      }, timeout);
-      nativeMarketRequests.set(requestId, {resolve, reject, timer});
-      try {
-        window.Android.requestMarketData(requestId, action, JSON.stringify(params));
-      } catch (error) {
-        clearTimeout(timer);
-        nativeMarketRequests.delete(requestId);
-        reject(error);
-      }
-    });
-  }
-
-  function saveState({render = false} = {}) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    applyPrivacy();
-    syncNativeWidget();
-    if (render) renderPage();
-  }
-
-  function assetById(id) { return state.assets.find(a => a.id === id); }
-  function fxRate(currency) { return Number(state.market.fx[currency] || (currency === state.settings.baseCurrency ? 1 : 1)); }
-  function assetValue(asset) { return Number(asset.quantity || 0) * Number(asset.price || 0) * fxRate(asset.currency); }
-  function transactionPosition(assetId, cutoffValue = null, strictBefore = false) {
-    const asset = assetById(assetId);
-    if (!asset) return { quantity:0, avgCost:0, realizedProfit:0 };
-    const cutoff = cutoffValue ? parseDate(cutoffValue) : null;
-    const txs = state.transactions
-      .filter(t => t.assetId === assetId && (t.type === 'buy' || t.type === 'sell') && t.date)
-      .slice()
-      .sort((a,b) => parseDate(a.date) - parseDate(b.date));
-    if (!txs.length) return { quantity:Number(asset.quantity||0), avgCost:Number(asset.avgCost||0), realizedProfit:0 };
-    let quantity = 0, avgCost = 0, realizedProfit = 0;
-    for (const t of txs) {
-      const td = parseDate(t.date);
-      if (cutoff && (strictBefore ? td >= cutoff : td > cutoff)) continue;
-      const q = Math.max(0, Number(t.quantity||0));
-      const price = Math.max(0, Number(t.price||0));
-      const fee = Math.max(0, Number(t.fee||0));
-      if (t.type === 'buy') {
-        const nextQty = quantity + q;
-        avgCost = nextQty ? ((quantity * avgCost) + (q * price) + fee) / nextQty : 0;
-        quantity = nextQty;
-      } else if (t.type === 'sell') {
-        const sold = Math.min(quantity, q);
-        realizedProfit += sold * (price - avgCost) - fee;
-        quantity = Math.max(0, quantity - sold);
-        if (quantity === 0) avgCost = 0;
-      }
-    }
-    return { quantity, avgCost, realizedProfit };
-  }
-  function syncAssetLedger(asset) {
-    const pos = transactionPosition(asset.id);
-    const hasTx = state.transactions.some(t => t.assetId === asset.id && (t.type === 'buy' || t.type === 'sell'));
-    if (hasTx) { asset.quantity = pos.quantity; asset.avgCost = pos.avgCost; asset.realizedProfit = pos.realizedProfit; }
-  }
-  function syncAllAssetLedgers() { state.assets.forEach(syncAssetLedger); }
-  function assetCost(asset) { const pos=transactionPosition(asset.id); return Number(pos.quantity||0) * Number(pos.avgCost||0) * fxRate(asset.currency); }
-  function assetProfit(asset) { return assetValue(asset) - assetCost(asset); }
-  function assetProfitPct(asset) { const c = assetCost(asset); return c ? (assetProfit(asset) / c) * 100 : 0; }
-  function quantityAtDate(assetId, dateValue) { return Math.max(0, transactionPosition(assetId, dateValue, false).quantity); }
-  function eligibleQuantityAtExDate(assetId, dateValue) {
-    // TemettÃ¼ hakkÄ± iÃ§in hak kullanÄ±m (ex-date) gÃ¼nÃ¼nde yapÄ±lan alÄ±ÅŸ hak kazandÄ±rmaz;
-    // o gÃ¼n yapÄ±lan satÄ±ÅŸ ise Ã¶nceki gÃ¼n sahipliÄŸi nedeniyle hakkÄ± ortadan kaldÄ±rmaz.
-    return Math.max(0, transactionPosition(assetId, dateValue, true).quantity);
-  }
-  function eventGross(event) {
-    const asset = assetById(event.assetId);
-    if (!asset) return 0;
-    const eligibleQty = event.exDate ? eligibleQuantityAtExDate(event.assetId, event.exDate) : quantityAtDate(event.assetId, event.payDate);
-    return eligibleQty * Number(event.amountPerShare || 0);
-  }
-  function automaticDividendTax(asset, dateValue = null) {
-    if (!asset) return 0;
-    if (asset.autoDividendTax === false) return clamp(asset.dividendTax ?? 0, 0, 100);
-    if (asset.type === 'BIST') {
-      const d = dateValue ? parseDate(dateValue) : new Date();
-      const changeDate = parseDate('2024-12-22');
-      return d >= changeDate ? 15 : 10;
-    }
-    // ABD/ETF stopajÄ± ikamet, W-8BEN/anlaÅŸma ve menkul tÃ¼rÃ¼ne gÃ¶re deÄŸiÅŸebilir;
-    // bu nedenle kayÄ±tlÄ± kullanÄ±cÄ± oranÄ±nÄ± otomatik varsayÄ±m yerine koruyoruz.
-    return clamp(asset.dividendTax ?? 0, 0, 100);
-  }
-  function eventNet(event) {
-    const asset = assetById(event.assetId);
-    if (!asset) return 0;
-    const eventDate = event.payDate || event.exDate || null;
-    const tax = clamp(event.taxRate ?? automaticDividendTax(asset,eventDate), 0, 100);
-    return eventGross(event) * (1 - tax / 100) * fxRate(event.currency || asset.currency);
-  }
-  function portfolioMetrics(assetList = state.assets) {
-    const scopedAssets = Array.isArray(assetList) ? assetList : state.assets;
-    const assetIds = new Set(scopedAssets.map(a => a.id));
-    const total = scopedAssets.reduce((sum,a) => sum + assetValue(a), 0);
-    const cost = scopedAssets.reduce((sum,a) => sum + assetCost(a), 0);
-    const profit = total - cost;
-    const daily = scopedAssets.reduce((sum,a) => {
-      const current = assetValue(a);
-      const cp = Number(a.changePct || 0) / 100;
-      return sum + (cp > -1 ? current - current / (1 + cp) : 0);
-    }, 0);
-    const dailyPct = total - daily ? daily / (total - daily) * 100 : 0;
-    const now = new Date();
-    const end = addDays(now, 365);
-    const annualDividend = state.dividendEvents
-      .filter(e => assetIds.has(e.assetId) && parseDate(e.payDate || e.exDate) >= addDays(now,-1) && parseDate(e.payDate || e.exDate) <= end)
-      .reduce((sum,e) => sum + eventNet(e), 0);
-    const allAnnualFallback = scopedAssets.reduce((sum,a) => sum + Number(a.quantity||0) * Number(a.annualDividendPerShare||0) * (1-clamp(automaticDividendTax(a),0,100)/100) * fxRate(a.currency), 0);
-    const annual = annualDividend || allAnnualFallback;
-    const yieldOnCost = cost ? annual / cost * 100 : 0;
-    const dividendYield = total ? annual / total * 100 : 0;
-    return { total, cost, profit, profitPct: cost ? profit/cost*100 : 0, daily, dailyPct, annualDividend: annual, monthlyDividend: annual/12, yieldOnCost, dividendYield };
-  }
-
-  function dividendMonths(year = new Date().getFullYear()) {
-    const values = Array.from({length:12}, (_,month) => ({month, confirmed:0, estimated:0, paid:0}));
-    state.dividendEvents.forEach(e => {
-      const d = parseDate(e.payDate || e.exDate);
-      if (d.getFullYear() !== year) return;
-      const amount = eventNet(e);
-      if (e.received || d < new Date()) values[d.getMonth()].paid += amount;
-      if (e.status === 'confirmed') values[d.getMonth()].confirmed += amount;
-      else values[d.getMonth()].estimated += amount;
-    });
-    return values;
-  }
-
-  function upcomingEvents(limit = 8, includeEstimated = true) {
-    const from = addDays(new Date(), -1);
-    return state.dividendEvents
-      .filter(e => parseDate(e.payDate || e.exDate) >= from && (includeEstimated || e.status === 'confirmed'))
-      .sort((a,b) => parseDate(a.payDate || a.exDate) - parseDate(b.payDate || b.exDate))
-      .slice(0,limit);
-  }
-
-  function renderIcons() {
-    $$('[data-icon]').forEach(node => { node.innerHTML = ICONS[node.dataset.icon] || ''; });
-    $('#privacyBtn').innerHTML = state.settings.privacy ? ICONS.eyeOff : ICONS.eye;
-    $('#syncBtn').innerHTML = ICONS.refresh;
-    $('#fab').innerHTML = ICONS.plus;
-  }
-
-  function applyPrivacy() {
-    document.documentElement.style.setProperty('--money-blur', state.settings.privacy ? '7px' : '0px');
-    if ($('#privacyBtn')) $('#privacyBtn').innerHTML = state.settings.privacy ? ICONS.eyeOff : ICONS.eye;
-  }
-
-  function updateSyncText() {
-    const node = $('#syncText');
-    if (!node) return;
-    if (state.market.lastError) node.textContent = `Son veri korunuyor Â· ${timeAgo(state.market.lastSync)}`;
-    else node.textContent = state.market.lastSync ? timeAgo(state.market.lastSync) : 'Yerel ve Ã¶zel portfÃ¶y';
-  }
-
-  function showToast(message, duration = 2400) {
-    const toast = $('#toast');
-    toast.textContent = message;
-    toast.classList.add('show');
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => toast.classList.remove('show'), duration);
-    try { window.Android?.haptic?.(); } catch (_) {}
-  }
-
-  function showModal(html, {dismissible = true, className = ''} = {}) {
-    const layer = $('#modalLayer');
-    layer.innerHTML = `<section class="modal ${className}" role="dialog" aria-modal="true">${html}</section>`;
-    layer.classList.add('open');
-    layer.setAttribute('aria-hidden','false');
-    const close = () => closeModal();
-    if (dismissible) {
-      layer.onclick = e => { if (e.target === layer) close(); };
-      $$('[data-modal-close], .modal-close', layer).forEach(button => button.addEventListener('click', close));
-    } else layer.onclick = null;
-  }
-
-  function closeModal() {
-    const layer = $('#modalLayer');
-    layer.classList.remove('open');
-    layer.setAttribute('aria-hidden','true');
-    setTimeout(() => { if (!layer.classList.contains('open')) layer.innerHTML = ''; }, 180);
-  }
-
-  window.FinansalEBHandleBack = () => {
-    const layer = $('#modalLayer');
-    if (!layer?.classList.contains('open')) return false;
-    closeModal();
-    return true;
-  };
-
-  function demoBanner() {
-    return state.demo ? `<div class="demo-banner"><span>Ã–rnek veriler gÃ¶steriliyor; tutarlar gerÃ§ek portfÃ¶yÃ¼n deÄŸildir.</span><button data-action="clear-demo">BoÅŸ baÅŸla</button></div>` : '';
-  }
-
-  function pageHeader(kicker, title, subtitle = '', action = '') {
-    return `<div class="page-header"><div><div class="page-kicker">${esc(kicker)}</div><h1 class="page-title">${esc(title)}</h1>${subtitle ? `<div class="page-subtitle">${esc(subtitle)}</div>` : ''}</div>${action}</div>`;
-  }
-
-  function heroCard(metrics) {
-    const signClass = metrics.daily >= 0 ? 'positive' : 'negative';
-    return `<section class="hero-card">
-      <div class="hero-top"><span class="hero-label">Toplam portfÃ¶y deÄŸeri</span><span class="live-pill"><i class="live-dot"></i>${state.demo ? 'Demo' : state.market.lastSync ? 'GÃ¼ncel' : 'Yerel'}</span></div>
-      <div class="hero-value">${money(metrics.total,'TRY')}</div>
-      <div class="hero-change"><span class="change-badge ${signClass}">${pct(metrics.dailyPct)}</span><span>BugÃ¼n ${money(Math.abs(metrics.daily),'TRY')}</span></div>
-      <div class="hero-metrics">
-        <div class="hero-metric"><div class="label">Toplam maliyet</div><div class="value">${money(metrics.cost,'TRY')}</div></div>
-        <div class="hero-metric"><div class="label">Toplam kazanÃ§</div><div class="value ${metrics.profit>=0?'positive':'negative'}">${money(metrics.profit,'TRY')}</div></div>
-        <div class="hero-metric"><div class="label">Getiri</div><div class="value ${metrics.profit>=0?'positive':'negative'}">${pct(metrics.profitPct)}</div></div>
-      </div>
-    </section>`;
-  }
-
-  function dividendBarChart(year = new Date().getFullYear()) {
-    const months = dividendMonths(year);
-    const totals = months.map(m => m.confirmed + m.estimated);
-    const max = Math.max(...totals, 1);
-    const total = totals.reduce((a,b)=>a+b,0);
-    return `<section class="card chart-card">
-      <div class="chart-head"><div><div class="metric-label">${year} net temettÃ¼ akÄ±ÅŸÄ±</div><div class="chart-big">${money(total,'TRY')}</div></div><div class="period-switch"><button class="active">12 Ay</button><button data-page-go="calendar">Takvim</button></div></div>
-      <div class="bar-chart">${months.map((m,i) => {
-        const value = totals[i];
-        const height = Math.max(value/max*100, value ? 4 : 1);
-        return `<div class="bar-col" style="--h:${height}%"><span class="bar-tip">${money(value,'TRY',true,0)}</span><i class="bar ${m.estimated > 0 ? 'estimated':''}" style="height:${height}%"></i><span class="bar-month">${MONTHS_SHORT[i]}</span></div>`;
-      }).join('')}</div>
-      <div class="chart-foot"><span><i class="legend-dot"></i>AÃ§Ä±klanmÄ±ÅŸ/alÄ±nmÄ±ÅŸ</span><span><i class="legend-dot estimated"></i>Tahmini</span></div>
-    </section>`;
-  }
-
-  function eventStatusMeta(event) {
-    if (event.received || event.status === 'historical') return { className:'historical', label:'AlÄ±ndÄ±' };
-    if (event.status === 'confirmed') return { className:'confirmed', label:'AÃ§Ä±klanmÄ±ÅŸ' };
-    if (event.status === 'proposed') return { className:'proposed', label:'Åirket teklifi' };
-    return { className:'estimated', label:'Tahmini' };
-  }
-
-  function eventRow(event) {
-    const asset = assetById(event.assetId);
-    if (!asset) return '';
-    const d = parseDate(event.payDate || event.exDate);
-    const amount = eventNet(event);
-    const days = Math.ceil((d - new Date()) / DAY);
-    const meta = days < 0 ? 'Ã–deme gerÃ§ekleÅŸti' : days === 0 ? 'BugÃ¼n' : `${days} gÃ¼n sonra`;
-    return `<article class="event-row" data-asset-id="${esc(asset.id)}">
-      <div class="event-date"><div><strong>${String(d.getDate()).padStart(2,'0')}</strong><span>${MONTHS_SHORT[d.getMonth()]}</span></div></div>
-      <div class="event-main"><div class="event-title">${esc(asset.symbol)} Â· ${event.payDate ? 'TemettÃ¼ Ã¶demesi' : 'Hak kullanÄ±m'}</div><div class="event-meta">${meta} Â· ${numberFmt(quantityAtDate(asset.id,event.exDate||event.payDate), asset.type==='TEFAS'?0:2)} hak sahibi adet</div><span class="status-pill ${eventStatusMeta(event).className}">${eventStatusMeta(event).label}</span></div>
-      <div class="event-amount">${money(amount,'TRY')}</div>
-    </article>`;
-  }
-
-  function assetRow(asset) {
-    const value = assetValue(asset);
-    const change = Number(asset.changePct || 0);
-    const type = TYPE_META[asset.type]?.label || asset.type;
-    return `<article class="asset-row" data-asset-id="${esc(asset.id)}">
-      <div class="asset-logo">${esc(shortSymbol(asset.symbol))}</div>
-      <div><div class="asset-name">${esc(asset.symbol)} <span style="color:var(--muted);font-weight:500">Â· ${esc(asset.name || type)}</span></div><div class="asset-meta">${numberFmt(asset.quantity, asset.type==='TEFAS'?0:4)} adet Â· ${money(asset.price,asset.currency,false,asset.price<1?4:2)}</div></div>
-      <div class="asset-values"><div class="asset-value">${money(value,'TRY')}</div><div class="asset-change ${change>=0?'positive':'negative'}">${pct(change)}</div></div>
-    </article>`;
-  }
-
-  function shortSymbol(symbol) {
-    const clean = String(symbol || '').replace(/[^A-Za-zÃ‡ÄÄ°Ã–ÅÃœ0-9]/g,'').toUpperCase();
-    return clean.length <= 4 ? clean : clean.slice(0,3);
-  }
-
-  function renderDashboard() {
-    const m = portfolioMetrics();
-    const upcoming = upcomingEvents(4);
-    const next = upcoming[0];
-    const nextAmount = next ? eventNet(next) : 0;
-    const nextDate = next ? dateText(next.payDate || next.exDate,{day:'numeric',month:'long'}) : 'PlanlanmÄ±ÅŸ Ã¶deme yok';
-    const goal = Number(state.settings.dividendGoalAnnual || 0);
-    const goalPct = goal ? Math.min(100,m.annualDividend/goal*100) : 0;
-    const eventsHtml = upcoming.length ? upcoming.map(eventRow).join('') : emptyState('coin','YaklaÅŸan temettÃ¼ yok','TemettÃ¼ aÃ§Ä±klamasÄ± veya tahmin eklendiÄŸinde burada gÃ¶rÃ¼necek.');
-    return `${demoBanner()}
-      ${pageHeader('GÃ¼ncel durum','PortfÃ¶yÃ¼n tek ekranda','Hisse, fon, maden ve nakit birlikte')}
-      ${state.assets.length ? heroCard(m) : emptyPortfolioHero()}
-      <section class="section"><div class="grid-two">
-        <article class="card metric-card"><div class="icon-circle">${ICONS.coin}</div><div class="metric-label">YÄ±llÄ±k net temettÃ¼</div><div class="metric-value">${money(m.annualDividend,'TRY')}</div><div class="metric-note">AylÄ±k ortalama ${money(m.monthlyDividend,'TRY')}</div></article>
-        <article class="card metric-card"><div class="icon-circle">${ICONS.calendar}</div><div class="metric-label">SÄ±radaki Ã¶deme</div><div class="metric-value">${next ? money(nextAmount,'TRY') : 'â€”'}</div><div class="metric-note">${esc(nextDate)}</div></article>
-      </div></section>
-      <section class="section"><div class="card" style="padding:15px 16px"><div class="section-head" style="margin:0"><span class="section-title">TemettÃ¼ hedefi</span><span class="section-link">${numberFmt(goalPct,1)}%</span></div><div class="progress"><i style="width:${goalPct}%"></i></div><div class="chart-foot" style="margin-top:8px"><span>YÄ±llÄ±k ${money(m.annualDividend,'TRY')}</span><span>Hedef ${money(goal,'TRY')}</span></div></div></section>
-      <section class="section">${dividendBarChart()}</section>
-      <section class="section"><div class="section-head"><span class="section-title">YaklaÅŸan Ã¶demeler</span><button class="section-link" data-page-go="calendar">TÃ¼m takvim</button></div><div class="event-list">${eventsHtml}</div></section>`;
-  }
-
-  function emptyPortfolioHero() {
-    return `<section class="empty"><div class="empty-icon">${ICONS.portfolio}</div><div class="empty-title">PortfÃ¶yÃ¼n henÃ¼z boÅŸ</div><div class="empty-text">BIST, ABD hissesi, ETF, TEFAS fonu, altÄ±n, gÃ¼mÃ¼ÅŸ veya Ã¶zel varlÄ±k ekleyerek takibe baÅŸla.</div><button class="primary-btn" style="margin-top:15px" data-action="add-asset">Ä°lk varlÄ±ÄŸÄ± ekle</button></section>`;
-  }
-
-  function emptyState(icon, title, text) {
-    return `<div class="empty"><div class="empty-icon">${ICONS[icon] || ICONS.info}</div><div class="empty-title">${esc(title)}</div><div class="empty-text">${esc(text)}</div></div>`;
-  }
-
-  function dividendCashBalance() {
-    return (state.cashLedger||[]).reduce((sum,row)=>sum + Number(row.amountTry||0),0);
-  }
-
-  function watchlistRow(w) {
-    const move=Number(w.changePct||0);
-    return `<div class="asset-row watch-row" data-watch-id="${esc(w.id)}"><div class="asset-logo">â˜…</div><div class="asset-main"><div class="asset-name">${esc(w.symbol)}</div><div class="asset-sub">${esc(w.name||TYPE_META[w.type]?.label||'Ä°zleme')}</div></div><div class="asset-right"><div class="asset-value">${money(w.price||0,w.currency||'TRY',false,Number(w.price||0)<1?4:2)}</div><div class="asset-change ${move>=0?'positive':'negative'}">${pct(move)}</div></div></div>`;
-  }
-
-  function periodDays(key) { return ({'1M':22,'3M':66,'6M':120,'1Y':252,'ALL':9999})[key]||252; }
-  function analyticsAssets() { return analyticsFilter==='ALL' ? [...state.assets] : state.assets.filter(a=>a.type===analyticsFilter); }
-  function periodAssetReturn(asset, key) {
-    const hist=(asset.history||[]).map(Number).filter(Number.isFinite);
-    if(hist.length<2) return 0;
-    const back=Math.min(hist.length-1,periodDays(key));
-    const start=hist[Math.max(0,hist.length-1-back)], end=hist.at(-1);
-    return start ? (end-start)/start*100 : 0;
-  }
-  function realizedProfitInPeriod(assetIds,key) {
-    const from=addDays(new Date(),-periodDays(key));
-    let total=0;
-    assetIds.forEach(id=>{
-      const a=assetById(id); if(!a)return;
-      const txs=state.transactions.filter(t=>t.assetId===id&&t.type==='sell'&&parseDate(t.date)>=from);
-      txs.forEach(t=>{
-        const before=transactionPosition(id,t.date,true);
-        total += Math.min(Number(t.quantity||0),Number(before.quantity||0))*(Number(t.price||0)-Number(before.avgCost||0))*fxRate(a.currency)-Number(t.fee||0)*fxRate(a.currency);
-      });
-    });
-    return total;
-  }
-  function dividendsInPeriod(assetIds,key) {
-    const ids=new Set(assetIds),from=addDays(new Date(),-periodDays(key));
-    return state.dividendEvents.filter(e=>ids.has(e.assetId)&&e.received&&parseDate(e.payDate||e.exDate)>=from).reduce((sum,e)=>sum+eventNet(e),0);
-  }
-  function analyticsTrend(assetList,key) {
-    if(!assetList.length)return [];
-    const points=12;
-    const out=[];
-    for(let i=0;i<points;i++){
-      let v=0;
-      assetList.forEach(a=>{
-        const hist=(a.history||[]).map(Number).filter(Number.isFinite); if(!hist.length)return;
-        const span=Math.min(hist.length-1,periodDays(key));
-        const idx=Math.max(0,hist.length-1-Math.round(span*(points-1-i)/(points-1)));
-        v += Number(a.quantity||0)*Number(hist[idx]||a.price||0)*fxRate(a.currency);
-      });
-      out.push(v);
-    }
-    return out;
-  }
-  function miniTrendSvg(values){
-    if(values.length<2||!values.some(v=>v>0))return '<div class="empty-text" style="margin:0">Grafik iÃ§in yeterli geÃ§miÅŸ fiyat yok.</div>';
-    const w=320,h=110,pad=8,min=Math.min(...values),max=Math.max(...values),range=max-min||1;
-    const pts=values.map((v,i)=>[pad+i*(w-2*pad)/(values.length-1),h-pad-(v-min)/range*(h-2*pad)]);
-    const d=pts.map((p,i)=>`${i?'L':'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
-    return `<svg class="analytics-line" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><path d="${d}"/></svg>`;
-  }
-
-  function renderPortfolio() {
-    let scopedAssets = [...state.assets];
-    if (portfolioFilter !== 'ALL') scopedAssets = scopedAssets.filter(a => a.type === portfolioFilter);
-    const m = portfolioMetrics(scopedAssets);
-    let assets = [...scopedAssets];
-    if (portfolioQuery) {
-      const q = portfolioQuery.toLocaleUpperCase('tr-TR');
-      assets = assets.filter(a => `${a.symbol} ${a.name} ${TYPE_META[a.type]?.label}`.toLocaleUpperCase('tr-TR').includes(q));
-    }
-    assets.sort((a,b) => assetValue(b) - assetValue(a));
-    const filters = [['ALL','TÃ¼mÃ¼'],['BIST','BIST'],['US','ABD'],['ETF','ETF'],['TEFAS','Fon'],['GOLD','AltÄ±n'],['SILVER','GÃ¼mÃ¼ÅŸ'],['CUSTOM','DiÄŸer']];
-    return `${demoBanner()}
-      ${pageHeader('VarlÄ±klarÄ±m','PortfÃ¶y','Maliyet, gÃ¼ncel deÄŸer ve daÄŸÄ±lÄ±m',`<button class="header-action" data-action="add-asset">+ VarlÄ±k</button>`)}
-      <div class="search-box">${ICONS.search}<input id="assetSearch" value="${esc(portfolioQuery)}" placeholder="Sembol veya varlÄ±k ara"></div>
-      <div class="pill-row" style="margin-top:10px">${filters.map(([key,label])=>`<button class="filter-pill ${portfolioFilter===key?'active':''}" data-filter="${key}">${label}</button>`).join('')}</div>
-      <section class="summary-strip summary-strip-portfolio"><div class="summary-item"><div class="summary-label">DeÄŸer</div><div class="summary-value">${money(m.total,'TRY')}</div></div><div class="summary-item"><div class="summary-label">Maliyet</div><div class="summary-value">${money(m.cost,'TRY')}</div></div><div class="summary-item"><div class="summary-label">Toplam</div><div class="summary-value ${m.profit>=0?'positive':'negative'}">${money(m.profit,'TRY')}</div><div class="summary-sub ${m.profitPct>=0?'positive':'negative'}">${pct(m.profitPct)}</div></div><div class="summary-item"><div class="summary-label">BugÃ¼n</div><div class="summary-value ${m.daily>=0?'positive':'negative'}">${money(m.daily,'TRY')}</div><div class="summary-sub ${m.dailyPct>=0?'positive':'negative'}">${pct(m.dailyPct)}</div></div></section>
-      ${renderIpoSection()}
-      <section class="section"><div class="section-head"><span class="section-title">${assets.length} varlÄ±k</span><button class="section-link" data-action="add-transaction">Ä°ÅŸlem ekle</button></div><div class="asset-list">${assets.length ? assets.map(assetRow).join('') : emptyState('search','SonuÃ§ bulunamadÄ±','Filtreyi veya arama metnini deÄŸiÅŸtir.')}</div></section>
-      <section class="section"><div class="section-head"><div><span class="section-title">Ä°zleme listesi</span><div class="section-note">PortfÃ¶y deÄŸerine katÄ±lmaz; almak istediÄŸin varlÄ±klarÄ± burada takip et.</div></div><button class="section-link" data-action="add-watch">+ Takip et</button></div><div class="asset-list">${state.watchlist.length ? state.watchlist.map(watchlistRow).join('') : emptyState('eye','Ä°zleme listesi boÅŸ','PortfÃ¶yÃ¼nde olmayan hisse, ETF, fon veya diÄŸer varlÄ±klarÄ± ekleyebilirsin.')}</div></section>`;
-  }
-
-  function renderDividends() {
-    const m = portfolioMetrics();
-    const now = new Date();
-    const paidYear = state.dividendEvents.filter(e => {
-      const d = parseDate(e.payDate || e.exDate);
-      return d.getFullYear() === now.getFullYear() && (e.received || d < now);
-    }).reduce((s,e)=>s+eventNet(e),0);
-    const pendingYear = state.dividendEvents.filter(e => {
-      const d = parseDate(e.payDate || e.exDate);
-      return d.getFullYear() === now.getFullYear() && d >= now;
-    }).reduce((s,e)=>s+eventNet(e),0);
-    const contributors = state.assets.map(a => {
-      const amount = state.dividendEvents.filter(e=>e.assetId===a.id && parseDate(e.payDate||e.exDate)>=addDays(now,-1) && parseDate(e.payDate||e.exDate)<=addDays(now,365)).reduce((s,e)=>s+eventNet(e),0) || Number(a.quantity||0)*Number(a.annualDividendPerShare||0)*(1-clamp(automaticDividendTax(a),0,100)/100)*fxRate(a.currency);
-      return {asset:a, amount};
-    }).filter(x=>x.amount>0).sort((a,b)=>b.amount-a.amount);
-    const maxContribution = Math.max(...contributors.map(x=>x.amount),1);
-    const upcoming = upcomingEvents(10);
-    const goal = Number(state.settings.dividendGoalAnnual || 0);
-    const progress = goal ? Math.min(100,m.annualDividend/goal*100) : 0;
-    const cashBalance=dividendCashBalance();
-    const confirmationCandidates=state.dividendEvents.filter(e=>!e.received&&e.status!=='estimated'&&parseDate(e.payDate||e.exDate)<=addDays(new Date(),1)&&parseDate(e.payDate||e.exDate)>=addDays(new Date(),-14));
-    return `${demoBanner()}
-      ${pageHeader('Pasif gelir','TemettÃ¼ merkezi','BrÃ¼t/net, aÃ§Ä±klanmÄ±ÅŸ/tahmini ayrÄ±mÄ±')}
-      <section class="dividend-hero"><div class="dividend-hero-grid"><div><div class="dividend-main-label">Ã–nÃ¼mÃ¼zdeki 12 ay net gelir</div><div class="dividend-main-value">${money(m.annualDividend,'TRY')}</div><div class="event-meta" style="color:#a7c8c7">AylÄ±k ortalama ${money(m.monthlyDividend,'TRY')}</div></div><div class="dividend-side"><div class="mini-stat"><div class="label">TemettÃ¼ verimi</div><div class="value">${numberFmt(m.dividendYield,2)}%</div></div><div class="mini-stat"><div class="label">Maliyete gÃ¶re</div><div class="value">${numberFmt(m.yieldOnCost,2)}%</div></div></div></div><div class="progress-wrap"><div class="progress-head"><span>YÄ±llÄ±k gelir hedefi</span><span>${numberFmt(progress,1)}%</span></div><div class="progress"><i style="width:${progress}%"></i></div></div></section>
-      <section class="section"><div class="grid-two"><article class="card metric-card"><div class="metric-label">TemettÃ¼ TL bakiyesi</div><div class="metric-value positive">${money(cashBalance,'TRY')}</div><div class="metric-note">Onaylanan temettÃ¼ler âˆ’ yeniden yatÄ±rÄ±mlar</div></article><article class="card metric-card"><div class="metric-label">Onay bekleyen</div><div class="metric-value">${confirmationCandidates.length}</div><div class="metric-note">Ã–deme geldi mi kontrol et</div></article></div></section>
-      ${confirmationCandidates.length?`<section class="section"><div class="section-head"><span class="section-title">TemettÃ¼ kazancÄ± olabilir</span></div><div class="card confirmation-card">${confirmationCandidates.map(e=>{const a=assetById(e.assetId);return `<div class="confirm-row"><div><b>${esc(a?.symbol||'Hisse')}</b><div class="event-meta">${dateText(e.payDate||e.exDate)} Â· ${numberFmt(eligibleQuantityAtExDate(e.assetId,e.exDate||e.payDate),2)} adet Â· yaklaÅŸÄ±k ${money(eventNet(e),'TRY')}</div></div><button class="small-primary" data-action="confirm-dividend" data-event-id="${e.id}">Kontrol et</button></div>`}).join('')}</div></section>`:''}
-      <section class="section"><div class="grid-two"><article class="card metric-card"><div class="metric-label">Bu yÄ±l alÄ±nan</div><div class="metric-value positive">${money(paidYear,'TRY')}</div><div class="metric-note">Net gerÃ§ekleÅŸen Ã¶deme</div></article><article class="card metric-card"><div class="metric-label">Bu yÄ±l beklenen</div><div class="metric-value">${money(pendingYear,'TRY')}</div><div class="metric-note">AÃ§Ä±klanmÄ±ÅŸ + tahmini</div></article></div></section>
-      <section class="section">${dividendBarChart()}</section>
-      <section class="section"><div class="section-head"><span class="section-title">Gelir katkÄ±sÄ±</span><span class="section-link">12 ay</span></div><div class="card" style="padding:15px">${contributors.length ? contributors.map(({asset,amount})=>`<div class="rebalance-row"><div class="rebalance-head"><span>${esc(asset.symbol)}</span><span>${money(amount,'TRY')} Â· ${numberFmt(amount/m.annualDividend*100,1)}%</span></div><div class="dual-progress"><i class="actual" style="width:${amount/maxContribution*100}%"></i></div></div>`).join('') : `<div class="empty-text" style="margin:0">TemettÃ¼ Ã¼reten bir varlÄ±k eklenmedi.</div>`}</div></section>
-      <section class="section"><div class="section-head"><span class="section-title">Ã–deme akÄ±ÅŸÄ±</span><button class="section-link" data-action="add-dividend">TemettÃ¼ ekle</button></div><div class="event-list">${upcoming.length ? upcoming.map(eventRow).join('') : emptyState('coin','Ã–deme bulunamadÄ±','AÃ§Ä±klanan veya tahmini bir temettÃ¼ olayÄ± ekle.')}</div></section>`;
-  }
-
-  function renderCalendar() {
-    const view = state.calendarView;
-    const year = Number(view.year);
-    const month = Number(view.month);
-    const first = new Date(year,month,1,12);
-    const last = new Date(year,month+1,0,12);
-    const startOffset = (first.getDay()+6)%7;
-    const cells = [];
-    for (let i=0;i<42;i++) {
-      const d = new Date(year,month,1-startOffset+i,12);
-      const dateIso = isoDate(d);
-      const events = state.dividendEvents.filter(e => sameDay(parseDate(e.payDate||e.exDate),d) || (e.exDate && sameDay(parseDate(e.exDate),d)));
-      cells.push({d,dateIso,events,outside:d.getMonth()!==month});
-    }
-    const selected = parseDate(view.selected);
-    const selectedEvents = state.dividendEvents.filter(e => sameDay(parseDate(e.payDate||e.exDate),selected) || (e.exDate && sameDay(parseDate(e.exDate),selected)));
-    return `${demoBanner()}
-      ${pageHeader('Gelir ajandasÄ±','TemettÃ¼ takvimi','Hak kullanÄ±m ve Ã¶deme gÃ¼nleri',`<button class="header-action" data-action="export-calendar">Takvimi aktar</button>`)}
-      <section class="card calendar-card"><div class="calendar-head"><div class="calendar-title">${MONTHS[month]} ${year}</div><div class="calendar-nav"><button data-cal-nav="-1">â€¹</button><button data-cal-today>â€¢</button><button data-cal-nav="1">â€º</button></div></div><div class="weekdays">${WEEKDAYS.map(d=>`<div>${d}</div>`).join('')}</div><div class="calendar-grid">${cells.map(c=>`<button class="day-cell ${c.outside?'outside':''} ${sameDay(c.d,new Date())?'today':''} ${c.dateIso===view.selected?'selected':''}" data-date="${c.dateIso}">${c.d.getDate()}${c.events.length?`<span class="day-dots">${c.events.slice(0,3).map(e=>`<i class="day-dot ${e.status==='estimated'?'warning':''}"></i>`).join('')}</span>`:''}</button>`).join('')}</div></section>
-      <section class="section"><div class="section-head"><span class="section-title">${dateText(view.selected,{day:'numeric',month:'long',year:'numeric'})}</span><button class="section-link" data-action="add-dividend" data-date-prefill="${view.selected}">Olay ekle</button></div><div class="event-list">${selectedEvents.length ? selectedEvents.map(eventRow).join('') : emptyState('calendar','Bu tarihte olay yok','Ã–deme veya hak kullanÄ±m gÃ¼nÃ¼ seÃ§ildiÄŸinde ayrÄ±ntÄ±lar burada gÃ¶rÃ¼nÃ¼r.')}</div></section>
-      <section class="section"><div class="section-head"><span class="section-title">SÄ±radaki Ã¶demeler</span></div><div class="event-list">${upcomingEvents(5).map(eventRow).join('') || emptyState('coin','YaklaÅŸan Ã¶deme yok','HenÃ¼z bir temettÃ¼ takvimi oluÅŸmadÄ±.')}</div></section>`;
-  }
-
-  function allocationBy(keyFn, assetList = state.assets) {
-    const map = new Map();
-    assetList.forEach(a => {
-      const key = keyFn(a);
-      map.set(key,(map.get(key)||0)+assetValue(a));
-    });
-    return [...map.entries()].map(([name,value])=>({name,value})).sort((a,b)=>b.value-a.value);
-  }
-
-  function donutHtml(items, total, centerLabel = 'Toplam') {
-    let cursor = 0;
-    const segments = items.map((item,i) => {
-      const start = total ? cursor/total*360 : 0;
-      cursor += item.value;
-      const end = total ? cursor/total*360 : 0;
-      return `${COLORS[i%COLORS.length]} ${start}deg ${end}deg`;
-    }).join(', ');
-    return `<div class="donut-wrap"><div class="donut" style="background:conic-gradient(${segments || '#17323e 0 360deg'})"><div class="donut-center"><strong>${money(total,'TRY',true,0)}</strong><span>${esc(centerLabel)}</span></div></div><div class="legend-list">${items.slice(0,6).map((item,i)=>`<div class="legend-row"><i class="legend-swatch" style="background:${COLORS[i%COLORS.length]}"></i><span class="legend-name">${esc(item.name)}</span><span class="legend-value">${total?numberFmt(item.value/total*100,1):'0'}%</span></div>`).join('')}</div></div>`;
-  }
-
-  function projection() {
-    const m = portfolioMetrics();
-    const monthlyContribution = Math.max(0, Number(state.settings.monthlyContribution || 0));
-    const annualReturn = Number(state.settings.expectedReturn || 0)/100;
-    const targetIncome = Math.max(1, Number(state.settings.dividendGoalAnnual || 1));
-    const currentYield = Math.max(m.dividendYield/100, .025);
-    let balance = m.total;
-    let years = 0;
-    for (; years < 50; years++) {
-      if (balance * currentYield >= targetIncome) break;
-      for (let month=0; month<12; month++) balance = balance*(1+annualReturn/12)+monthlyContribution;
-    }
-    return { years, futureValue: balance, targetCapital: targetIncome/currentYield, currentCoverage: targetIncome ? m.annualDividend/targetIncome*100 : 0 };
-  }
-
-  function renderAnalytics() {
-    const scoped=analyticsAssets();
-    const m=portfolioMetrics(scoped);
-    const ids=scoped.map(a=>a.id);
-    const byType=allocationBy(a => TYPE_META[a.type]?.label || a.type, scoped);
-    const byCurrency=allocationBy(a => a.currency || 'TRY', scoped);
-    const trend=analyticsTrend(scoped,analyticsPeriod);
-    const priceWeighted=scoped.reduce((sum,a)=>sum+assetValue(a)*periodAssetReturn(a,analyticsPeriod),0);
-    const periodPct=m.total?priceWeighted/m.total:0;
-    const periodMarket=m.total*periodPct/100;
-    const realized=realizedProfitInPeriod(ids,analyticsPeriod);
-    const divs=dividendsInPeriod(ids,analyticsPeriod);
-    const periodTotal=periodMarket+realized+divs;
-    const periodFilters=[['ALL','TÃ¼mÃ¼'],['BIST','Hisse'],['US','ABD'],['ETF','ETF'],['TEFAS','Fon'],['GOLD','AltÄ±n'],['SILVER','GÃ¼mÃ¼ÅŸ'],['CUSTOM','DiÄŸer']];
-    const periods=[['1M','1 Ay'],['3M','3 Ay'],['6M','6 Ay'],['1Y','1 YÄ±l'],['ALL','TÃ¼mÃ¼']];
-    const top=scoped.map(a=>({a,r:periodAssetReturn(a,analyticsPeriod)})).sort((x,y)=>y.r-x.r);
-    return `${demoBanner()}
-      ${pageHeader('DÃ¶nemsel sonuÃ§lar','Analiz ve raporlama','Genel portfÃ¶y ve yatÄ±rÄ±m tÃ¼rÃ¼ bazÄ±nda kÃ¢r/zarar')}
-      <div class="pill-row analytics-pills">${periodFilters.map(([k,l])=>`<button class="filter-pill ${analyticsFilter===k?'active':''}" data-analytics-filter="${k}">${l}</button>`).join('')}</div>
-      <div class="period-switch analytics-periods">${periods.map(([k,l])=>`<button class="${analyticsPeriod===k?'active':''}" data-analytics-period="${k}">${l}</button>`).join('')}</div>
-      <section class="summary-strip summary-strip-portfolio"><div class="summary-item"><div class="summary-label">GÃ¼ncel deÄŸer</div><div class="summary-value">${money(m.total,'TRY')}</div></div><div class="summary-item"><div class="summary-label">Toplam K/Z</div><div class="summary-value ${m.profit>=0?'positive':'negative'}">${money(m.profit,'TRY')}</div><div class="summary-sub">${pct(m.profitPct)}</div></div><div class="summary-item"><div class="summary-label">DÃ¶nem K/Z</div><div class="summary-value ${periodTotal>=0?'positive':'negative'}">${money(periodTotal,'TRY')}</div><div class="summary-sub ${periodPct>=0?'positive':'negative'}">${pct(periodPct)}</div></div><div class="summary-item"><div class="summary-label">DÃ¶nem temettÃ¼</div><div class="summary-value positive">${money(divs,'TRY')}</div></div></section>
-      <section class="section"><div class="card chart-card"><div class="section-head" style="margin:0"><div><span class="section-title">PortfÃ¶y deÄŸer eÄŸrisi</span><div class="section-note">${analyticsPeriod} Â· mevcut adetler ve kullanÄ±labilir fiyat geÃ§miÅŸiyle hesaplanan yaklaÅŸÄ±k grafik</div></div></div>${miniTrendSvg(trend)}<div class="chart-foot"><span>${trend.length?money(trend[0],'TRY',true,0):'â€”'}</span><span>${trend.length?money(trend.at(-1),'TRY',true,0):'â€”'}</span></div></div></section>
-      <section class="section"><div class="grid-two"><article class="card metric-card"><div class="metric-label">GerÃ§ekleÅŸen satÄ±ÅŸ K/Z</div><div class="metric-value ${realized>=0?'positive':'negative'}">${money(realized,'TRY')}</div><div class="metric-note">SeÃ§ili dÃ¶nem</div></article><article class="card metric-card"><div class="metric-label">BugÃ¼nkÃ¼ deÄŸiÅŸim</div><div class="metric-value ${m.daily>=0?'positive':'negative'}">${money(m.daily,'TRY')}</div><div class="metric-note">${pct(m.dailyPct)}</div></article></div></section>
-      <section class="section"><div class="card chart-card"><div class="section-head" style="margin:0"><span class="section-title">VarlÄ±k sÄ±nÄ±fÄ± daÄŸÄ±lÄ±mÄ±</span><span class="section-link">${scoped.length} varlÄ±k</span></div>${donutHtml(byType,m.total,'PortfÃ¶y')}</div></section>
-      <section class="section"><div class="card chart-card"><div class="section-head" style="margin:0"><span class="section-title">Para birimi daÄŸÄ±lÄ±mÄ±</span></div>${donutHtml(byCurrency,m.total,'Kur daÄŸÄ±lÄ±mÄ±')}</div></section>
-      <section class="section"><div class="section-head"><span class="section-title">DÃ¶nem performansÄ±</span></div><div class="card" style="padding:15px">${top.length?top.map(x=>`<div class="rebalance-row"><div class="rebalance-head"><span>${esc(x.a.symbol)}</span><span class="${x.r>=0?'positive':'negative'}">${pct(x.r)}</span></div><div class="dual-progress"><i class="actual" style="width:${Math.min(100,Math.abs(x.r)*2)}%"></i></div></div>`).join(''):'<div class="empty-text" style="margin:0">Bu filtrede yatÄ±rÄ±m bulunmuyor.</div>'}</div></section>
-      <div class="disclaimer">DÃ¶nem grafikleri Ã¼cretsiz kaynaklardan cihazda tutulan fiyat geÃ§miÅŸine gÃ¶re yaklaÅŸÄ±k hesaplanÄ±r. Kesin vergi/muhasebe raporu deÄŸildir; alÄ±ÅŸ-satÄ±ÅŸ ve temettÃ¼ kayÄ±tlarÄ±n kesin sonuÃ§larÄ±n temelidir.</div>`;
-  }
-
-  function friendlyMacroTitle(e) {
-    const raw = String(e?.title || '').trim();
-    const map = [
-      [/monetary policy committee|interest rate|policy rate|ppk/i,'TCMB Faiz KararÄ±'],
-      [/inflation report/i,'TCMB Enflasyon Raporu'],
-      [/consumer price|tÃ¼ketici fiyat|cpi/i,'TÃœFE / Enflasyon Verisi'],
-      [/gross domestic|gsyh|gayrisafi/i,'BÃ¼yÃ¼me Verisi'],
-      [/unemployment|iÅŸsizlik/i,'Ä°ÅŸsizlik Verisi'],
-      [/industrial production|sanayi Ã¼ret/i,'Sanayi Ãœretimi'],
-      [/balance of payments|Ã¶demeler dengesi/i,'Ã–demeler Dengesi'],
-      [/financial stability/i,'Finansal Ä°stikrar Raporu']
-    ];
-    for (const [rx,label] of map) if (rx.test(raw)) return label;
-    return raw || `${e?.source || 'Ekonomi'} duyurusu`;
-  }
-
-  function simpleImpactText(title) {
-    const t=String(title||'').toLocaleLowerCase('tr-TR');
-    if (/faiz|ppk|merkez bank/.test(t)) return 'Faiz, mevduat, dÃ¶viz ve Borsa Ä°stanbul Ã¼zerinde etkili olabilir.';
-    if (/enflasyon|tÃ¼fe|cpi/.test(t)) return 'Faiz beklentilerini ve TL varlÄ±klarÄ±n fiyatlamasÄ±nÄ± etkileyebilir.';
-    if (/bÃ¼yÃ¼me|gsyh|sanayi/.test(t)) return 'Ekonomik bÃ¼yÃ¼me beklentileri ve ÅŸirket kÃ¢rlarÄ± aÃ§Ä±sÄ±ndan izlenir.';
-    if (/iÅŸsizlik/.test(t)) return 'Ekonominin gÃ¼cÃ¼ ve iÃ§ talep hakkÄ±nda fikir verir.';
-    return 'Piyasa beklentilerini etkileyebilecek bir veri veya geliÅŸmedir.';
-  }
-
-
-  function ipoTransactions() {
-    return state.transactions.filter(t=>t.type==='buy' && t.purchaseKind==='ipo');
-  }
-
-  function ipoHoldingGroups() {
-    const byAsset=new Map();
-    ipoTransactions().forEach(t=>{
-      if(!byAsset.has(t.assetId))byAsset.set(t.assetId,[]);
-      byAsset.get(t.assetId).push(t);
-    });
-    return [...byAsset.entries()].map(([assetId,txs])=>{
-      const a=assetById(assetId);
-      if(!a)return null;
-      txs.sort((x,y)=>parseDate(x.date)-parseDate(y.date));
-      const firstDate=txs[0]?.date||'';
-      const ipoQty=txs.reduce((s,t)=>s+Number(t.quantity||0),0);
-      const weighted=txs.reduce((s,t)=>s+Number(t.quantity||0)*Number(t.ipoPrice??t.price??0),0);
-      const ipoPrice=ipoQty?weighted/ipoQty:0;
-      const sellsAfter=state.transactions.filter(t=>t.assetId===assetId&&t.type==='sell'&&(!firstDate||parseDate(t.date)>=parseDate(firstDate))).reduce((s,t)=>s+Number(t.quantity||0),0);
-      const remaining=Math.max(0,Math.min(Number(a.quantity||0),ipoQty-sellsAfter));
-      const current=Number(a.price||0);
-      const returnPct=ipoPrice?((current-ipoPrice)/ipoPrice*100):0;
-      return {asset:a,txs,firstDate,ipoQty,ipoPrice,remaining,current,returnPct};
-    }).filter(Boolean).sort((a,b)=>parseDate(b.firstDate)-parseDate(a.firstDate));
-  }
-
-  const externalCard = (href, cls, body) => `<button type="button" class="content-item external-card ${cls}" data-external-url="${esc(href||'')}">${body}<span class="content-open">AÃ§ â†’</span></button>`;
-
-  function ipoStatusLabel(item){
-    const s=String(item.status||'').toLowerCase();
-    if(s.includes('ertelen'))return 'Ertelendi';
-    if(s.includes('talep'))return 'Talep toplanÄ±yor';
-    if(s.includes('iÅŸlem'))return 'Ä°ÅŸlem baÅŸlÄ±yor';
-    if(s.includes('tamam')||s.includes('sonuÃ§'))return 'Talep tamamlandÄ±';
-    return 'Halka arz gÃ¼ndemi';
-  }
-
-  function ipoProgressHtml(group){
-    const a=group.asset;
-    let hist=(a.history||[]).map(Number).filter(Number.isFinite);
-    let dates=Array.isArray(a.historyDates)?a.historyDates.slice(-hist.length):[];
-    if(group.firstDate && dates.length===hist.length){ const zipped=hist.map((price,i)=>({price,date:dates[i]})).filter(x=>!x.date || String(x.date).slice(0,10)>=String(group.firstDate).slice(0,10)); hist=zipped.map(x=>x.price); dates=zipped.map(x=>x.date); }
-    if(!hist.length)return '<div class="empty-text" style="margin:0">Halka arz sonrasÄ± gÃ¼nlÃ¼k fiyat geÃ§miÅŸi ilk piyasa yenilemesinden sonra oluÅŸacak.</div>';
-    const rows=hist.slice(-10).map((price,i)=>{
-      const srcIdx=hist.length-Math.min(10,hist.length)+i;
-      const date=dates[srcIdx]||`GÃ¼n ${srcIdx+1}`;
-      const move=group.ipoPrice?((price-group.ipoPrice)/group.ipoPrice*100):0;
-      return `<div class="ipo-day-row"><span>${esc(date)}</span><b>${money(price,a.currency,false,price<1?4:2)}</b><em class="${move>=0?'positive':'negative'}">${pct(move)}</em></div>`;
-    }).join('');
-    return `${miniTrendSvg(hist.slice(-30))}<div class="ipo-day-list">${rows}</div>`;
-  }
-
-  function renderMyIpos(){
-    const groups=ipoHoldingGroups();
-    if(!groups.length)return `<div class="ipo-empty"><b>HenÃ¼z halka arzdan aldÄ±ÄŸÄ±n hisse iÅŸaretlenmemiÅŸ.</b><span>PortfÃ¶y iÅŸlemi eklerken â€œAlÄ±ÅŸ tÃ¼rÃ¼ â†’ Halka arzdan daÄŸÄ±tÄ±lan lotâ€ seÃ§. BÃ¶ylece bu alan otomatik oluÅŸur.</span><button type="button" class="primary-btn" data-action="add-ipo-buy">Halka arz alÄ±mÄ± ekle</button></div>`;
-    return groups.map(g=>{
-      const a=g.asset;
-      const value=g.remaining*g.current*fxRate(a.currency);
-      const cost=g.remaining*g.ipoPrice*fxRate(a.currency);
-      const profit=value-cost;
-      return `<div class="ipo-holding-card" data-ipo-asset="${esc(a.id)}">
-        <div class="ipo-holding-head"><div><div class="content-kicker">HALKA ARZDAN ALDIKLARIM</div><div class="content-title">${esc(a.symbol)} Â· ${esc(a.name)}</div></div><span class="ipo-badge ${g.returnPct>=0?'positive':'negative'}">${pct(g.returnPct)}</span></div>
-        <div class="ipo-stat-grid"><div><span>Arz fiyatÄ±m</span><b>${money(g.ipoPrice,a.currency,false,g.ipoPrice<1?4:2)}</b></div><div><span>Ä°lk daÄŸÄ±tÄ±lan</span><b>${numberFmt(g.ipoQty,2)} lot</b></div><div><span>HÃ¢lÃ¢ elde</span><b>${numberFmt(g.remaining,2)} lot</b></div><div><span>Ä°lk alÄ±m</span><b>${g.firstDate?dateText(g.firstDate):'â€”'}</b></div><div><span>Kalan deÄŸer</span><b>${money(value,'TRY')}</b></div><div><span>Arzdan K/Z</span><b class="${profit>=0?'positive':'negative'}">${money(profit,'TRY')}</b></div></div>
-        ${ipoProgressHtml(g)}
-        <div class="ipo-card-actions"><button type="button" class="secondary-btn" data-action="ipo-detail" data-asset-id="${esc(a.id)}">Detay</button><button type="button" class="primary-btn" data-action="add-transaction-asset" data-asset-id="${esc(a.id)}">Al / sat iÅŸlemi</button></div>
-      </div>`;
-    }).join('');
-  }
-
-  function renderIpoCalendar(){
-    const items=state.market.ipoItems||[];
-    const tracked=state.ipoTracked||[];
-    if(!items.length)return `<div class="ipo-empty"><b>Otomatik halka arz takvimi ÅŸu anda boÅŸ.</b><span>Yenile ile sunucudan tekrar dene. ResmÃ® SPK/KAP baÄŸlantÄ±larÄ± Raporlar sekmesinde her zaman kullanÄ±labilir.</span><button type="button" class="secondary-btn" data-action="add-ipo-track">Manuel halka arz takibi ekle</button></div>`;
-    return items.slice(0,16).map(item=>{
-      const isTracked=tracked.some(x=>(x.symbol&&item.symbol&&x.symbol===item.symbol)||(x.name===item.name));
-      return `<div class="ipo-calendar-card">
-        <div class="ipo-holding-head"><div><div class="content-kicker">${esc(ipoStatusLabel(item))}</div><div class="content-title">${item.symbol?`<b>${esc(item.symbol)}</b> Â· `:''}${esc(item.name||'Halka arz')}</div></div>${item.price?`<span class="ipo-badge">${money(item.price,'TRY')}</span>`:''}</div>
-        <div class="ipo-info-line">${item.demandDates?`<span>ğŸ“… ${esc(item.demandDates)}</span>`:''}${item.firstTradeDate?`<span>ğŸ”” Ä°lk iÅŸlem: ${esc(item.firstTradeDate)}</span>`:''}${item.market?`<span>ğŸ› ${esc(item.market)}</span>`:''}</div>
-        ${item.summary?`<div class="content-summary">${esc(item.summary)}</div>`:''}
-        <div class="ipo-card-actions">${item.url?`<button type="button" class="secondary-btn external-card" data-external-url="${esc(item.url)}">Kaynak â†—</button>`:''}<button type="button" class="primary-btn" data-action="track-ipo-item" data-ipo-symbol="${esc(item.symbol||'')}" data-ipo-name="${esc(item.name||'')}" data-ipo-demand="${esc(item.demandDates||'')}" data-ipo-trade="${esc(item.firstTradeDate||'')}">${isTracked?'Takipte âœ“':'Takip et ğŸ””'}</button></div>
-      </div>`;
-    }).join('');
-  }
-
-  function renderIpoReports(){
-    const news=state.market.ipoNews||[];
-    const sources=state.market.ipoSources||[];
-    const cards=news.slice(0,16).map(n=>externalCard(n.url,'ipo-report',`<div class="content-kicker">${esc(n.publisher||n.source||'Halka arz raporu')} Â· ${n.publishedAt?timeAgo(n.publishedAt):''}</div><div class="content-title">${esc(n.titleTr||n.title)}</div><div class="content-summary">${esc(n.summary||'Ä°zahname, fiyat tespit raporu, sonuÃ§ veya iÅŸlem baÅŸlangÄ±cÄ± duyurusu.')}</div>`)).join('');
-    const sourceCards=sources.map(s=>`<button type="button" class="source-mini external-card" data-external-url="${esc(s.url)}"><span><b>${esc(s.name)}</b><small>${esc(s.role||'ResmÃ® kaynak')}</small></span><em>â†—</em></button>`).join('');
-    return `${cards?`<div class="content-list">${cards}</div>`:'<div class="empty-text">Yeni rapor bulunamadÄ±.</div>'}<div class="source-grid ipo-source-grid">${sourceCards}</div><div class="disclaimer">Halka arz bilgileri otomatik keÅŸfedilir; talep tarihini, fiyatÄ± ve iÅŸlem baÅŸlangÄ±cÄ±nÄ± yatÄ±rÄ±m kararÄ± vermeden Ã¶nce KAP/SPK/Borsa Ä°stanbul duyurusundan doÄŸrula.</div>`;
-  }
-
-  function renderIpoSection(){
-    const count=ipoHoldingGroups().length;
-    return `<section class="card market-card ipo-module"><div class="section-head"><div><div class="section-title">ğŸ¢ Halka Arz Merkezi</div><div class="section-note">Takvim + ÅŸirket raporlarÄ± + kendi halka arz lotlarÄ±n + halka arz sonrasÄ± gÃ¼nlÃ¼k performans.</div></div><button type="button" class="header-action" data-action="add-ipo-track">+ Takip</button></div>
-      <div class="segment-tabs ipo-tabs"><button type="button" class="${marketIpoMode==='calendar'?'active':''}" data-action="ipo-mode" data-ipo-mode="calendar">Takvim</button><button type="button" class="${marketIpoMode==='mine'?'active':''}" data-action="ipo-mode" data-ipo-mode="mine">AldÄ±klarÄ±m${count?` (${count})`:''}</button><button type="button" class="${marketIpoMode==='reports'?'active':''}" data-action="ipo-mode" data-ipo-mode="reports">Raporlar</button></div>
-      <div class="ipo-body">${marketIpoMode==='mine'?renderMyIpos():marketIpoMode==='reports'?renderIpoReports():renderIpoCalendar()}</div>
-    </section>`;
-  }
-
-  function showIpoTrackForm(prefill={}){
-    const x={symbol:'',name:'',demandStart:'',demandEnd:'',firstTradeDate:'',price:'',...prefill};
-    showModal(`${modalHeader('Halka arzÄ± takip et')}<form id="ipoTrackForm"><div class="form-grid"><div class="field"><label>BIST kodu</label><input name="symbol" value="${esc(x.symbol||'')}" autocapitalize="characters"></div><div class="field full"><label>Åirket</label><input name="name" value="${esc(x.name||'')}" required></div><div class="field"><label>Talep baÅŸlangÄ±cÄ±</label><input type="date" name="demandStart" value="${esc(x.demandStart||'')}"></div><div class="field"><label>Talep son gÃ¼nÃ¼</label><input type="date" name="demandEnd" value="${esc(x.demandEnd||'')}"></div><div class="field"><label>Ä°lk iÅŸlem gÃ¼nÃ¼</label><input type="date" name="firstTradeDate" value="${esc(x.firstTradeDate||'')}"></div><div class="field"><label>Halka arz fiyatÄ±</label><input type="number" step="any" min="0" name="price" value="${esc(x.price||'')}"></div></div><div class="field-hint">Tarihler otomatik veriden gelmediyse elle girebilirsin. Bildirimler bu kayda gÃ¶re oluÅŸturulur.</div><div class="button-row"><button type="button" class="secondary-btn" data-modal-close>VazgeÃ§</button><button class="primary-btn">Takibe ekle</button></div></form>`);
-    $('#ipoTrackForm').addEventListener('submit',e=>{e.preventDefault();const fd=new FormData(e.currentTarget);const symbol=String(fd.get('symbol')||'').toUpperCase().trim(),name=String(fd.get('name')||'').trim();if(!name)return;const existing=state.ipoTracked.find(i=>(symbol&&i.symbol===symbol)||(!symbol&&i.name===name));const next={...(existing||{}),id:existing?.id||uid('ipo'),symbol,name,demandStart:String(fd.get('demandStart')||''),demandEnd:String(fd.get('demandEnd')||''),firstTradeDate:String(fd.get('firstTradeDate')||''),price:Number(fd.get('price')||0),updatedAt:new Date().toISOString()};if(existing)Object.assign(existing,next);else state.ipoTracked.push(next);saveState();closeModal();renderPage(false);scheduleEventNotifications();showToast('Halka arz takibe alÄ±ndÄ±');});
-  }
-
-  function showIpoHoldingDetail(assetId){
-    const g=ipoHoldingGroups().find(x=>x.asset.id===assetId);if(!g)return;
-    const a=g.asset;
-    showModal(`${modalHeader(`${a.symbol} halka arz performansÄ±`)}<div class="detail-sheet"><div class="big-symbol">${esc(a.symbol)}</div><div class="detail-price">${money(a.price,a.currency,false,a.price<1?4:2)}</div><div class="asset-change ${g.returnPct>=0?'positive':'negative'}">${pct(g.returnPct)} halka arz fiyatÄ±ndan</div>${ipoProgressHtml(g)}<div class="disclaimer">Kalan halka arz lotu hesabÄ±nda satÄ±ÅŸlarÄ±n Ã¶nce halka arz lotlarÄ±ndan Ã§Ä±ktÄ±ÄŸÄ± (FIFO) varsayÄ±lÄ±r. Sonradan yaptÄ±ÄŸÄ±n normal alÄ±mlar ayrÄ± maliyet taÅŸÄ±r.</div><div class="button-row"><button class="secondary-btn" id="ipoAssetDetail">VarlÄ±k detayÄ±</button><button class="primary-btn" id="ipoNewTx">Al / sat ekle</button></div></div>`);
-    $('#ipoAssetDetail').addEventListener('click',()=>showAssetDetail(a.id));
-    $('#ipoNewTx').addEventListener('click',()=>showTransactionForm(a.id));
-  }
-
-  function newsTopic(n){
-    const t=`${n.titleTr||n.title||''} ${n.summary||''} ${n.category||''}`.toLocaleLowerCase('tr-TR');
-    if(/savaÅŸ|Ã§atÄ±ÅŸ|fÃ¼ze|ateÅŸkes|yaptÄ±rÄ±m|nato|iran|israil|ukrayna|rusya|jeopolit/.test(t)) return ['Jeopolitik','critical'];
-    if(/petrol|brent|wti|doÄŸal gaz|lng|enerji|elektrik|opec|akaryakÄ±t/.test(t)) return ['Enerji','energy'];
-    if(/iÅŸsizlik|istihdam|iÅŸ gÃ¼cÃ¼|iÅŸgÃ¼cÃ¼|maaÅŸ|Ã¼cret|asgari|emekli|memur/.test(t)) return ['Ä°stihdam & MaaÅŸ','life'];
-    if(/eÄŸitim|okul|Ã¼niversite|Ã¶ÄŸrenci|meb|yÃ¶k|Ã¶sym/.test(t)) return ['EÄŸitim','life'];
-    if(/spor|futbol|uefa|fifa|olimpiyat|ÅŸampiyon/.test(t)) return ['Spor','sport'];
-    if(/saÄŸlÄ±k|salgÄ±n|who|ilaÃ§|hastane/.test(t)) return ['SaÄŸlÄ±k','life'];
-    if(/gÄ±da|tarÄ±m|buÄŸday|mÄ±sÄ±r|kurak|tmo|fao/.test(t)) return ['GÄ±da & TarÄ±m','life'];
-    if(/yapay zek|Ã§ip|teknoloji|ai |semiconductor|nvidia/.test(t)) return ['Teknoloji','tech'];
-    if(/faiz|enflasyon|tÃ¼fe|fed|tcmb|ecb|merkez banka|bÃ¼yÃ¼me|gdp|kur /.test(t)) return ['Ekonomi','official'];
-    if(/borsa|hisse|bist|nasdaq|s&p|ÅŸirket|bilanÃ§o|temettÃ¼/.test(t)) return ['Piyasa','market'];
-    if(/seÃ§im|hÃ¼kÃ¼met|meclis|baÅŸkan|bakan|siyaset|vergi|tarife|gÃ¼mrÃ¼k/.test(t)) return ['Siyaset','politics'];
-    return ['GÃ¼ndem','neutral'];
-  }
-  function newsImportance(n){
-    const [topic,tone]=newsTopic(n); const t=`${n.titleTr||n.title||''} ${n.summary||''}`.toLocaleLowerCase('tr-TR');
-    if(tone==='critical'||/acil|son dakika|faiz karar|enflasyon|savaÅŸ|ateÅŸkes|yaptÄ±rÄ±m|deprem|petrol.*%/.test(t)) return ['YÃœKSEK ETKÄ°','high'];
-    if(['Ekonomi','Enerji','Piyasa','Siyaset'].includes(topic)) return ['DÄ°KKAT','medium'];
-    return ['BÄ°LGÄ°','low'];
-  }
-  function portfolioNewsMatch(n){
-    const text=`${n.titleTr||n.title||''} ${n.summary||''}`.toLocaleUpperCase('tr-TR');
-    return state.assets.filter(a=>a.symbol&&text.includes(String(a.symbol).toUpperCase())).slice(0,4);
-  }
-  function newsImpactDetail(n){
-    const [topic]=newsTopic(n); const matches=portfolioNewsMatch(n);
-    const life={Enerji:'AkaryakÄ±t, elektrik/doÄŸalgaz ve ulaÅŸtÄ±rma maliyetlerini etkileyebilir.','Ä°stihdam & MaaÅŸ':'Gelir, satÄ±n alma gÃ¼cÃ¼ ve iÃ§ talep Ã¼zerinde etkili olabilir.',EÄŸitim:'Hane bÃ¼tÃ§esi, genÃ§ istihdamÄ± ve uzun vadeli Ã¼retkenliÄŸi etkileyebilir.',Spor:'BÃ¼yÃ¼k organizasyon, yayÄ±n, turizm veya sponsorluk etkisi varsa ekonomiye yansÄ±yabilir.',SaÄŸlÄ±k:'Hane harcamalarÄ±, iÅŸgÃ¼cÃ¼ ve saÄŸlÄ±k ÅŸirketleri Ã¼zerinden ekonomik etkisi olabilir.','GÄ±da & TarÄ±m':'GÄ±da fiyatlarÄ± ve enflasyon Ã¼zerinden gÃ¼nlÃ¼k bÃ¼tÃ§eyi etkileyebilir.'}[topic]||'DoÄŸrudan gÃ¼nlÃ¼k etkisi sÄ±nÄ±rlÄ± olabilir; fiyatlar ve beklentiler Ã¼zerinden dolaylÄ± etkisi oluÅŸabilir.';
-    const tr={Jeopolitik:'Enerji, dÄ±ÅŸ ticaret, kur ve risk primi Ã¼zerinden TÃ¼rkiyeâ€™yi etkileyebilir.',Enerji:'TÃ¼rkiyeâ€™nin enerji ithalat maliyeti ve enflasyon gÃ¶rÃ¼nÃ¼mÃ¼ aÃ§Ä±sÄ±ndan Ã¶nemlidir.',Ekonomi:'Faiz, kur, enflasyon ve iÃ§ talep kanallarÄ±yla TÃ¼rkiye ekonomisini etkileyebilir.',Siyaset:'Vergi, teÅŸvik, ticaret ve ekonomi politikasÄ± deÄŸiÅŸirse piyasalara yansÄ±yabilir.'}[topic]||'SektÃ¶rel talep, maliyet veya beklentiler Ã¼zerinden TÃ¼rkiye ekonomisine yansÄ±yabilir.';
-    const market={Jeopolitik:'Petrol, altÄ±n, dÃ¶viz ve riskli varlÄ±klarda oynaklÄ±ÄŸÄ± artÄ±rabilir.',Enerji:'Petrol/doÄŸalgaz, havacÄ±lÄ±k, ulaÅŸtÄ±rma, petrokimya ve enerji hisselerini etkileyebilir.',Ekonomi:'Tahvil, dÃ¶viz, altÄ±n ve hisse deÄŸerlemelerinde etkili olabilir.',Piyasa:'Åirket fiyatlamalarÄ± ve yatÄ±rÄ±mcÄ± risk iÅŸtahÄ±nÄ± doÄŸrudan etkileyebilir.'}[topic]||'Ä°lgili sektÃ¶rlerde fiyatlama ve beklentileri etkileyebilir.';
-    const portfolio=matches.length?`DoÄŸrudan eÅŸleÅŸenler: ${matches.map(a=>a.symbol).join(', ')}.`:'PortfÃ¶yÃ¼nde haber metniyle doÄŸrudan eÅŸleÅŸen varlÄ±k bulunamadÄ±.';
-    return `<div class="impact-grid"><div><b>ğŸ‘¤ GÃ¼nlÃ¼k hayatÄ±m</b><span>${esc(life)}</span></div><div><b>ğŸ‡¹ğŸ‡· TÃ¼rkiye</b><span>${esc(tr)}</span></div><div><b>ğŸ“ˆ Piyasalar</b><span>${esc(market)}</span></div><div><b>ğŸ’¼ PortfÃ¶yÃ¼m</b><span>${esc(portfolio)}</span></div></div>`;
-  }
-  function freshNews(items,maxHours=168){
-    const now=Date.now(), max=maxHours*3600000;
-    return (items||[]).filter(n=>{const t=Date.parse(n.publishedAt||'');return Number.isFinite(t)&&t<=now+3600000&&(now-t)<=max;}).sort((a,b)=>Date.parse(b.publishedAt||0)-Date.parse(a.publishedAt||0));
-  }
-  function marketPulse(all){
-    const recent=freshNews(all,48);
-    const bistNews=recent.filter(n=>/bist|borsa istanbul|bist 100|bankacÄ±lÄ±k|aÃ§Ä±ÄŸa satÄ±ÅŸ/i.test(`${n.titleTr||n.title||''} ${n.summary||''}`));
-    const metalNews=recent.filter(n=>/altÄ±n|gold|xau|gÃ¼mÃ¼ÅŸ|ons/i.test(`${n.titleTr||n.title||''} ${n.summary||''}`));
-    const down=bistNews.filter(n=>/dÃ¼ÅŸt|dÃ¼ÅŸÃ¼ÅŸ|satÄ±ÅŸ|gerile|kayÄ±p|eksi|negatif/i.test(`${n.titleTr||n.title||''} ${n.summary||''}`)).length;
-    const up=bistNews.filter(n=>/yÃ¼ksel|artÄ±ÅŸ|ralli|kazanÃ§|pozitif/i.test(`${n.titleTr||n.title||''} ${n.summary||''}`)).length;
-    let headline='Son 48 saatte piyasayÄ± aÃ§Ä±klayan gÃ¼ncel geliÅŸmeler';
-    if(bistNews.length && down>up) headline='BISTâ€™te satÄ±ÅŸ baskÄ±sÄ± gÃ¼ndemde';
-    else if(bistNews.length && up>down) headline='BISTâ€™te yÃ¼kseliÅŸ gÃ¼ndemde';
-    else if(bistNews.length) headline='BISTâ€™te Ã¶nemli hareketlilik var';
-    else if(metalNews.length) headline='AltÄ±n ve deÄŸerli metallerde Ã¶nemli hareketlilik var';
-    const related=[...bistNews,...metalNews,...recent.filter(n=>newsImportance(n)[1]==='high')].filter((n,i,a)=>a.findIndex(x=>(x.url||x.title)===(n.url||n.title))===i).slice(0,6);
-    const reasons=related.map(n=>`<button type="button" class="pulse-reason" data-action="open-external" data-url="${esc(n.url||'')}"><span>${esc(n.publisher||n.source||'Kaynak')} Â· ${n.publishedAt?timeAgo(n.publishedAt):''}</span><b>${esc(n.titleTr||n.title||'GeliÅŸme')}</b><em>AÃ§ â†’</em></button>`).join('');
-    return `<section class="card market-card market-pulse"><div class="pulse-kicker">ğŸ“ ÅU ANDA NE OLUYOR?</div><div class="pulse-headline">${esc(headline)}</div><div class="section-note">BaÅŸlÄ±k portfÃ¶yÃ¼ndeki toplam kÃ¢r/zarardan deÄŸil, son 48 saatteki gÃ¼ncel piyasa haberlerinden oluÅŸturulur. Kaynaklar olasÄ± nedenleri karÅŸÄ±laÅŸtÄ±rmak iÃ§indir.</div>${reasons?`<div class="pulse-reasons"><div class="content-kicker">Son dakika ve iliÅŸkili geliÅŸmeler</div>${reasons}<button type="button" class="secondary-btn pulse-all" data-action="news-mode" data-news-mode="important">TÃ¼m Ã¶nemli haberleri gÃ¶r</button></div>`:`<div class="pulse-warning">âš ï¸ Son 48 saatte yeterli gÃ¼ncel piyasa haberi bulunamadÄ±.</div>`}</section>`;
-  }
-
-  function newsHub(all){
-    const tabs=[['important','ğŸ”¥ Ã–nemli'],['portfolio','ğŸ’¼ PortfÃ¶yÃ¼m'],['life','ğŸ‘¤ HayatÄ±m'],['tr','ğŸ‡¹ğŸ‡· TÃ¼rkiye'],['world','ğŸŒ DÃ¼nya'],['all','TÃ¼mÃ¼']];
-    let items=freshNews(all,168);
-    if(marketNewsMode==='important') items=items.filter(n=>newsImportance(n)[1]!=='low');
-    if(marketNewsMode==='portfolio') items=items.filter(n=>portfolioNewsMatch(n).length);
-    if(marketNewsMode==='life') items=items.filter(n=>['life','energy','sport'].includes(newsTopic(n)[1]));
-    if(marketNewsMode==='tr') items=items.filter(n=>String(n.country||'').includes('TÃ¼rkiye'));
-    if(marketNewsMode==='world') items=items.filter(n=>!String(n.country||'').includes('TÃ¼rkiye'));
-    const cards=items.slice(0,18).map(n=>{const [topic,tone]=newsTopic(n),[imp,level]=newsImportance(n);return externalCard(n.url,`news-hub-card tone-${tone} level-${level}`,`<div class="news-card-top"><span class="impact-badge ${level}">${imp}</span><span class="topic-badge">${esc(topic)}</span></div><div class="content-kicker">${esc(n.publisher||n.source||'Haber')} Â· ${n.publishedAt?timeAgo(n.publishedAt):''}</div><div class="content-title">${esc(n.titleTr||n.title)}</div><div class="content-summary">${esc(n.summary||'AyrÄ±ntÄ±lar iÃ§in haberi aÃ§.')}</div>${newsImpactDetail(n)}`)}).join('');
-    const xAccounts=['piyasaTturkiye','parafesorfinans','arzhaber','kendinetemettu','itfo_','mehmetmesci','MELEKBORSA','BloombergHT','karavandaborsa'];
-    const xHtml=`<details class="x-sources"><summary>ğ• Takip edilen kaynaklar (${xAccounts.length})</summary><div class="x-source-grid">${xAccounts.map(u=>`<button type="button" class="source-mini external-card" data-external-url="https://x.com/${esc(u)}"><span><b>@${esc(u)}</b><small>X kaynaÄŸÄ±nÄ± aÃ§</small></span><em>â†—</em></button>`).join('')}</div><div class="field-hint">X gÃ¶nderilerinin uygulamaya anlÄ±k dÃ¼ÅŸmesi iÃ§in resmÃ® X API eriÅŸimi gerekir. Bu hesaplar kaynak listesine hazÄ±rlandÄ±; API eriÅŸimi olmadan gÃ¶nderi iÃ§eriÄŸi otomatik Ã§ekilmez.</div></details>`;
-    return `<section class="card market-card news-hub"><div class="section-head"><div><div class="section-title">ğŸ“° Haber Merkezi</div><div class="section-note">HayatÄ±nÄ±, TÃ¼rkiyeâ€™yi, piyasalarÄ± ve portfÃ¶yÃ¼nÃ¼ etkileyebilecek geliÅŸmeler.</div></div></div><div class="news-tabs">${tabs.map(([k,l])=>`<button type="button" class="${marketNewsMode===k?'active':''}" data-action="news-mode" data-news-mode="${k}">${l}</button>`).join('')}</div><div class="content-list">${cards||'<div class="ipo-empty"><b>Bu filtrede haber bulunamadÄ±.</b><span>Yenile veya baÅŸka bir kategori seÃ§.</span></div>'}</div><div class="news-legend"><span>ğŸ”´ yÃ¼ksek etki</span><span>ğŸŸ  dikkat</span><span>ğŸ”µ bilgi</span></div>${xHtml}</section>`;
-  }
-
-  function renderMarket() {
-    const today=isoDate();
-    const all = Array.isArray(state.market.news) ? state.market.news : [];
-    const macroAll = (Array.isArray(state.market.macroEvents) ? state.market.macroEvents : []).filter(e=>!e.date || String(e.date)>=today);
-    const viewsAll = Array.isArray(state.market.expertViews) ? state.market.expertViews : [];
-    const investors = Array.isArray(state.market.investorPortfolios) ? state.market.investorPortfolios : [];
-    const domestic = Array.isArray(state.market.domesticPortfolios) ? state.market.domesticPortfolios : [];
-    const funds = Array.isArray(state.market.fundSources) ? state.market.fundSources : [];
-    const sourceCatalog = Array.isArray(state.market.sourceCatalog) ? state.market.sourceCatalog : [];
-    const comparison = state.market.portfolioComparison || {commonStocks:[],institutions:[]};
-
-    // target=_blank WebView'de yeni pencere isteyebildiÄŸi iÃ§in bilinÃ§li olarak kullanÄ±lmÄ±yor.
-    const clickable = externalCard;
-    const limitItems = (items,key,limit=5) => marketExpanded[key] ? items : items.slice(0,limit);
-    const moreButton = (count,key,limit=5) => count>limit ? `<button type="button" class="market-more" data-action="toggle-market" data-market-key="${key}">${marketExpanded[key]?'Daha az gÃ¶ster':'TÃ¼mÃ¼nÃ¼ gÃ¶ster'} <span>${marketExpanded[key]?'â†‘':'â†“'}</span></button>` : '';
-
-    const newsCards = limitItems(all,'news').map(n=>clickable(n.url,'content-news',
-      `<div class="content-kicker">${esc(n.publisher||n.source||'Haber')} Â· ${n.publishedAt?timeAgo(n.publishedAt):''}</div>
-       <div class="content-title">${esc(n.title)}</div>
-       <div class="content-summary">${esc(n.summary||'AyrÄ±ntÄ±lar iÃ§in habere dokunun.')}</div>
-       <div class="plain-explain"><b>BasitÃ§e:</b> ${esc(simpleImpactText(n.title))}</div>`)).join('');
-
-    const macroCards = limitItems(macroAll,'calendar').map(e=>clickable(e.url,'content-calendar',
-      `<div class="content-kicker">${esc(e.source||'Resmi takvim')} Â· ${esc(dateText(e.date,{day:'2-digit',month:'long',year:'numeric'}))}</div>
-       <div class="content-title">${esc(friendlyMacroTitle(e))}</div>
-       <div class="content-summary">${esc(simpleImpactText(friendlyMacroTitle(e)))}</div>`)).join('');
-
-    const viewCards = limitItems(viewsAll,'experts').map(v=>clickable(v.url,'content-expert',
-      `<div class="content-kicker">${esc(v.publisher||v.source||'Piyasa gÃ¶rÃ¼ÅŸÃ¼')} Â· ${v.publishedAt?timeAgo(v.publishedAt):''}</div>
-       <div class="content-title">${esc(v.titleTr||v.title)}</div>
-       <div class="content-summary">${esc(v.summary||'GÃ¶rÃ¼ÅŸÃ¼n ayrÄ±ntÄ±larÄ± iÃ§in dokunun.')}</div>`)).join('');
-
-    const domesticCards = limitItems(domestic,'domestic',5).map(p=>{
-      const holdings=Array.isArray(p.holdings)?p.holdings:[];
-      const chips=holdings.slice(0,10).map(h=>`<span class="ticker-chip">${esc(h.ticker||h.name)}</span>`).join('');
-      const note=p.status==='temporarily_unavailable'?'Kaynak ÅŸu anda otomatik okunamadÄ±; resmi sayfa aÃ§Ä±labilir.':`${holdings.length} kalem izleniyor${p.updatedAt?` Â· ${esc(dateText(p.updatedAt))}`:''}`;
-      return clickable(p.url,'content-domestic',`<div class="content-kicker">ğŸ‡¹ğŸ‡· ${esc(p.typeLabel||'Model portfÃ¶y')}</div><div class="content-title">${esc(p.manager)}</div><div class="ticker-wrap">${chips||'<span class="ticker-chip muted">Resmi kaynaÄŸÄ± gÃ¶rÃ¼ntÃ¼le</span>'}</div><div class="content-summary">${esc(note)}</div>`);
-    }).join('');
-
-    const fundCards = limitItems(funds,'funds',6).map(f=>{
-      const chips=(f.funds||[]).slice(0,6).map(x=>`<span class="fund-chip"><b>${esc(x.code)}</b> ${esc(x.name)}</span>`).join('');
-      return clickable(f.url,'content-fund',`<div class="content-kicker">Fon yÃ¶netim ÅŸirketi</div><div class="content-title">${esc(f.manager)}</div><div class="fund-chip-wrap">${chips}</div><div class="content-summary">${esc(f.note||'Fonlar TEFAS ve kurumun resmi sayfasÄ±ndan karÅŸÄ±laÅŸtÄ±rÄ±labilir.')}</div>`);
-    }).join('');
-
-    const examplePortfolios = [...domestic.map(p=>({...p, source:'TÃ¼rkiye model portfÃ¶yÃ¼', filingDate:p.updatedAt})), ...investors];
-    const portfolioCards = limitItems(examplePortfolios,'portfolios',6).map(r=>{
-      const hs=(r.holdings||[]).slice(0,6);
-      const summary=hs.length ? hs.map(h=>h.name||h.ticker).join(' â€¢ ') : 'Son bildirim geÃ§ici olarak alÄ±namadÄ±; resmi kaynaÄŸÄ± aÃ§abilirsiniz.';
-      return clickable(r.url,'content-portfolio',`<div class="content-kicker">${String(r.source||'').includes('TÃ¼rkiye')?'ğŸ‡¹ğŸ‡·':'ğŸŒ'} ${esc(r.source||'Kamuya aÃ§Ä±k portfÃ¶y')}${r.filingDate?` Â· ${esc(r.filingDate)}`:''}</div><div class="content-title">${esc(r.manager)}</div><div class="content-summary">${esc(summary)}</div>`);
-    }).join('');
-
-    const common=(comparison.commonStocks||[]).slice(0,12);
-    const parsedDomesticCount = domestic.filter(x=>(x.holdings||[]).length).length;
-    const compareStockHtml = `<div class="compare-summary">
-      <div class="compare-stat"><b>${domestic.length}</b><span>TÃ¼rk kurum kaynaÄŸÄ±</span></div>
-      <div class="compare-stat"><b>${parsedDomesticCount}</b><span>otomatik okunan</span></div>
-      <div class="compare-stat"><b>${common.length}</b><span>ortak hisse</span></div>
-    </div>
-    ${common.length?`<div class="compare-subtitle">Birden fazla model portfÃ¶yde ortak gÃ¶rÃ¼lenler</div><div class="ticker-wrap compare-tickers">${common.map(x=>`<span class="ticker-chip strong">${esc(x.ticker)} <small>${esc(x.count)} kurum</small></span>`).join('')}</div>`:`<div class="compare-empty">Ortak hisse hesaplanabilmesi iÃ§in en az iki model portfÃ¶yÃ¼n otomatik okunmasÄ± gerekir.</div>`}`;
-
-    const compareFundHtml = `<div class="fund-compare-grid">${funds.map(f=>`<button type="button" data-external-url="${esc(f.url)}" class="fund-provider-mini external-card"><b>${esc(f.manager)}</b><span>${(f.funds||[]).map(x=>esc(x.code)).join(' Â· ')}</span></button>`).join('')}</div>
-      <div class="compare-tip">FonlarÄ± yalnÄ±z getiriye gÃ¶re deÄŸil; <b>risk seviyesi, kategori, vade, yÃ¶netim Ã¼creti ve 1A/6A/1Y performans</b> ile karÅŸÄ±laÅŸtÄ±racaÄŸÄ±z. TEFAS ana referans olacak.</div>`;
-
-    const compareWorldHtml = `<div class="ticker-wrap compare-tickers">${investors.map(x=>`<button type="button" class="ticker-chip strong external-chip" data-external-url="${esc(x.url)}">${esc(x.manager)}</button>`).join('')}</div><div class="compare-tip">ABD portfÃ¶yleri 13F bildirimleri nedeniyle gecikmelidir. GÃ¼nlÃ¼k iÅŸlem sinyali olarak kullanÄ±lmamalÄ±dÄ±r.</div>`;
-
-    const sourceHtml=limitItems(sourceCatalog,'sources',8).map(s=>`<button type="button" class="source-mini external-card" data-external-url="${esc(s.url)}"><span><b>${esc(s.name)}</b><small>${esc(s.role||'Kaynak')}</small></span><em>â†—</em></button>`).join('');
-
-    return `${pageHeader('Piyasa','Sade piyasa','BugÃ¼n ne oldu, yaklaÅŸan tarihler ve profesyoneller ne izliyor?',`<button class="header-action" data-action="refresh-content">Yenile</button>`)}
-      ${state.market.contentError?`<div class="market-notice"><strong>BazÄ± kaynaklar gÃ¼ncellenemedi</strong><span>${esc(state.market.contentError)}</span></div>`:''}
-      ${marketPulse(all)}
-      ${newsHub(all)}
-
-      <section class="card market-card market-calendar"><div class="section-head"><div><div class="section-title">ğŸ“… YaklaÅŸan Ã¶nemli tarihler</div><div class="section-note">TCMB ve TÃœÄ°K verileri sade TÃ¼rkÃ§e baÅŸlÄ±klarla.</div></div></div><div class="content-list">${macroCards || emptyState('calendar','YaklaÅŸan takvim verisi yok','Yenile dÃ¼ÄŸmesine basÄ±n.')}</div>${moreButton(macroAll.length,'calendar')}</section>
-
-      <section class="card market-card market-compare"><div class="section-head"><div><div class="section-title">âš–ï¸ PortfÃ¶y karÅŸÄ±laÅŸtÄ±rma</div><div class="section-note">KurumlarÄ±n hisse ve fon fikirlerini aynÄ± yerde karÅŸÄ±laÅŸtÄ±r.</div></div></div>
-        <div class="segment-tabs">
-          <button type="button" class="${marketCompareMode==='stocks'?'active':''}" data-action="market-compare" data-compare-mode="stocks">Hisseler</button>
-          <button type="button" class="${marketCompareMode==='funds'?'active':''}" data-action="market-compare" data-compare-mode="funds">Fonlar</button>
-          <button type="button" class="${marketCompareMode==='world'?'active':''}" data-action="market-compare" data-compare-mode="world">DÃ¼nya</button>
-        </div>
-        <div class="compare-body">${marketCompareMode==='funds'?compareFundHtml:marketCompareMode==='world'?compareWorldHtml:compareStockHtml}</div>
-      </section>
-
-      <section class="card market-card market-domestic"><div class="section-head"><div><div class="section-title">ğŸ‡¹ğŸ‡· TÃ¼rkiye model portfÃ¶yleri</div><div class="section-note">DoÄŸrulanabilir resmi kaynaklar; kurum gÃ¶rÃ¼ÅŸÃ¼dÃ¼r, yatÄ±rÄ±m tavsiyesi deÄŸildir.</div></div></div><div class="content-list">${domesticCards || emptyState('portfolio','HenÃ¼z TÃ¼rk model portfÃ¶yÃ¼ alÄ±namadÄ±','Kaynak sayfalarÄ± aÅŸaÄŸÄ±dan aÃ§Ä±labilir.')}</div>${moreButton(domestic.length,'domestic')}</section>
-
-      <section class="card market-card market-funds"><div class="section-head"><div><div class="section-title">ğŸ“Š Fon radarÄ± ve kaynaklarÄ±</div><div class="section-note">Ä°ÅŸ, Garanti, Ak, YapÄ± Kredi, AhlatcÄ±, Gedik ve diÄŸer fon yÃ¶neticileri.</div></div></div><div class="content-list">${fundCards || emptyState('portfolio','Fon kaynaÄŸÄ± yok','Yenile dÃ¼ÄŸmesine basÄ±n.')}</div>${moreButton(funds.length,'funds',6)}</section>
-
-      <section class="card market-card market-experts"><div class="section-head"><div><div class="section-title">ğŸ’¡ Piyasa gÃ¶rÃ¼ÅŸleri</div><div class="section-note">TÃ¼rk uzmanlar, araÅŸtÄ±rma ekipleri ve seÃ§ili yabancÄ± yatÄ±rÄ±mcÄ±lar.</div></div></div><div class="content-list">${viewCards || emptyState('people','HenÃ¼z gÃ¶rÃ¼ÅŸ yok','Yenile dÃ¼ÄŸmesine basÄ±n.')}</div>${moreButton(viewsAll.length,'experts')}</section>
-
-      <section class="card market-card market-portfolios"><div class="section-head"><div><div class="section-title">ğŸŒ Ã–rnek yatÄ±rÄ±mcÄ± ve kurum portfÃ¶yleri</div><div class="section-note">TÃ¼rkiye kurumlarÄ± + dÃ¼nyadan kamuya aÃ§Ä±k Ã¶rnek portfÃ¶yler.</div></div></div><div class="content-list">${portfolioCards || emptyState('portfolio','HenÃ¼z portfÃ¶y verisi yok','Yenile dÃ¼ÄŸmesine basÄ±n.')}</div>${moreButton(examplePortfolios.length,'portfolios',6)}</section>
-
-      <section class="card market-card market-sources"><div class="section-head"><div><div class="section-title">ğŸ” Kaynaklar</div><div class="section-note">Tek kaynaÄŸa baÄŸlÄ± kalmÄ±yoruz.</div></div></div><div class="source-grid">${sourceHtml}</div>${moreButton(sourceCatalog.length,'sources',8)}</section>`;
-  }
-
-
-  function renderInvestors() { return renderMarket(); }
-
-  async function refreshContent({silent=false}={}) {
-    if (contentRefreshPromise) return contentRefreshPromise;
-    contentRefreshPromise = (async () => {
-      try {
-        let result;
-        if (window.Android?.requestMarketData && state.settings.backendUrl) {
-          result = await nativeMarketCall('backendcontent', {
-            backendUrl: state.settings.backendUrl,
-            backendToken: state.settings.backendToken || ''
-          }, 18000);
-        } else {
-          result = await backendCall({action:'content'}, 15000);
-        }
-        if (!result?.ok) throw new Error(result?.error||'Ä°Ã§erik alÄ±namadÄ±');
-        state.market.news = result.data?.news || [];
-        state.market.macroEvents = result.data?.macroEvents || [];
-        state.market.expertViews = result.data?.expertViews || [];
-        state.market.investorPortfolios = result.data?.investorPortfolios || [];
-        state.market.domesticPortfolios = result.data?.domesticPortfolios || [];
-        state.market.fundSources = result.data?.fundSources || [];
-        state.market.portfolioComparison = result.data?.portfolioComparison || {commonStocks:[],institutions:[]};
-        state.market.sourceCatalog = result.data?.sources || [];
-        state.market.ipoItems = result.data?.ipoItems || [];
-        state.market.ipoNews = result.data?.ipoNews || [];
-        state.market.ipoSources = result.data?.ipoSources || [];
-        state.market.lastContentSync = new Date().toISOString();
-        state.market.contentError = null;
-        saveState();
-        if (currentPage === 'market') renderPage(false); else updateSyncText();
-        if (!silent) showToast('Haber ve piyasa iÃ§erikleri gÃ¼ncellendi');
-        return true;
-      } catch (e) {
-        state.market.contentError = e.message || 'Ä°Ã§erik alÄ±namadÄ±';
-        saveState();
-        if (!silent) showToast(`Ä°Ã§erik alÄ±namadÄ±: ${state.market.contentError}`, 4200);
-        return false;
-      } finally {
-        contentRefreshPromise = null;
-      }
-    })();
-    return contentRefreshPromise;
-  }
-
-  function renderPage(resetScroll = true) {
-    const previousScroll = window.scrollY || document.documentElement.scrollTop || 0;
-    const page = $('#page');
-    const renderers = { dashboard:renderDashboard, portfolio:renderPortfolio, dividends:renderDividends, calendar:renderCalendar, analytics:renderAnalytics, market:renderMarket, investors:renderInvestors };
-    page.innerHTML = (renderers[currentPage] || renderDashboard)();
-    $$('.nav-item').forEach(btn => btn.classList.toggle('active', btn.dataset.page === currentPage));
-    renderIcons();
-    applyPrivacy();
-    updateSyncText();
-    bindPageEvents();
-    if (resetScroll) {
-      window.scrollTo({top:0,behavior:'instant'});
-    } else {
-      requestAnimationFrame(() => window.scrollTo({top:previousScroll,behavior:'instant'}));
-    }
-  }
-
-  function bindPageEvents() {
-    $$('[data-external-url]').forEach(node=>node.addEventListener('click',e=>{
-      e.preventDefault();
-      e.stopPropagation();
-      const href=String(node.dataset.externalUrl||'').trim();
-      if (!/^https?:\/\//i.test(href)) { showToast('Kaynak baÄŸlantÄ±sÄ± alÄ±namadÄ±'); return; }
-      if (window.Android?.openExternal) {
-        try { window.Android.openExternal(href); return; } catch (_) {}
-      }
-      window.location.href = href;
-    }));
-    $$('[data-page-go]').forEach(b=>b.addEventListener('click',()=>navigate(b.dataset.pageGo)));
-    $$('[data-action]').forEach(b=>b.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();handleAction(b.dataset.action,b);}));
-    $$('.asset-row').forEach(row=>row.addEventListener('click',()=>showAssetDetail(row.dataset.assetId)));
-    $$('.event-row').forEach(row=>row.addEventListener('click',()=>showAssetDetail(row.dataset.assetId)));
-    $$('.watch-row').forEach(row=>row.addEventListener('click',()=>showWatchForm(row.dataset.watchId)));
-    $$('[data-analytics-filter]').forEach(b=>b.addEventListener('click',()=>{analyticsFilter=b.dataset.analyticsFilter;renderPage();}));
-    $$('[data-analytics-period]').forEach(b=>b.addEventListener('click',()=>{analyticsPeriod=b.dataset.analyticsPeriod;renderPage(false);}));
-    $$('.filter-pill').forEach(b=>b.addEventListener('click',()=>{portfolioFilter=b.dataset.filter;renderPage();}));
-    const search = $('#assetSearch');
-    if (search) search.addEventListener('input',e=>{portfolioQuery=e.target.value; window.clearTimeout(search._timer); search._timer=setTimeout(renderPage,180);});
-    $$('[data-cal-nav]').forEach(b=>b.addEventListener('click',()=>moveCalendar(Number(b.dataset.calNav))));
-    $('[data-cal-today]')?.addEventListener('click',()=>{const d=new Date();state.calendarView={year:d.getFullYear(),month:d.getMonth(),selected:isoDate(d)};saveState();renderPage();});
-    $$('.day-cell').forEach(b=>b.addEventListener('click',()=>{const d=parseDate(b.dataset.date);state.calendarView.year=d.getFullYear();state.calendarView.month=d.getMonth();state.calendarView.selected=b.dataset.date;saveState();renderPage();}));
-  }
-
-  function navigate(page) {
-    currentPage = page;
-    renderPage();
-  }
-
-  function moveCalendar(delta) {
-    const d = new Date(state.calendarView.year,state.calendarView.month+delta,1,12);
-    state.calendarView.year=d.getFullYear();state.calendarView.month=d.getMonth();state.calendarView.selected=isoDate(d);
-    saveState(); renderPage();
-  }
-
-  function handleAction(action, node) {
-    const actions = {
-      'clear-demo': clearDemo,
-      'add-asset': () => showAssetForm(),
-      'add-transaction': () => showTransactionForm(),
-      'add-dividend': () => showDividendForm(null,node?.dataset.datePrefill),
-      'add-watch': () => showWatchForm(),
-      'confirm-dividend': () => showDividendConfirmation(node?.dataset.eventId),
-      'export-calendar': exportCalendar,
-      'edit-targets': showTargetEditor,
-      'projection-settings': showProjectionSettings,
-      'refresh-content': refreshContent,
-      'toggle-market': () => { const key=node?.dataset.marketKey; if(key && Object.prototype.hasOwnProperty.call(marketExpanded,key)){ marketExpanded[key]=!marketExpanded[key]; renderPage(false); } },
-      'news-mode': () => { const mode=node?.dataset.newsMode; if(['important','portfolio','life','tr','world','all'].includes(mode)){ marketNewsMode=mode; renderPage(false); } },
-      'market-compare': () => { const mode=node?.dataset.compareMode; if(['stocks','funds','world'].includes(mode)){ marketCompareMode=mode; renderPage(false); } },
-      'ipo-mode': () => { const mode=node?.dataset.ipoMode; if(['calendar','mine','reports'].includes(mode)){ marketIpoMode=mode; renderPage(false); } },
-      'add-ipo-track': () => showIpoTrackForm(),
-      'add-ipo-buy': () => showTransactionForm(null,'ipo'),
-      'add-transaction-asset': () => showTransactionForm(node?.dataset.assetId),
-      'ipo-detail': () => showIpoHoldingDetail(node?.dataset.assetId),
-      'track-ipo-item': () => { const symbol=String(node?.dataset.ipoSymbol||'').toUpperCase(); const name=String(node?.dataset.ipoName||'Halka arz'); const demand=String(node?.dataset.ipoDemand||''); const trade=String(node?.dataset.ipoTrade||''); const existing=state.ipoTracked.find(i=>(symbol&&i.symbol===symbol)||i.name===name); if(existing){state.ipoTracked=state.ipoTracked.filter(i=>i.id!==existing.id);saveState();renderPage(false);showToast('Halka arz takibinden Ã§Ä±karÄ±ldÄ±');}else{showIpoTrackForm({symbol,name,demandEnd:/^\d{4}-\d{2}-\d{2}$/.test(demand)?demand:'',firstTradeDate:/^\d{4}-\d{2}-\d{2}$/.test(trade)?trade:''});} }
-    };
-    actions[action]?.();
-  }
-
-  function clearDemo() {
-    state = blankState();
-    state.demo = false;
-    localStorage.setItem(ONBOARDING_KEY,'1');
-    saveState();
-    renderPage();
-    showToast('Demo verileri temizlendi');
-  }
-
-  function modalHeader(title) {
-    return `<div class="modal-grabber"></div><div class="modal-head"><div class="modal-title">${esc(title)}</div><button type="button" class="modal-x" data-modal-close aria-label="Kapat">${ICONS.close}</button></div>`;
-  }
-
-  function showAssetForm(assetId = null) {
-    const existing = assetId ? assetById(assetId) : null;
-    const a = existing || {type:'BIST',currency:'TRY',symbol:'',name:'',quantity:'',avgCost:'',price:'',targetWeight:0,dividendTax:15,autoDividendTax:true,annualDividendPerShare:0,sourceSymbol:'',fundManagementFeeAnnual:null,fundManagementFeeDaily:null,fundEntryFee:null,fundExitFee:null,fundPerformanceFee:null,fundExpenseRatio:null,fundFeeSourceUrl:'',fundFeeUpdatedAt:null};
-    showModal(`${modalHeader(existing ? 'VarlÄ±ÄŸÄ± dÃ¼zenle' : 'Yeni varlÄ±k ekle')}
-      <form id="assetForm"><div class="form-grid">
-        <div class="field"><label>VarlÄ±k tÃ¼rÃ¼</label><select name="type">${Object.entries(TYPE_META).map(([key,m])=>`<option value="${key}" ${a.type===key?'selected':''}>${m.label}</option>`).join('')}</select></div>
-        <div class="field"><label>Para birimi</label><select name="currency">${['TRY','USD','EUR','GBP'].map(c=>`<option value="${c}" ${a.currency===c?'selected':''}>${c}</option>`).join('')}</select></div>
-        <div class="field full asset-lookup-field">
-          <label>Sembol / fon kodu</label>
-          <div class="lookup-input-row">
-            <input name="symbol" required autocomplete="off" autocapitalize="characters" value="${esc(a.symbol)}" placeholder="DEVA, TUPRS, SCHD, TMG">
-            <button type="button" class="lookup-button" id="assetLookupBtn">Bul</button>
-          </div>
-          <input type="hidden" name="sourceSymbol" value="${esc(a.sourceSymbol||'')}">
-          <div id="assetLookupStatus" class="lookup-status">${existing ? 'KayÄ±tlÄ± sembolÃ¼ yeniden doÄŸrulamak iÃ§in Bulâ€™a basÄ±n.' : 'SembolÃ¼ yazÄ±nca ÅŸirket/fon adÄ± ve gÃ¼ncel fiyat otomatik aranÄ±r.'}</div>
-          <div id="assetSearchResults" class="asset-search-results" hidden></div>
-        </div>
-        <div class="field full"><label>VarlÄ±k adÄ±</label><input name="name" value="${esc(a.name)}" placeholder="Otomatik doldurulacak; gerekirse dÃ¼zenleyebilirsiniz"></div>
-        <div class="field"><label>Adet / pay</label><input name="quantity" type="number" step="any" min="0" value="${a.quantity ?? ''}" placeholder="0"></div>
-        <div class="field"><label>${existing ? 'Ortalama maliyet' : 'AlÄ±ÅŸ fiyatÄ±'}</label><input name="avgCost" type="number" step="any" min="0" value="${a.avgCost ?? ''}" placeholder="0"></div>
-        ${existing ? '' : `<div class="field full"><label>AlÄ±ÅŸ tarihi</label><input name="purchaseDate" type="date" value="${isoDate()}" required><div class="field-hint">TemettÃ¼ hak ediÅŸi ve geÃ§miÅŸ performans bu tarihe gÃ¶re hesaplanÄ±r.</div></div>`}
-        <div class="field"><label>GÃ¼ncel fiyat</label><input name="price" type="number" step="any" min="0" value="${a.price ?? ''}" placeholder="Otomatik Ã§ekilecek"></div>
-        <div class="field"><label>Hedef aÄŸÄ±rlÄ±k (%)</label><input name="targetWeight" type="number" step=".1" min="0" max="100" value="${a.targetWeight ?? 0}"></div>
-        <div class="field"><label>TemettÃ¼ stopajÄ± (%)</label><input name="dividendTax" type="number" step=".1" min="0" max="100" value="${a.dividendTax ?? (a.type==='BIST'?15:0)}"><div class="field-hint">BIST iÃ§in gÃ¼ncel yasal oran otomatik uygulanÄ±r; istersen otomatiÄŸi kapatÄ±p manuel oran kullanabilirsin.</div></div>
-        <div class="field"><label>Stopaj modu</label><select name="autoDividendTax"><option value="1" ${a.autoDividendTax!==false?'selected':''}>Otomatik</option><option value="0" ${a.autoDividendTax===false?'selected':''}>Manuel</option></select></div>
-        <div class="field"><label>YÄ±llÄ±k temettÃ¼ / pay</label><input name="annualDividendPerShare" type="number" step="any" min="0" value="${a.annualDividendPerShare ?? 0}" placeholder="Otomatik hesaplanÄ±r"><div class="field-hint">Bul sonrasÄ± son 12 aylÄ±k temettÃ¼lerden otomatik hesaplanÄ±r; gerekirse dÃ¼zenleyebilirsiniz.</div></div>
-        <div class="field fund-fee-field" style="${a.type==='TEFAS'?'':'display:none'}"><label>Fon yÃ¶netim Ã¼creti (%/yÄ±l)</label><input name="fundManagementFeeAnnual" type="number" step="any" min="0" value="${a.fundManagementFeeAnnual ?? ''}" placeholder="KAP'tan otomatik"></div>
-        <div class="field fund-fee-field" style="${a.type==='TEFAS'?'':'display:none'}"><label>Fon yÃ¶netim Ã¼creti (%/gÃ¼n)</label><input name="fundManagementFeeDaily" type="number" step="any" min="0" value="${a.fundManagementFeeDaily ?? ''}" placeholder="KAP'tan otomatik" readonly></div>
-        <div class="field fund-fee-field" style="${a.type==='TEFAS'?'':'display:none'}"><label>Fon toplam gider oranÄ± (%)</label><input name="fundExpenseRatio" type="number" step="any" min="0" value="${a.fundExpenseRatio ?? ''}" placeholder="Varsa KAP'tan"></div>
-        <div class="field fund-fee-field" style="${a.type==='TEFAS'?'':'display:none'}"><label>GiriÅŸ komisyonu (%)</label><input name="fundEntryFee" type="number" step="any" min="0" value="${a.fundEntryFee ?? ''}" placeholder="KAP'tan otomatik"></div>
-        <div class="field fund-fee-field" style="${a.type==='TEFAS'?'':'display:none'}"><label>Ã‡Ä±kÄ±ÅŸ komisyonu (%)</label><input name="fundExitFee" type="number" step="any" min="0" value="${a.fundExitFee ?? ''}" placeholder="KAP'tan otomatik"></div>
-        <div class="field fund-fee-field" style="${a.type==='TEFAS'?'':'display:none'}"><label>Performans Ã¼creti (%)</label><input name="fundPerformanceFee" type="number" step="any" min="0" value="${a.fundPerformanceFee ?? ''}" placeholder="Varsa KAP'tan"></div>
-        <div class="field full"><div class="field-hint">Fon yÃ¶netim Ã¼creti fonun birim fiyatÄ±na zaten yansÄ±r; Finansal(EB) bu bedeli bilgi amaÃ§lÄ± gÃ¶sterir ve getiriden ikinci kez dÃ¼ÅŸmez.</div></div>
-      </div><div class="button-row">${existing?`<button type="button" class="danger-btn" id="deleteAsset">Sil</button>`:`<button type="button" class="secondary-btn" id="assetCancelButton" data-modal-close>VazgeÃ§</button>`}<button class="primary-btn" id="assetSaveButton" type="submit">Kaydet</button></div></form>`);
-
-    const form = $('#assetForm');
-    const typeSelect = form.elements.type;
-    const symbolInput = form.elements.symbol;
-    const sourceInput = form.elements.sourceSymbol;
-    const nameInput = form.elements.name;
-    const priceInput = form.elements.price;
-    const currencyInput = form.elements.currency;
-    const statusNode = $('#assetLookupStatus');
-    const resultsNode = $('#assetSearchResults');
-    const lookupButton = $('#assetLookupBtn');
-    const saveButton = $('#assetSaveButton');
-    let lookupTimer = null;
-    let lookupGeneration = 0;
-    let selectedMarketData = existing ? {
-      symbol:a.symbol, sourceSymbol:a.sourceSymbol, name:a.name, price:a.price,
-      prevClose:a.prevClose, changePct:a.changePct, currency:a.currency
-    } : null;
-
-    const setStatus = (message, tone = '') => {
-      statusNode.textContent = message;
-      statusNode.className = `lookup-status ${tone}`.trim();
-    };
-    const clearResults = () => {
-      resultsNode.hidden = true;
-      resultsNode.innerHTML = '';
-    };
-    const showResults = results => {
-      resultsNode.innerHTML = results.map((result,index)=>`
-        <button type="button" class="asset-search-result" data-result-index="${index}">
-          <span class="asset-result-symbol">${esc(result.symbol)}</span>
-          <span class="asset-result-main"><strong>${esc(result.name||result.symbol)}</strong><small>${esc(result.exchange||TYPE_META[result.type]?.label||'Otomatik veri')}</small></span>
-          <span class="asset-result-price">${Number(result.price)>0?money(result.price,result.currency||currencyInput.value,false,Math.abs(Number(result.price))<1?4:2):'SeÃ§'}</span>
-        </button>`).join('');
-      resultsNode.hidden = !results.length;
-      $$('.asset-search-result', resultsNode).forEach(button=>button.addEventListener('click',()=>{
-        const result=results[Number(button.dataset.resultIndex)];
-        if(result)applyLookupResult(result);
-      }));
-    };
-
-    async function applyLookupResult(result) {
-      clearResults();
-      selectedMarketData = {...result};
-      symbolInput.value = String(result.symbol || symbolInput.value).toUpperCase();
-      sourceInput.value = result.sourceSymbol || inferSourceSymbol(symbolInput.value,typeSelect.value);
-      if (result.name) nameInput.value = result.name;
-      if (result.currency) currencyInput.value = result.currency;
-      if (Number(result.price)>0) priceInput.value = String(Number(result.price));
-      setStatus(`${result.symbol} bulundu Â· ad ve fiyat otomatik dolduruldu.`, 'success');
-
-      try {
-        setStatus(`${result.symbol} doÄŸrulanÄ±yor Â· fiyat ve temettÃ¼ geÃ§miÅŸi alÄ±nÄ±yorâ€¦`, 'loading');
-        const quote = await lookupQuotePreview({
-          symbol:result.symbol,
-          sourceSymbol:sourceInput.value,
-          type:typeSelect.value,
-          currency:currencyInput.value
-        });
-        selectedMarketData = {...selectedMarketData,...quote};
-        if (quote.name && (!nameInput.value || nameInput.value===symbolInput.value)) nameInput.value=quote.name;
-        if (quote.currency) currencyInput.value=quote.currency;
-        if (Number(quote.price)>0) priceInput.value=String(Number(quote.price));
-        const cutoff=addDays(new Date(),-365);
-        const ttm=(Array.isArray(quote.dividends)?quote.dividends:[]).filter(d=>parseDate(d.date)>=cutoff && parseDate(d.date)<=new Date()).reduce((sum,d)=>sum+Number(d.amount||0),0);
-        if (ttm>0 && form.elements.annualDividendPerShare) form.elements.annualDividendPerShare.value=String(Number(ttm.toFixed(6)));
-        if (typeSelect.value==='BIST' && form.elements.autoDividendTax?.value!=='0') form.elements.dividendTax.value='15';
-        if (typeSelect.value==='TEFAS') {
-          const fees=await fundFeesForCode(result.symbol, quote.name||result.name||'');
-          if (fees) {
-            if (fees.managementFeeAnnual!=null) form.elements.fundManagementFeeAnnual.value=fees.managementFeeAnnual;
-            if (fees.managementFeeDaily!=null && form.elements.fundManagementFeeDaily) form.elements.fundManagementFeeDaily.value=fees.managementFeeDaily;
-            if (fees.expenseRatio!=null) form.elements.fundExpenseRatio.value=fees.expenseRatio;
-            if (fees.entryFee!=null) form.elements.fundEntryFee.value=fees.entryFee;
-            if (fees.exitFee!=null) form.elements.fundExitFee.value=fees.exitFee;
-            if (fees.performanceFee!=null) form.elements.fundPerformanceFee.value=fees.performanceFee;
-            selectedMarketData.fundFees=fees;
-          }
-        }
-        setStatus(`${result.symbol} doÄŸrulandÄ± Â· fiyat${ttm>0?' ve son 12 aylÄ±k temettÃ¼':''}${typeSelect.value==='TEFAS'?' ve fon gider bilgileri':''} otomatik dolduruldu.`, 'success');
-      } catch (error) {
-        if (Number(result.price)>0) setStatus(`${result.symbol} bulundu Â· fiyat dolduruldu; temettÃ¼ geÃ§miÅŸi ÅŸu an alÄ±namadÄ±.`, 'warning');
-        else setStatus(`${result.symbol} bulundu; fiyat ÅŸu an alÄ±namadÄ±. KayÄ±ttan sonra yeniden denenecek.`, 'warning');
-      }
-    }
-
-    async function runLookup({force = false} = {}) {
-      const type = typeSelect.value;
-      const query = String(symbolInput.value||'').trim();
-      clearTimeout(lookupTimer);
-      clearResults();
-      if (!assetTypeSupportsLookup(type)) {
-        setStatus('Bu varlÄ±k tÃ¼rÃ¼nde isim ve fiyat manuel girilir.', 'muted');
-        return null;
-      }
-      if (query.length < (type==='TEFAS'?3:2)) {
-        setStatus(type==='TEFAS'?'TEFAS fonunun kodunu en az 3 karakter yazÄ±n.':'Arama iÃ§in en az 2 karakter yazÄ±n.', 'warning');
-        return null;
-      }
-
-      const generation = ++lookupGeneration;
-      lookupButton.disabled = true;
-      lookupButton.classList.add('loading');
-      setStatus('Piyasa kaydÄ±nda aranÄ±yorâ€¦', 'loading');
-      try {
-        const results = await searchAssetCandidates(query,type);
-        if (generation !== lookupGeneration) return null;
-        if (!results.length) {
-          setStatus('EÅŸleÅŸen hisse/fon bulunamadÄ±. SembolÃ¼ veya fon kodunu kontrol edin.', 'error');
-          return null;
-        }
-        const normalized = query.toUpperCase().replace(/\.IS$/,'').replace(/\s+/g,'');
-        const exact = results.find(result => String(result.symbol||'').toUpperCase().replace(/\.IS$/,'')===normalized
-          || String(result.sourceSymbol||'').toUpperCase()===query.toUpperCase());
-        if (exact || (force && results.length===1) || results.length===1) {
-          const chosen = exact || results[0];
-          await applyLookupResult(chosen);
-          return chosen;
-        }
-        showResults(results);
-        setStatus(`${results.length} eÅŸleÅŸme bulundu; doÄŸru olanÄ± seÃ§in.`, 'success');
-        return null;
-      } catch (error) {
-        if (generation === lookupGeneration) setStatus(error.message || 'Otomatik arama yapÄ±lamadÄ±.', 'error');
-        return null;
-      } finally {
-        if (generation === lookupGeneration) {
-          lookupButton.disabled = false;
-          lookupButton.classList.remove('loading');
-        }
-      }
-    }
-
-    typeSelect.addEventListener('change',()=>{
-      const meta = TYPE_META[typeSelect.value];
-      if (meta) currencyInput.value = meta.currency;
-      selectedMarketData = null;
-      sourceInput.value = '';
-      clearResults();
-      form.querySelectorAll('.fund-fee-field').forEach(el=>el.style.display=typeSelect.value==='TEFAS'?'':'none');
-      if (typeSelect.value==='BIST' && form.elements.autoDividendTax?.value!=='0') form.elements.dividendTax.value='15';
-      if (assetTypeSupportsLookup(typeSelect.value)) {
-        setStatus(typeSelect.value==='TEFAS'?'Fon kodunu yazÄ±n; fiyat TEFASâ€™tan, gider bilgileri mÃ¼mkÃ¼nse KAPâ€™tan alÄ±nÄ±r.':'SembolÃ¼ yazÄ±nca otomatik arama baÅŸlar.');
-        if (symbolInput.value.trim().length >= (typeSelect.value==='TEFAS'?3:2)) runLookup({force:true});
-      } else setStatus('Bu varlÄ±k tÃ¼rÃ¼nde isim ve fiyat manuel girilir.', 'muted');
-    });
-
-    symbolInput.addEventListener('input',()=>{
-      selectedMarketData = null;
-      sourceInput.value = '';
-      clearResults();
-      const cursor = symbolInput.selectionStart;
-      symbolInput.value = symbolInput.value.toUpperCase();
-      try { symbolInput.setSelectionRange(cursor,cursor); } catch (_) {}
-      clearTimeout(lookupTimer);
-      const min = typeSelect.value==='TEFAS'?3:2;
-      if (symbolInput.value.trim().length < min) {
-        setStatus(typeSelect.value==='TEFAS'?'TEFAS fon kodunu yazÄ±n.':'SembolÃ¼ yazÄ±n; arama otomatik baÅŸlayacak.');
-        return;
-      }
-      setStatus('YazmayÄ± bitirince otomatik aranacakâ€¦', 'loading');
-      lookupTimer = setTimeout(()=>runLookup(),550);
-    });
-    lookupButton.addEventListener('click',()=>runLookup({force:true}));
-
-    form.addEventListener('submit',async e=>{
-      e.preventDefault();
-      saveButton.disabled = true;
-      saveButton.textContent = 'Kaydediliyorâ€¦';
-      try {
-        if (assetTypeSupportsLookup(typeSelect.value) && (!sourceInput.value || !nameInput.value || !(Number(priceInput.value)>0))) {
-          await runLookup({force:true});
-        }
-        const fd = new FormData(form);
-        const type = String(fd.get('type'));
-        const symbol = String(fd.get('symbol')).trim().toUpperCase();
-        if (!symbol) throw new Error('Sembol veya fon kodu zorunludur.');
-        const currentPrice = Number(fd.get('price')||0);
-        const next = {
-          id: existing?.id || uid('asset'),
-          type,
-          currency:String(fd.get('currency')),
-          symbol,
-          sourceSymbol:String(fd.get('sourceSymbol')).trim() || inferSourceSymbol(symbol,type),
-          name:String(fd.get('name')).trim() || symbol,
-          quantity:Number(fd.get('quantity')||0),
-          avgCost:Number(fd.get('avgCost')||0),
-          price:currentPrice,
-          prevClose:Number(selectedMarketData?.prevClose || existing?.prevClose || currentPrice),
-          changePct:Number(selectedMarketData?.changePct || existing?.changePct || 0),
-          targetWeight:Number(fd.get('targetWeight')||0),
-          dividendTax:Number(fd.get('dividendTax')||0),
-          autoDividendTax:String(fd.get('autoDividendTax')||'1')==='1',
-          annualDividendPerShare:Number(fd.get('annualDividendPerShare')||0),
-          fundManagementFeeAnnual:fd.get('fundManagementFeeAnnual')===''?null:Number(fd.get('fundManagementFeeAnnual')),
-          fundManagementFeeDaily:fd.get('fundManagementFeeDaily')===''?(selectedMarketData?.fundFees?.managementFeeDaily ?? existing?.fundManagementFeeDaily ?? null):Number(fd.get('fundManagementFeeDaily')),
-          fundExpenseRatio:fd.get('fundExpenseRatio')===''?null:Number(fd.get('fundExpenseRatio')),
-          fundEntryFee:fd.get('fundEntryFee')===''?null:Number(fd.get('fundEntryFee')),
-          fundExitFee:fd.get('fundExitFee')===''?null:Number(fd.get('fundExitFee')),
-          fundPerformanceFee:fd.get('fundPerformanceFee')===''?null:Number(fd.get('fundPerformanceFee')),
-          fundFeeSourceUrl:selectedMarketData?.fundFees?.sourceUrl || existing?.fundFeeSourceUrl || '',
-          fundFeeUpdatedAt:selectedMarketData?.fundFees?.updatedAt || existing?.fundFeeUpdatedAt || null,
-          history:existing?.history || [],
-          historyDates:existing?.historyDates || [],
-          lastUpdated:currentPrice>0 ? new Date().toISOString() : (existing?.lastUpdated || null),
-          dataStatus:currentPrice>0 ? 'auto' : (existing?.dataStatus || 'pending'),
-          dataSource:selectedMarketData?.source || existing?.dataSource || null
-        };
-        if (existing) Object.assign(existing,next); else {
-          state.assets.push(next);
-          if (next.quantity > 0) { const purchaseDate=String(fd.get('purchaseDate')||''); if(!purchaseDate) throw new Error('AlÄ±ÅŸ tarihi zorunludur.'); state.transactions.push({id:uid('tx'),assetId:next.id,type:'buy',date:purchaseDate,quantity:next.quantity,price:next.avgCost,fee:0,currency:next.currency}); syncAssetLedger(next); }
-        }
-        state.demo=false;
-        saveState();
-        closeModal();
-        renderPage();
-        showToast(existing?'VarlÄ±k gÃ¼ncellendi':'VarlÄ±k eklendi');
-        if (state.settings.autoRefresh || !(next.price>0)) refreshAll({silent:true,onlyAssetId:next.id});
-      } catch (error) {
-        setStatus(error.message || 'VarlÄ±k kaydedilemedi.', 'error');
-      } finally {
-        saveButton.disabled = false;
-        saveButton.textContent = 'Kaydet';
-      }
-    });
-    $('#deleteAsset')?.addEventListener('click',()=>confirmDeleteAsset(existing.id));
-  }
-
-  function confirmDeleteAsset(assetId) {
-    const a = assetById(assetId); if (!a) return;
-    showModal(`${modalHeader('VarlÄ±ÄŸÄ± sil')}<div class="empty-text" style="font-size:11px;margin:0">${esc(a.symbol)} ve bu varlÄ±ÄŸa baÄŸlÄ± tÃ¼m iÅŸlemler/temettÃ¼ler silinecek. Bu iÅŸlem geri alÄ±namaz.</div><div class="button-row"><button class="secondary-btn" data-modal-close>VazgeÃ§</button><button class="danger-btn" id="confirmDelete">KalÄ±cÄ± olarak sil</button></div>`);
-    $('#confirmDelete').addEventListener('click',()=>{
-      state.assets=state.assets.filter(x=>x.id!==assetId);
-      state.transactions=state.transactions.filter(x=>x.assetId!==assetId);
-      state.dividendEvents=state.dividendEvents.filter(x=>x.assetId!==assetId);
-      saveState(); closeModal(); renderPage(); showToast('VarlÄ±k silindi');
-    });
-  }
-
-  function showTransactionForm(assetId = null, purchaseKindDefault = 'normal') {
-    if (!state.assets.length) return showAssetForm();
-    showModal(`${modalHeader('Yeni portfÃ¶y iÅŸlemi')}<form id="txForm">
-      <div class="field"><label>Ä°ÅŸlem tÃ¼rÃ¼</label><div class="segmented" id="txSegments"><button type="button" class="active" data-tx="buy">AlÄ±ÅŸ</button><button type="button" data-tx="sell">SatÄ±ÅŸ</button><button type="button" data-tx="dividend">TemettÃ¼</button></div><input type="hidden" name="type" value="buy"></div>
-      <div class="form-grid"><div class="field full"><label>VarlÄ±k</label><select name="assetId">${state.assets.map(a=>`<option value="${a.id}" ${a.id===assetId?'selected':''}>${esc(a.symbol)} Â· ${esc(a.name)}</option>`).join('')}</select></div><div class="field"><label>Tarih</label><input type="date" name="date" value="${isoDate()}" required></div><div class="field"><label>Adet / pay</label><input type="number" step="any" min="0" name="quantity" required></div><div class="field"><label>Fiyat / pay</label><input type="number" step="any" min="0" name="price" required></div><div class="field"><label>Komisyon</label><input type="number" step="any" min="0" name="fee" value="0"></div><div class="field"><label>AlÄ±ÅŸ kaynaÄŸÄ±</label><select name="fundingSource"><option value="new_money">Yeni para / normal bakiye</option><option value="dividend">TemettÃ¼ TL bakiyesi</option></select><div class="field-hint">TemettÃ¼ bakiyesi: ${money(dividendCashBalance(),'TRY')}</div></div><div class="field full"><label>AlÄ±ÅŸ tÃ¼rÃ¼</label><select name="purchaseKind"><option value="normal" ${purchaseKindDefault==='normal'?'selected':''}>Normal piyasa alÄ±mÄ±</option><option value="ipo" ${purchaseKindDefault==='ipo'?'selected':''}>Halka arzdan daÄŸÄ±tÄ±lan lot</option></select><div class="field-hint">Halka arzÄ± seÃ§ersen bu lotlar Piyasa â†’ Halka Arzlar â†’ AldÄ±klarÄ±m alanÄ±nda ayrÄ± izlenir.</div></div></div>
-      <div class="button-row"><button type="button" class="secondary-btn" data-modal-close>VazgeÃ§</button><button class="primary-btn">Ä°ÅŸlemi kaydet</button></div></form>`);
-    $$('#txSegments button').forEach(b=>b.addEventListener('click',()=>{$$('#txSegments button').forEach(x=>x.classList.remove('active'));b.classList.add('active');$('#txForm').elements.type.value=b.dataset.tx;}));
-    $('#txForm').addEventListener('submit',e=>{
-      e.preventDefault(); const fd=new FormData(e.currentTarget); const a=assetById(fd.get('assetId')); if(!a)return;
-      const type=fd.get('type'), qty=Number(fd.get('quantity')||0), price=Number(fd.get('price')||0), fee=Number(fd.get('fee')||0), txDate=String(fd.get('date')||'');
-      if(!txDate) return showToast('Ä°ÅŸlem tarihi zorunludur.');
-      if(!(qty>0) || !(price>=0)) return showToast('Adet ve fiyatÄ± kontrol edin.');
-      if(type==='dividend') { const evt={id:uid('div'),assetId:a.id,exDate:String(fd.get('date')),payDate:String(fd.get('date')),amountPerShare:qty?price/qty:price,currency:a.currency,status:'confirmed',received:true,source:'Manuel iÅŸlem'}; state.dividendEvents.push(evt); state.cashLedger.push({id:uid('cash'),type:'dividend_income',eventId:evt.id,date:evt.payDate,amountTry:eventNet(evt),note:`${a.symbol} net temettÃ¼`}); }
-      else {
-        if(type==='sell'){const available=quantityAtDate(a.id,txDate);if(qty>available+1e-9)return showToast(`Bu tarihte en fazla ${numberFmt(available,4)} adet satabilirsiniz.`);}
-        const fundingSource=String(fd.get('fundingSource')||'new_money');
-        const purchaseKind=type==='buy'?String(fd.get('purchaseKind')||'normal'):undefined;
-        const spendTry=(qty*price+fee)*fxRate(a.currency);
-        if(type==='buy'&&fundingSource==='dividend'){
-          if(dividendCashBalance()+1e-6<spendTry)return showToast(`TemettÃ¼ bakiyesi yetersiz: ${money(dividendCashBalance(),'TRY')}`);
-          state.cashLedger.push({id:uid('cash'),type:'dividend_reinvestment',date:txDate,amountTry:-spendTry,note:`${a.symbol} temettÃ¼ yeniden yatÄ±rÄ±mÄ±`});
-        }
-        state.transactions.push({id:uid('tx'),assetId:a.id,type,date:txDate,quantity:qty,price,fee,currency:a.currency,fundingSource:type==='buy'?fundingSource:undefined,purchaseKind,ipoPrice:purchaseKind==='ipo'?price:undefined});
-        syncAssetLedger(a);
-      }
-      state.demo=false;saveState();closeModal();renderPage();showToast('Ä°ÅŸlem kaydedildi');
-    });
-  }
-
-  function showWatchForm(watchId=null){
-    const existing=(state.watchlist||[]).find(w=>w.id===watchId)||null;
-    const w=existing||{type:'BIST',currency:'TRY',symbol:'',name:'',price:0,changePct:0,note:''};
-    showModal(`${modalHeader(existing?'Takibi dÃ¼zenle':'Ä°zleme listesine ekle')}<form id="watchForm"><div class="form-grid"><div class="field"><label>TÃ¼r</label><select name="type">${[['BIST','BIST'],['US','ABD hissesi'],['ETF','ETF'],['TEFAS','Fon'],['GOLD','AltÄ±n'],['SILVER','GÃ¼mÃ¼ÅŸ'],['CUSTOM','DiÄŸer']].map(([k,l])=>`<option value="${k}" ${w.type===k?'selected':''}>${l}</option>`).join('')}</select></div><div class="field"><label>Sembol / fon kodu</label><input name="symbol" value="${esc(w.symbol)}" required></div><div class="field full"><label>Ad</label><input name="name" value="${esc(w.name||'')}"></div><div class="field"><label>Takip fiyatÄ±</label><input type="number" step="any" min="0" name="price" value="${Number(w.price||0)}"></div><div class="field"><label>Para birimi</label><select name="currency">${['TRY','USD','EUR','GBP'].map(c=>`<option ${w.currency===c?'selected':''}>${c}</option>`).join('')}</select></div><div class="field full"><label>Not / hedef</label><input name="note" value="${esc(w.note||'')}" placeholder="Ã–rn. 150 TL altÄ±nÄ± takip et"></div></div><div class="button-row">${existing?'<button type="button" class="danger-btn" id="deleteWatch">Sil</button>':''}<button type="button" class="secondary-btn" data-modal-close>VazgeÃ§</button><button class="primary-btn">Kaydet</button></div></form>`);
-    $('#watchForm').addEventListener('submit',e=>{e.preventDefault();const fd=new FormData(e.currentTarget);const next={...(existing||{}),id:existing?.id||uid('watch'),type:String(fd.get('type')),symbol:String(fd.get('symbol')||'').toUpperCase().trim(),name:String(fd.get('name')||''),price:Number(fd.get('price')||0),currency:String(fd.get('currency')||'TRY'),note:String(fd.get('note')||''),changePct:Number(existing?.changePct||0)};if(existing)Object.assign(existing,next);else state.watchlist.push(next);saveState();closeModal();renderPage();showToast('Ä°zleme listesi gÃ¼ncellendi');});
-    $('#deleteWatch')?.addEventListener('click',()=>{state.watchlist=state.watchlist.filter(x=>x.id!==existing.id);saveState();closeModal();renderPage();showToast('Takipten Ã§Ä±karÄ±ldÄ±');});
-  }
-
-  function showDividendConfirmation(eventId){
-    const e=state.dividendEvents.find(x=>x.id===eventId);if(!e)return;
-    const a=assetById(e.assetId);if(!a)return;
-    const qty=eligibleQuantityAtExDate(e.assetId,e.exDate||e.payDate),tax=clamp(e.taxRate??automaticDividendTax(a,e.payDate||e.exDate),0,100);
-    const gross=qty*Number(e.amountPerShare||0),netCurrency=gross*(1-tax/100),netTry=netCurrency*fxRate(e.currency||a.currency);
-    showModal(`${modalHeader('TemettÃ¼ Ã¶demesini kontrol et')}<div class="detail-sheet"><div class="big-symbol">${esc(a.symbol)}</div><div class="detail-grid"><div class="detail-stat"><div class="label">Hak edilen adet</div><div class="value">${numberFmt(qty,4)}</div></div><div class="detail-stat"><div class="label">Pay baÅŸÄ±na brÃ¼t</div><div class="value">${money(e.amountPerShare,e.currency||a.currency,false,4)}</div></div><div class="detail-stat"><div class="label">BrÃ¼t toplam</div><div class="value">${money(gross,e.currency||a.currency)}</div></div><div class="detail-stat"><div class="label">Stopaj</div><div class="value">%${numberFmt(tax,2)}</div></div><div class="detail-stat"><div class="label">Net Ã¶deme</div><div class="value positive">${money(netCurrency,e.currency||a.currency)}</div></div><div class="detail-stat"><div class="label">TL hesaba geÃ§ecek</div><div class="value positive">${money(netTry,'TRY')}</div></div></div><div class="disclaimer">Adet, hak kullanÄ±m tarihindeki iÅŸlem geÃ§miÅŸinden otomatik hesaplandÄ±. GerÃ§ek banka/aracÄ± kurum tutarÄ± farklÄ±ysa temettÃ¼ kaydÄ±nÄ± dÃ¼zenleyebilirsin.</div><div class="button-row"><button class="secondary-btn" id="divNotReceived">AlmadÄ±m</button><button class="primary-btn" id="divReceived">TemettÃ¼ aldÄ±m</button></div></div>`);
-    $('#divReceived').addEventListener('click',()=>{e.received=true;e.receivedAt=isoDate();e.confirmedQuantity=qty;e.confirmedNetTry=netTry;if(!state.cashLedger.some(x=>x.eventId===e.id&&x.type==='dividend_income'))state.cashLedger.push({id:uid('cash'),type:'dividend_income',eventId:e.id,date:e.payDate||isoDate(),amountTry:netTry,note:`${a.symbol} net temettÃ¼`});saveState();closeModal();renderPage();showToast(`${money(netTry,'TRY')} temettÃ¼ TL bakiyesine eklendi`);});
-    $('#divNotReceived').addEventListener('click',()=>{e.reviewedNotReceived=true;e.reviewedAt=isoDate();saveState();closeModal();renderPage();showToast('Ã–deme alÄ±nmadÄ± olarak iÅŸaretlendi');});
-  }
-
-  function showDividendForm(assetId = null, datePrefill = null) {
-    if (!state.assets.length) return showAssetForm();
-    showModal(`${modalHeader('TemettÃ¼ olayÄ± ekle')}<form id="divForm"><div class="form-grid">
-      <div class="field full"><label>VarlÄ±k</label><select name="assetId">${state.assets.map(a=>`<option value="${a.id}" ${a.id===assetId?'selected':''}>${esc(a.symbol)} Â· ${esc(a.name)}</option>`).join('')}</select></div>
-      <div class="field"><label>Hak kullanÄ±m tarihi</label><input type="date" name="exDate" value="${datePrefill||isoDate()}" required></div><div class="field"><label>Ã–deme tarihi</label><input type="date" name="payDate" value="${datePrefill||isoDate(addDays(new Date(),2))}" required></div>
-      <div class="field"><label>Pay baÅŸÄ±na brÃ¼t tutar</label><input type="number" step="any" min="0" name="amount" required></div><div class="field"><label>Durum</label><select name="status"><option value="confirmed">AÃ§Ä±klanmÄ±ÅŸ</option><option value="estimated">Tahmini</option></select></div>
-      <div class="field"><label>Stopaj (%)</label><input type="number" step=".1" min="0" max="100" name="taxRate" placeholder="VarlÄ±k ayarÄ±"></div><div class="field"><label>Kaynak/not</label><input name="source" value="Manuel kayÄ±t"></div>
-      <div class="field full"><div class="toggle-row" id="receivedToggle"><div class="toggle-main"><div class="toggle-title">Ã–deme alÄ±ndÄ±</div><div class="toggle-note">GeÃ§miÅŸ temettÃ¼ olarak kaydet</div></div><i class="switch"></i><input type="hidden" name="received" value="0"></div></div>
-      </div><div class="button-row"><button type="button" class="secondary-btn" data-modal-close>VazgeÃ§</button><button class="primary-btn">Kaydet</button></div></form>`);
-    $('#receivedToggle').addEventListener('click',()=>{const sw=$('.switch','#receivedToggle');sw.classList.toggle('on');$('#divForm').elements.received.value=sw.classList.contains('on')?'1':'0';});
-    $('#divForm').addEventListener('submit',e=>{e.preventDefault();const fd=new FormData(e.currentTarget);const a=assetById(fd.get('assetId'));if(!a)return;const evt={id:uid('div'),assetId:a.id,exDate:String(fd.get('exDate')),payDate:String(fd.get('payDate')),amountPerShare:Number(fd.get('amount')||0),currency:a.currency,status:String(fd.get('status')),received:fd.get('received')==='1',taxRate:fd.get('taxRate')===''?undefined:Number(fd.get('taxRate')),source:String(fd.get('source')||'Manuel kayÄ±t')};state.dividendEvents.push(evt);if(evt.received){state.cashLedger.push({id:uid('cash'),type:'dividend_income',eventId:evt.id,date:evt.payDate,amountTry:eventNet(evt),note:`${a.symbol} net temettÃ¼`});}state.demo=false;saveState();closeModal();renderPage();showToast('TemettÃ¼ olayÄ± eklendi');scheduleEventNotifications();});
-  }
-
-  function showAssetDetail(assetId) {
-    const a=assetById(assetId);if(!a)return;const value=assetValue(a),cost=assetCost(a),profit=value-cost,annual=state.dividendEvents.filter(e=>e.assetId===a.id&&parseDate(e.payDate||e.exDate)>=addDays(new Date(),-1)&&parseDate(e.payDate||e.exDate)<=addDays(new Date(),365)).reduce((s,e)=>s+eventNet(e),0)||Number(a.quantity||0)*Number(a.annualDividendPerShare||0)*(1-clamp(automaticDividendTax(a),0,100)/100)*fxRate(a.currency);const hist=(a.history||[]).map(Number).filter(Number.isFinite);const spark=sparklineSvg(hist);const pos=transactionPosition(a.id);const firstBuy=state.transactions.filter(t=>t.assetId===a.id&&t.type==='buy'&&t.date).sort((x,y)=>parseDate(x.date)-parseDate(y.date))[0];
-    showModal(`${modalHeader(a.name||a.symbol)}<div class="detail-sheet"><div class="big-symbol">${esc(a.symbol)}</div><div class="detail-price">${money(a.price,a.currency,false,a.price<1?4:2)}</div><div class="asset-change ${Number(a.changePct||0)>=0?'positive':'negative'}">${pct(a.changePct)} bugÃ¼n</div>${spark}<div class="detail-grid"><div class="detail-stat"><div class="label">PortfÃ¶y deÄŸeri</div><div class="value">${money(value,'TRY')}</div></div><div class="detail-stat"><div class="label">AÃ§Ä±k kÃ¢r / zarar</div><div class="value ${profit>=0?'positive':'negative'}">${money(profit,'TRY')} Â· ${pct(assetProfitPct(a))}</div></div><div class="detail-stat"><div class="label">Ortalama maliyet</div><div class="value">${money(a.avgCost,a.currency,false,a.avgCost<1?4:2)}</div></div><div class="detail-stat"><div class="label">GerÃ§ekleÅŸen kÃ¢r / zarar</div><div class="value ${Number(pos.realizedProfit||0)>=0?'positive':'negative'}">${money(Number(pos.realizedProfit||0)*fxRate(a.currency),'TRY')}</div></div><div class="detail-stat"><div class="label">Ä°lk alÄ±ÅŸ tarihi</div><div class="value">${firstBuy?dateText(firstBuy.date):'â€”'}</div></div><div class="detail-stat"><div class="label">12 ay net temettÃ¼</div><div class="value">${money(annual,'TRY')}</div></div>${a.type==='TEFAS'?`<div class="detail-stat"><div class="label">YÃ¶netim Ã¼creti</div><div class="value">${a.fundManagementFeeAnnual!=null?'%'+numberFmt(a.fundManagementFeeAnnual,4)+' / yÄ±l':'â€”'}</div></div><div class="detail-stat"><div class="label">Fon toplam gider oranÄ±</div><div class="value">${a.fundExpenseRatio!=null?'%'+numberFmt(a.fundExpenseRatio,4):'â€”'}</div></div>`:''}</div>${a.type==='TEFAS'?`<div class="disclaimer">Fon Ã¼cretleri KAP'tan mÃ¼mkÃ¼n olduÄŸunda otomatik alÄ±nÄ±r. YÃ¶netim Ã¼creti fon fiyatÄ±na zaten yansÄ±dÄ±ÄŸÄ± iÃ§in portfÃ¶y getirisinden ayrÄ±ca dÃ¼ÅŸÃ¼lmez.</div>`:''}<div class="button-row"><button class="secondary-btn" id="detailDividend">TemettÃ¼ ekle</button><button class="primary-btn" id="detailEdit">DÃ¼zenle</button></div></div>`);
-    $('#detailEdit').addEventListener('click',()=>showAssetForm(a.id));$('#detailDividend').addEventListener('click',()=>showDividendForm(a.id));
-  }
-
-  function sparklineSvg(values) {
-    if(values.length<2)return '';
-    const w=320,h=90,pad=5,min=Math.min(...values),max=Math.max(...values),range=max-min||1;
-    const pts=values.map((v,i)=>[pad+i*(w-2*pad)/(values.length-1),h-pad-(v-min)/range*(h-2*pad)]);
-    const line=pts.map((p,i)=>`${i?'L':'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
-    const area=`${line} L${pts.at(-1)[0]},${h} L${pts[0][0]},${h} Z`;
-    return `<svg class="sparkline" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><defs><linearGradient id="sparkGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#25d5bd" stop-opacity=".35"/><stop offset="1" stop-color="#25d5bd" stop-opacity="0"/></linearGradient></defs><path class="area" d="${area}"/><path class="line" d="${line}"/></svg>`;
-  }
-
-  function showTargetEditor() {
-    showModal(`${modalHeader('Hedef portfÃ¶y aÄŸÄ±rlÄ±klarÄ±')}<form id="targetForm">${state.assets.map(a=>`<div class="field"><label>${esc(a.symbol)} hedefi (%)</label><input type="number" step=".1" min="0" max="100" name="${a.id}" value="${Number(a.targetWeight||0)}"></div>`).join('')}<div class="field-hint">Toplam hedefin %100 olmasÄ± Ã¶nerilir. Uygulama sadece farkÄ± gÃ¶sterir; alÄ±m-satÄ±m emri vermez.</div><div class="button-row"><button type="button" class="secondary-btn" data-modal-close>VazgeÃ§</button><button class="primary-btn">Kaydet</button></div></form>`);
-    $('#targetForm').addEventListener('submit',e=>{e.preventDefault();const fd=new FormData(e.currentTarget);state.assets.forEach(a=>a.targetWeight=Number(fd.get(a.id)||0));saveState();closeModal();renderPage();showToast('Hedefler gÃ¼ncellendi');});
-  }
-
-  function showProjectionSettings() {
-    const s=state.settings;
-    showModal(`${modalHeader('Ã–zgÃ¼rlÃ¼k projeksiyonu')}<form id="projectionForm"><div class="form-grid"><div class="field"><label>AylÄ±k yaÅŸam gideri (â‚º)</label><input type="number" min="0" step="100" name="monthlyExpense" value="${s.monthlyExpense}"></div><div class="field"><label>AylÄ±k yeni yatÄ±rÄ±m (â‚º)</label><input type="number" min="0" step="100" name="monthlyContribution" value="${s.monthlyContribution}"></div><div class="field"><label>YÄ±llÄ±k getiri varsayÄ±mÄ± (%)</label><input type="number" step=".1" name="expectedReturn" value="${s.expectedReturn}"></div><div class="field"><label>YÄ±llÄ±k net temettÃ¼ hedefi (â‚º)</label><input type="number" min="0" step="1000" name="dividendGoalAnnual" value="${s.dividendGoalAnnual}"></div></div><div class="disclaimer">Projeksiyon bir tahmindir; piyasa getirisi, kur ve temettÃ¼ Ã¶demeleri garanti deÄŸildir.</div><div class="button-row"><button type="button" class="secondary-btn" data-modal-close>VazgeÃ§</button><button class="primary-btn">Kaydet</button></div></form>`);
-    $('#projectionForm').addEventListener('submit',e=>{e.preventDefault();const fd=new FormData(e.currentTarget);['monthlyExpense','monthlyContribution','expectedReturn','dividendGoalAnnual'].forEach(k=>state.settings[k]=Number(fd.get(k)||0));saveState();closeModal();renderPage();showToast('Projeksiyon ayarlarÄ± gÃ¼ncellendi');});
-  }
-
-  function showSettings() {
-    const s=state.settings;
-    showModal(`${modalHeader('Ayarlar')}<div class="setting-group"><div class="setting-group-title">Veri ve yenileme</div><div class="setting-list">
-      <div class="setting-row" id="dataSettings"><div class="setting-icon">${ICONS.server}</div><div><div class="setting-name">KiÅŸisel veri sunucusu</div><div class="setting-value">${s.backendUrl?esc(s.backendUrl):'DoÄŸrudan kaynak modu'}</div></div><span class="setting-chevron">â€º</span></div>
-      <div class="setting-row" id="refreshNow"><div class="setting-icon">${ICONS.refresh}</div><div><div class="setting-name">Åimdi yenile</div><div class="setting-value">${timeAgo(state.market.lastSync)}</div></div><span class="setting-chevron">â€º</span></div>
-      <div class="setting-row" id="sourceStatus"><div class="setting-icon">${ICONS.info}</div><div><div class="setting-name">Veri kaynaklarÄ±</div><div class="setting-value">AÃ§Ä±klanmÄ±ÅŸ ve tahmini veri ayrÄ±mÄ±</div></div><span class="setting-chevron">â€º</span></div>
-    </div></div>
-    <div class="setting-group"><div class="setting-group-title">KiÅŸiselleÅŸtirme</div><div class="setting-list">
-      <div class="setting-row" id="privacySetting"><div class="setting-icon">${ICONS.eye}</div><div><div class="setting-name">Gizlilik modu</div><div class="setting-value">TutarlarÄ± bulanÄ±klaÅŸtÄ±r</div></div><i class="switch ${s.privacy?'on':''}"></i></div>
-      <div class="setting-row" id="notificationSetting"><div class="setting-icon">${ICONS.bell}</div><div><div class="setting-name">TemettÃ¼ bildirimleri</div><div class="setting-value">Hak kullanÄ±m ve Ã¶deme uyarÄ±larÄ±</div></div><i class="switch ${s.notifications?'on':''}"></i></div>
-      <div class="setting-row" id="widgetHelp"><div class="setting-icon">${ICONS.widget}</div><div><div class="setting-name">Android widget'larÄ±</div><div class="setting-value">PortfÃ¶y Ã¶zeti ve sÄ±radaki temettÃ¼</div></div><span class="setting-chevron">â€º</span></div>
-      <div class="setting-row" id="projectionSettings"><div class="setting-icon">${ICONS.target}</div><div><div class="setting-name">Gelir hedefi</div><div class="setting-value">${money(s.dividendGoalAnnual,'TRY')} / yÄ±l</div></div><span class="setting-chevron">â€º</span></div>
-    </div></div>
-    <div class="setting-group"><div class="setting-group-title">Yedek ve taÅŸÄ±ma</div><div class="setting-list">
-      <div class="setting-row" id="exportData"><div class="setting-icon">${ICONS.download}</div><div><div class="setting-name">YedeÄŸi dÄ±ÅŸa aktar</div><div class="setting-value">ÅifrelenmemiÅŸ JSON dosyasÄ±</div></div><span class="setting-chevron">â€º</span></div>
-      <div class="setting-row" id="exportCalendar"><div class="setting-icon">${ICONS.calendar}</div><div><div class="setting-name">TemettÃ¼ takvimini aktar</div><div class="setting-value">Google/Apple/Outlook iÃ§in .ics</div></div><span class="setting-chevron">â€º</span></div>
-      <div class="setting-row" id="importData"><div class="setting-icon">${ICONS.upload}</div><div><div class="setting-name">Yedekten geri yÃ¼kle</div><div class="setting-value">Finansal(EB) JSON yedeÄŸi</div></div><span class="setting-chevron">â€º</span></div>
-      <div class="setting-row" id="resetData"><div class="setting-icon" style="color:var(--negative);background:rgba(255,102,127,.08)">${ICONS.trash}</div><div><div class="setting-name" style="color:var(--negative)">TÃ¼m verileri sil</div><div class="setting-value">Cihazdaki yerel portfÃ¶yÃ¼ sÄ±fÄ±rla</div></div><span class="setting-chevron">â€º</span></div>
-    </div></div><div class="disclaimer">Finansal(EB) v${APP_VERSION}. YatÄ±rÄ±m tavsiyesi deÄŸildir. Fiyat ve temettÃ¼ kayÄ±tlarÄ±nÄ± iÅŸlem yapmadan Ã¶nce aracÄ± kurum/KAP verisiyle doÄŸrula.</div>`,{className:'settings-modal'});
-    $('#dataSettings').addEventListener('click',showDataSettings);
-    $('#refreshNow').addEventListener('click',()=>{closeModal();refreshAll({includeContent:true});});
-    $('#sourceStatus').addEventListener('click',showSourceStatus);
-    $('#privacySetting').addEventListener('click',()=>{state.settings.privacy=!state.settings.privacy;saveState();showSettings();renderPage();});
-    $('#notificationSetting').addEventListener('click',()=>{state.settings.notifications=!state.settings.notifications;saveState();showSettings();scheduleEventNotifications();});
-    $('#widgetHelp').addEventListener('click',showWidgetHelp);
-    $('#projectionSettings').addEventListener('click',showProjectionSettings);
-    $('#exportData').addEventListener('click',exportData);
-    $('#exportCalendar').addEventListener('click',exportCalendar);
-    $('#importData').addEventListener('click',()=>$('#importInput').click());
-    $('#resetData').addEventListener('click',confirmReset);
-  }
-
-  function showDataSettings() {
-    const s=state.settings;
-    showModal(`${modalHeader('KiÅŸisel veri sunucusu')}<form id="dataForm"><div class="field"><label>API adresi</label><input name="backendUrl" value="${esc(s.backendUrl)}" placeholder="https://alanadiniz.com/finansaleb/api.php"></div><div class="field"><label>API eriÅŸim anahtarÄ±</label><input name="backendToken" value="${esc(s.backendToken)}" placeholder="KiÅŸisel anahtar"></div><div class="field"><label>Otomatik yenileme aralÄ±ÄŸÄ±</label><select name="refreshMinutes">${[[15,'15 dakika'],[30,'30 dakika'],[60,'1 saat'],[180,'3 saat'],[360,'6 saat']].map(([v,l])=>`<option value="${v}" ${Number(s.refreshMinutes||((s.refreshHours||6)*60))===v?'selected':''}>${l}</option>`).join('')}</select></div><div class="toggle-row" id="autoRefreshToggle"><div class="toggle-main"><div class="toggle-title">Uygulama aÃ§Ä±lÄ±nca yenile</div><div class="toggle-note">Son yenileme sÃ¼resi dolduysa otomatik Ã§alÄ±ÅŸÄ±r</div></div><i class="switch ${s.autoRefresh?'on':''}"></i><input type="hidden" name="autoRefresh" value="${s.autoRefresh?'1':'0'}"></div><div class="disclaimer">APK; BIST/ABD/ETF aramasÄ±nÄ±, fiyatlarÄ± ve TEFAS fon kodlarÄ±nÄ± kendi Android veri katmanÄ±ndan otomatik sorgular. KiÅŸisel PHP sunucusu yalnÄ±zca Ã¶nbellek, KAP ve ek dayanÄ±klÄ±lÄ±k iÃ§in isteÄŸe baÄŸlÄ±dÄ±r.</div><div class="button-row"><button type="button" class="secondary-btn" data-modal-close>VazgeÃ§</button><button class="primary-btn">Kaydet ve test et</button></div></form>`);
-    $('#autoRefreshToggle').addEventListener('click',()=>{const sw=$('.switch','#autoRefreshToggle');sw.classList.toggle('on');$('#dataForm').elements.autoRefresh.value=sw.classList.contains('on')?'1':'0';});
-    $('#dataForm').addEventListener('submit',async e=>{e.preventDefault();const fd=new FormData(e.currentTarget);s.backendUrl=String(fd.get('backendUrl')).trim().replace(/\/$/,'');s.backendToken=String(fd.get('backendToken')).trim();s.refreshMinutes=Math.max(15,Number(fd.get('refreshMinutes')||15));s.refreshHours=Math.max(1,Math.round(s.refreshMinutes/60));s.autoRefresh=fd.get('autoRefresh')==='1';saveState();closeModal();await refreshAll();});
-  }
-
-  function showSourceStatus() {
-    showModal(`${modalHeader('Veri kaynaklarÄ±')}<div class="source-row"><div><div class="source-name">BIST / ABD / ETF / dÃ¶viz</div><div class="source-note">Gecikmeli fiyat ve geÃ§miÅŸ olay verisi; son baÅŸarÄ±lÄ± deÄŸer cihazda tutulur.</div></div><span class="source-state ${state.market.lastError?'warning':''}"><i></i>${state.market.lastError?'Son deÄŸer':'HazÄ±r'}</span></div><div class="source-row"><div><div class="source-name">TEFAS yatÄ±rÄ±m fonlarÄ±</div><div class="source-note">KiÅŸisel PHP uÃ§ noktasÄ± Ã¼zerinden TEFAS geÃ§miÅŸ fiyat sorgusu.</div></div><span class="source-state ${state.settings.backendUrl?'':'warning'}"><i></i>${state.settings.backendUrl?'HazÄ±r':'Sunucu gerekli'}</span></div><div class="source-row"><div><div class="source-name">KAP temettÃ¼ bildirimleri</div><div class="source-note">AÃ§Ä±klanmÄ±ÅŸ kayÄ±tlar sunucu katmanÄ±nda Ã¶nbelleÄŸe alÄ±nÄ±r; tahminler ayrÄ± etiketlenir.</div></div><span class="source-state ${state.settings.backendUrl?'':'warning'}"><i></i>${state.settings.backendUrl?'HazÄ±r':'Sunucu gerekli'}</span></div><div class="disclaimer">â€œAÃ§Ä±klanmÄ±ÅŸâ€ etiketi kaynakta geleceÄŸe yÃ¶nelik somut olay bulunduÄŸunda kullanÄ±lÄ±r. GeÃ§miÅŸ Ã¶deme dÃ¼zeninden Ã¼retilen tarihler ve tutarlar daima â€œTahminiâ€ gÃ¶rÃ¼nÃ¼r.</div>`);
-  }
-
-  function showWidgetHelp() {
-    const m=portfolioMetrics(),next=upcomingEvents(1)[0];
-    showModal(`${modalHeader('Android ana ekran widgetâ€™larÄ±')}<div class="card" style="padding:16px;background:linear-gradient(145deg,#12323d,#0a2029)"><div class="hero-label">Finansal(EB) Â· PortfÃ¶y</div><div class="metric-value" style="font-size:24px">${money(m.total,'TRY')}</div><div class="asset-change ${m.daily>=0?'positive':'negative'}">${pct(m.dailyPct)} bugÃ¼n</div><div class="summary-strip" style="margin-top:13px"><div class="summary-item"><div class="summary-label">YÄ±llÄ±k temettÃ¼</div><div class="summary-value">${money(m.annualDividend,'TRY')}</div></div><div class="summary-item"><div class="summary-label">SÄ±radaki</div><div class="summary-value">${next?dateText(next.payDate||next.exDate,{day:'numeric',month:'short'}):'â€”'}</div></div><div class="summary-item"><div class="summary-label">GÃ¼ncelleme</div><div class="summary-value">${state.market.lastSync?'GÃ¼ncel':'Yerel'}</div></div></div></div><div class="disclaimer">APK kurulduktan sonra telefonun ana ekranÄ±na basÄ±lÄ± tut â†’ Widgetâ€™lar â†’ Finansal(EB) â†’ â€œPortfÃ¶y Ã–zetiâ€ veya â€œSÄ±radaki TemettÃ¼â€. Widget, son baÅŸarÄ±lÄ± yenilemenin gÃ¼venli Ã¶zetini gÃ¶sterir.</div>`);
-  }
-
-  function exportData() {
-    const payload=JSON.stringify({...state,exportedAt:new Date().toISOString(),appVersion:APP_VERSION},null,2);const filename=`FinansalEB-yedek-${isoDate()}.json`;
-    try { if(window.Android?.downloadFile){window.Android.downloadFile(filename,payload,'application/json');showToast('Yedek dosyasÄ± hazÄ±rlandÄ±');return;} } catch(_){}
-    const blob=new Blob([payload],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);showToast('Yedek indirildi');
-  }
-
-  function exportCalendar() {
-    const future = state.dividendEvents
-      .filter(e => parseDate(e.payDate || e.exDate) >= addDays(new Date(), -1))
-      .sort((a,b) => parseDate(a.payDate || a.exDate) - parseDate(b.payDate || b.exDate));
-    if (!future.length) { showToast('AktarÄ±lacak yaklaÅŸan temettÃ¼ olayÄ± yok'); return; }
-    const compactDate = value => String(value || '').slice(0,10).replaceAll('-','');
-    const nextDate = value => compactDate(isoDate(addDays(parseDate(value),1)));
-    const escapeIcs = value => String(value ?? '').replaceAll('\\','\\\\').replaceAll(';','\\;').replaceAll(',','\\,').replace(/\r?\n/g,'\\n');
-    const stamp = new Date().toISOString().replace(/[-:]/g,'').replace(/\.\d{3}Z$/,'Z');
-    const statusLabel = value => ({confirmed:'AÃ§Ä±klanmÄ±ÅŸ',proposed:'Åirket teklifi',estimated:'Tahmini',historical:'GeÃ§miÅŸ'}[value] || 'KayÄ±t');
-    const lines = ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//FinansalEB//Temettu Takvimi//TR','CALSCALE:GREGORIAN','METHOD:PUBLISH','X-WR-CALNAME:Finansal(EB) TemettÃ¼ Takvimi','X-WR-TIMEZONE:Europe/Istanbul'];
-    future.forEach(e => {
-      const a = assetById(e.assetId); if (!a) return;
-      const prefix = e.status === 'estimated' ? 'â‰ˆ ' : e.status === 'proposed' ? 'Teklif Â· ' : '';
-      const description = `${statusLabel(e.status)} Â· Net yaklaÅŸÄ±k ${money(eventNet(e),'TRY')} Â· ${e.source || 'Finansal(EB)'}`;
-      const append = (kind,date,summary) => {
-        if (!date) return;
-        lines.push('BEGIN:VEVENT',`UID:${escapeIcs(`${e.id}-${kind}@finansaleb.local`)}`,`DTSTAMP:${stamp}`,`DTSTART;VALUE=DATE:${compactDate(date)}`,`DTEND;VALUE=DATE:${nextDate(date)}`,`SUMMARY:${escapeIcs(prefix + a.symbol + ' Â· ' + summary)}`,`DESCRIPTION:${escapeIcs(description)}`,'CATEGORIES:FinansalEB,TemettÃ¼','TRANSP:TRANSPARENT','END:VEVENT');
-      };
-      append('ex',e.exDate,'Hak kullanÄ±m gÃ¼nÃ¼');
-      if (e.payDate && !sameDay(parseDate(e.payDate),parseDate(e.exDate))) append('pay',e.payDate,'Ã–deme gÃ¼nÃ¼');
-    });
-    lines.push('END:VCALENDAR');
-    const content = lines.join('\r\n') + '\r\n';
-    const filename = `FinansalEB-temettu-takvimi-${isoDate()}.ics`;
-    try { if(window.Android?.downloadFile){window.Android.downloadFile(filename,content,'text/calendar');showToast('Takvim dosyasÄ± hazÄ±rlandÄ±');return;} } catch(_){}
-    const blob=new Blob([content],{type:'text/calendar;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);showToast('TemettÃ¼ takvimi indirildi');
-  }
-
-  function importData(file) {
-    const reader=new FileReader();reader.onload=()=>{try{const parsed=JSON.parse(reader.result);state=normalizeState(parsed);state.demo=false;saveState();closeModal();renderPage();showToast('Yedek geri yÃ¼klendi');}catch(e){showToast('Dosya geÃ§erli bir Finansal(EB) yedeÄŸi deÄŸil',3600);}};reader.readAsText(file);
-  }
-
-  function confirmReset() {
-    showModal(`${modalHeader('TÃ¼m verileri sil')}<div class="empty-text" style="font-size:11px;margin:0">PortfÃ¶y, iÅŸlemler, temettÃ¼ takvimi ve ayarlar bu cihazdan kalÄ±cÄ± olarak silinecek. Ã–nce yedek almak mantÄ±klÄ±dÄ±r.</div><div class="button-row"><button class="secondary-btn" data-modal-close>VazgeÃ§</button><button class="danger-btn" id="resetConfirm">TÃ¼mÃ¼nÃ¼ sil</button></div>`);
-    $('#resetConfirm').addEventListener('click',()=>{state=blankState();localStorage.removeItem(STORAGE_KEY);localStorage.setItem(ONBOARDING_KEY,'1');saveState();closeModal();renderPage();showToast('TÃ¼m veriler silindi');});
-  }
-
-  function assetTypeSupportsLookup(type) {
-    return !['CUSTOM','CASH','BOND'].includes(String(type||'').toUpperCase());
-  }
-
-  function normalizeMarketSearchResult(item, fallbackType) {
-    const sourceSymbol=String(item?.sourceSymbol||item?.symbol||'').toUpperCase();
-    const type=String(item?.type||fallbackType||'BIST').toUpperCase();
-    const displaySymbol=String(item?.symbol || (type==='BIST'?sourceSymbol.replace(/\.IS$/,''):sourceSymbol)).toUpperCase();
-    return {
-      symbol:displaySymbol,
-      sourceSymbol:sourceSymbol || inferSourceSymbol(displaySymbol,type),
-      name:String(item?.name||item?.longname||item?.shortname||displaySymbol),
-      type,
-      currency:String(item?.currency||TYPE_META[type]?.currency||'TRY'),
-      exchange:String(item?.exchange||''),
-      price:Number(item?.price||item?.regularMarketPrice||0),
-      prevClose:Number(item?.prevClose||item?.regularMarketPreviousClose||0),
-      changePct:Number(item?.changePct||item?.regularMarketChangePercent||0),
-      source:String(item?.source||'Otomatik piyasa aramasÄ±')
-    };
-  }
-
-  async function directYahooSearch(query,type) {
-    if(type==='TEFAS') {
-      const code=String(query).replace(/[^A-Z0-9]/gi,'').toUpperCase();
-      const quote=await tefasQuote(code);
-      return [normalizeMarketSearchResult({...quote,symbol:code,sourceSymbol:code,type:'TEFAS'},'TEFAS')];
-    }
-    if(type==='GOLD') {
-      const quote=await quoteForAsset({symbol:'GRAM ALTIN',sourceSymbol:'GRAM_ALTIN',type:'GOLD',currency:'TRY'});
-      return [normalizeMarketSearchResult({...quote,symbol:'GRAM ALTIN',sourceSymbol:'GRAM_ALTIN',name:'Gram AltÄ±n',type:'GOLD'},'GOLD')];
-    }
-    if(type==='SILVER') {
-      const quote=await quoteForAsset({symbol:'GRAM GÃœMÃœÅ',sourceSymbol:'GRAM_GUMUS',type:'SILVER',currency:'TRY'});
-      return [normalizeMarketSearchResult({...quote,symbol:'GRAM GÃœMÃœÅ',sourceSymbol:'GRAM_GUMUS',name:'Gram GÃ¼mÃ¼ÅŸ',type:'SILVER'},'SILVER')];
-    }
-    const url=`https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=15&newsCount=0&listsCount=0&enableFuzzyQuery=true`;
-    const json=await fetchJson(url,{},15000);
-    const results=(json?.quotes||[]).filter(item=>{
-      const symbol=String(item.symbol||'').toUpperCase();
-      const quoteType=String(item.quoteType||'').toUpperCase();
-      const exchange=String(item.exchange||item.exchDisp||'').toUpperCase();
-      const currency=String(item.currency||'').toUpperCase();
-      if(type==='BIST')return symbol.endsWith('.IS')||exchange.includes('IST')||exchange.includes('BIST');
-      if(type==='ETF')return quoteType==='ETF';
-      if(type==='US')return quoteType==='EQUITY'&&!symbol.endsWith('.IS')&&(!currency||currency==='USD');
-      if(type==='CRYPTO')return quoteType.includes('CRYPTO')||symbol.endsWith('-USD');
-      if(type==='FX')return quoteType==='CURRENCY';
-      return true;
-    }).slice(0,10).map(item=>normalizeMarketSearchResult({
-      symbol:type==='BIST'?String(item.symbol||'').replace(/\.IS$/i,''):item.symbol,
-      sourceSymbol:item.symbol,
-      name:item.longname||item.shortname||item.symbol,
-      type,
-      currency:item.currency,
-      exchange:item.exchange||item.exchDisp,
-      price:item.regularMarketPrice,
-      prevClose:item.regularMarketPreviousClose,
-      changePct:item.regularMarketChangePercent,
-      source:'Piyasa sembol aramasÄ±'
-    },type));
-    if(results.length)return results;
-    const display=String(query).trim().toUpperCase();
-    try {
-      const quote=await quoteForAsset({symbol:display,sourceSymbol:inferSourceSymbol(display,type),type,currency:TYPE_META[type]?.currency||'TRY'});
-      return [normalizeMarketSearchResult({...quote,symbol:display,sourceSymbol:inferSourceSymbol(display,type),type},type)];
-    } catch (_) { return []; }
-  }
-
-  async function searchAssetCandidates(query,type) {
-    const normalizedQuery=String(query||'').trim();
-    const normalizedType=String(type||'BIST').toUpperCase();
-    if(window.Android?.requestMarketData) {
-      try {
-        const response=await nativeMarketCall('search',{query:normalizedQuery,type:normalizedType},26000);
-        return (response?.data?.results||[]).map(item=>normalizeMarketSearchResult(item,normalizedType));
-      } catch(error) { console.warn('Native search fallback',error); }
-    }
-    if(state.settings.backendUrl) {
-      try {
-        const response=await backendCall({action:'search',query:normalizedQuery,type:normalizedType});
-        if(response?.ok)return (response.data?.results||[]).map(item=>normalizeMarketSearchResult(item,normalizedType));
-      } catch(error) { console.warn('Backend search fallback',error); }
-    }
-    return directYahooSearch(normalizedQuery,normalizedType);
-  }
-
-  async function lookupQuotePreview(candidate) {
-    return quoteForAsset({
-      symbol:candidate.symbol,
-      sourceSymbol:candidate.sourceSymbol||inferSourceSymbol(candidate.symbol,candidate.type),
-      type:candidate.type,
-      currency:candidate.currency||TYPE_META[candidate.type]?.currency||'TRY'
-    });
-  }
-
-  function inferSourceSymbol(symbol,type) {
-    const s=String(symbol||'').trim().toUpperCase();
-    if(type==='BIST') return s.endsWith('.IS')?s:`${s}.IS`;
-    if(type==='GOLD') return 'GRAM_ALTIN';
-    if(type==='SILVER') return 'GRAM_GUMUS';
-    if(type==='FX') {
-      if(s==='USDTRY'||s==='USD/TRY')return 'TRY=X';
-      if(s==='EURTRY'||s==='EUR/TRY')return 'EURTRY=X';
-      return s.includes('=X')?s:`${s.replace('/','')}=X`;
-    }
-    if(type==='CRYPTO') return s.includes('-')?s:`${s}-USD`;
-    return s;
-  }
-
-  async function fetchJson(url, options = {}, timeout = 12000) {
-    const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),timeout);
-    try {const res=await fetch(url,{...options,signal:controller.signal,cache:'no-store'});if(!res.ok)throw new Error(`HTTP ${res.status}`);return await res.json();}
-    finally{clearTimeout(timer);}
-  }
-
-  async function backendCall(params, timeout = 12000) {
-    const base=state.settings.backendUrl;if(!base)throw new Error('Sunucu tanÄ±mlÄ± deÄŸil');
-    const url=new URL(base,window.location.href.startsWith('http')?window.location.href:undefined);
-    Object.entries(params).forEach(([k,v])=>url.searchParams.set(k,v));
-    const headers=state.settings.backendToken?{'X-Api-Token':state.settings.backendToken}:{};
-    return fetchJson(url.toString(),{headers},timeout);
-  }
-
-  async function yahooQuote(symbol) {
-    const url=`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1mo&events=div%2Csplits&includeAdjustedClose=true`;
-    const json=await fetchJson(url,{},15000);const result=json?.chart?.result?.[0];if(!result)throw new Error(json?.chart?.error?.description||'Piyasa verisi bulunamadÄ±');
-    const closes=(result.indicators?.quote?.[0]?.close||[]).map(Number).filter(Number.isFinite);const timestamps=result.timestamp||[];const meta=result.meta||{};const price=Number(meta.regularMarketPrice||closes.at(-1));const prev=Number(meta.chartPreviousClose||meta.previousClose||closes.at(-2)||price);const events=Object.values(result.events?.dividends||{}).map(e=>({date:isoDate(new Date(Number(e.date)*1000)),amount:Number(e.amount||0)}));
-    return {symbol,name:meta.shortName||meta.longName||symbol,price,prevClose:prev,changePct:prev?(price-prev)/prev*100:0,currency:meta.currency||null,exchange:meta.exchangeName||'',history:closes,timestamps,dividends:events,source:'Piyasa verisi'};
-  }
-
-  async function fundFeesForCode(code, name = '') {
-    if (!state.settings.backendUrl) return null;
-    try {
-      const data = await backendCall({action:'fund_fees',code,name},16000);
-      return data?.ok ? data.data : null;
-    } catch (error) {
-      console.warn('KAP fon gideri alÄ±namadÄ±', error);
-      return null;
-    }
-  }
-
-  async function tefasQuote(code) {
-    if(state.settings.backendUrl){const data=await backendCall({action:'tefas',code},18000);if(data?.ok&&data.data)return data.data;throw new Error(data?.error||'TEFAS verisi alÄ±namadÄ±');}
-    const payload={fonKodu:String(code).toUpperCase(),dil:'TR',periyod:1};
-    const json=await fetchJson('https://www.tefas.gov.tr/api/funds/fonFiyatBilgiGetir',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)},15000);
-    const rows=json?.resultList||[];if(!rows.length)throw new Error('TEFAS kaydÄ± bulunamadÄ±');
-    const prices=rows.map(r=>Number(r.fiyat)).filter(Number.isFinite);const price=prices.at(-1),prev=prices.at(-2)||price,last=rows.at(-1)||{};
-    return{symbol:code,name:last.fonUnvan||code,price,prevClose:prev,changePct:prev?(price-prev)/prev*100:0,currency:'TRY',history:prices,dividends:[],source:'TEFAS yeni API',updatedAt:new Date().toISOString()};
-  }
-
-  async function quoteForAsset(asset) {
-    const sourceSymbol=asset.sourceSymbol||inferSourceSymbol(asset.symbol,asset.type);
-    if(window.Android?.requestMarketData){
-      try {const response=await nativeMarketCall('quote',{symbol:sourceSymbol,type:asset.type},10000);if(response?.data)return response.data;}catch(error){console.warn('Native quote fallback',error);}
-    }
-    if(state.settings.backendUrl){
-      try {const data=await backendCall({action:'quote',symbol:sourceSymbol,type:asset.type});if(data?.ok&&data.data)return data.data;}catch(error){console.warn('Backend quote fallback',error);}
-    }
-    if(asset.type==='TEFAS')return tefasQuote(asset.symbol);
-    if(asset.type==='CUSTOM'||asset.type==='CASH'||asset.type==='BOND')throw new Error('Manuel fiyatlÄ± varlÄ±k');
-    const source=sourceSymbol;
-    if(source==='GRAM_ALTIN'||asset.type==='GOLD'){
-      const [gold,tryFx]=await Promise.all([yahooQuote('GC=F'),yahooQuote('TRY=X')]);const price=gold.price*tryFx.price/TROY_OUNCE,prev=gold.prevClose*tryFx.prevClose/TROY_OUNCE;return{price,prevClose:prev,changePct:prev?(price-prev)/prev*100:0,currency:'TRY',history:gold.history.map((v,i)=>v*(tryFx.history[i]||tryFx.price)/TROY_OUNCE),dividends:[],source:'AltÄ±n ons + USD/TRY'};
-    }
-    if(source==='GRAM_GUMUS'||asset.type==='SILVER'){
-      const [silver,tryFx]=await Promise.all([yahooQuote('SI=F'),yahooQuote('TRY=X')]);const price=silver.price*tryFx.price/TROY_OUNCE,prev=silver.prevClose*tryFx.prevClose/TROY_OUNCE;return{price,prevClose:prev,changePct:prev?(price-prev)/prev*100:0,currency:'TRY',history:silver.history.map((v,i)=>v*(tryFx.history[i]||tryFx.price)/TROY_OUNCE),dividends:[],source:'GÃ¼mÃ¼ÅŸ ons + USD/TRY'};
-    }
-    return yahooQuote(source);
-  }
-
-  async function dividendFeedForAsset(asset) {
-    if (!['BIST','US','ETF'].includes(asset.type)) return [];
-    const symbol = asset.sourceSymbol || inferSourceSymbol(asset.symbol, asset.type);
-    if (window.Android?.requestMarketData) {
-      try {
-        const response=await nativeMarketCall('dividends',{symbol},28000);
-        if(Array.isArray(response?.data?.events))return response.data.events;
-      } catch(error) { console.warn('Native dividend fallback',error); }
-    }
-    if (state.settings.backendUrl) {
-      const result = await backendCall({action:'dividends', symbol});
-      if (result?.ok && Array.isArray(result.data?.events)) return result.data.events;
-      return [];
-    }
-    const period1 = Math.floor((Date.now() - 8*365*DAY) / 1000);
-    const period2 = Math.floor((Date.now() + 400*DAY) / 1000);
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?period1=${period1}&period2=${period2}&interval=1d&events=div%2Csplits`;
-    const json = await fetchJson(url,{},15000);
-    const result = json?.chart?.result?.[0];
-    if (!result) return [];
-    return Object.values(result.events?.dividends || {}).map(e => ({
-      exDate: isoDate(new Date(Number(e.date)*1000)),
-      payDate: null,
-      amountPerShare: Number(e.amount||0),
-      status: Number(e.date)*1000 > Date.now() ? 'confirmed' : 'historical',
-      source: 'Piyasa veri akÄ±ÅŸÄ±'
-    }));
-  }
-
-  async function officialKapFeed(asset) {
-    if (!state.settings.backendUrl || asset.type !== 'BIST') return [];
-    const result = await backendCall({action:'kap_dividends', symbol:asset.symbol});
-    return result?.ok && Array.isArray(result.data?.events) ? result.data.events : [];
-  }
-
-  function mergeExternalDividendEvents(asset, events) {
-    if (!Array.isArray(events)) return;
-    for (const item of events) {
-      const exDate = item.exDate || item.date;
-      const payDate = item.payDate || exDate;
-      const amount = Number(item.amountPerShare ?? item.amount ?? 0);
-      if (!exDate || amount < 0) continue;
-      const existing = state.dividendEvents.find(e => e.assetId===asset.id && Math.abs(parseDate(e.exDate)-parseDate(exDate))<3*DAY && Math.abs(Number(e.amountPerShare||0)-amount)<.001);
-      const normalized = {
-        id: existing?.id || uid('div'), assetId:asset.id, exDate:isoDate(parseDate(exDate)), payDate:payDate?isoDate(parseDate(payDate)):null,
-        amountPerShare:amount, currency:item.currency||asset.currency, status:item.status||'historical',
-        received:item.status==='historical' || parseDate(payDate||exDate)<new Date(), source:item.source||'Otomatik veri', sourceUrl:item.sourceUrl||undefined
-      };
-      if (existing) Object.assign(existing, normalized); else state.dividendEvents.push(normalized);
-    }
-  }
-
-  function mergeDividendHistory(asset, dividends) {
-    if(!Array.isArray(dividends)||!dividends.length)return;
-    const sorted=dividends.filter(d=>d.amount>0).sort((a,b)=>parseDate(a.date)-parseDate(b.date));
-    sorted.forEach(d=>{const exists=state.dividendEvents.some(e=>e.assetId===asset.id&&sameDay(parseDate(e.exDate),parseDate(d.date))&&Math.abs(Number(e.amountPerShare)-Number(d.amount))<.0001);if(!exists)state.dividendEvents.push({id:uid('div'),assetId:asset.id,exDate:d.date,payDate:d.date,amountPerShare:d.amount,currency:asset.currency,status:'confirmed',received:parseDate(d.date)<new Date(),source:'GeÃ§miÅŸ piyasa olayÄ±'});});
-    const recent=sorted.filter(d=>parseDate(d.date)>addDays(new Date(),-730));if(recent.length<2)return;
-    const intervals=[];for(let i=1;i<recent.length;i++)intervals.push((parseDate(recent[i].date)-parseDate(recent[i-1].date))/DAY);intervals.sort((a,b)=>a-b);const median=intervals[Math.floor(intervals.length/2)]||90;const normalized=median<50?30:median<140?91:median<270?182:365;const amounts=recent.slice(-4).map(d=>d.amount).sort((a,b)=>a-b);const amount=amounts[Math.floor(amounts.length/2)]||recent.at(-1).amount;let next=parseDate(recent.at(-1).date);while(next<addDays(new Date(),-1))next=addDays(next,normalized);const horizon=addDays(new Date(),370);while(next<=horizon){const date=isoDate(next);const exists=state.dividendEvents.some(e=>e.assetId===asset.id&&Math.abs(parseDate(e.exDate)-next)<10*DAY);if(!exists)state.dividendEvents.push({id:uid('div'),assetId:asset.id,exDate:date,payDate:isoDate(addDays(next,asset.type==='US'||asset.type==='ETF'?14:2)),amountPerShare:amount,currency:asset.currency,status:'estimated',received:false,source:'GeÃ§miÅŸ Ã¶deme dÃ¼zeni tahmini'});next=addDays(next,normalized);}
-  }
-
-  async function enrichAssetEvents(asset) {
-    try {
-      const [feed, kapFeed] = await Promise.all([
-        dividendFeedForAsset(asset).catch(()=>[]),
-        officialKapFeed(asset).catch(()=>[])
-      ]);
-      mergeExternalDividendEvents(asset, feed);
-      mergeExternalDividendEvents(asset, kapFeed);
-      mergeDividendHistory(asset, feed.map(e=>({date:e.exDate||e.date,amount:e.amountPerShare??e.amount,status:e.status})));
-    } catch(error) { console.warn('Dividend enrichment', asset.symbol, error); }
-  }
-
-  async function refreshOneAssetPrice(asset) {
-    const q = await quoteForAsset(asset);
-    if (!(Number.isFinite(Number(q.price)) && Number(q.price)>0)) throw new Error('GeÃ§erli fiyat alÄ±namadÄ±');
-    asset.price=Number(q.price);
-    asset.prevClose=Number(q.prevClose||q.price);
-    asset.changePct=Number(q.changePct||0);
-    asset.history=(q.history||[]).map(Number).filter(Number.isFinite).slice(-120);
-    asset.historyDates=Array.isArray(q.timestamps)?q.timestamps.slice(-120).map(t=>isoDate(new Date(Number(t)*1000))):((asset.historyDates||[]).slice(-asset.history.length));
-    asset.lastUpdated=new Date().toISOString();
-    asset.dataStatus='auto'; asset.dataSource=q.source||'Otomatik'; asset.dataError=null;
-    if(q.currency&&asset.type!=='GOLD'&&asset.type!=='SILVER')asset.currency=q.currency;
-    mergeDividendHistory(asset,q.dividends);
-    return true;
-  }
-
-  async function runWithConcurrency(items, worker, limit=4) {
-    let index=0;
-    const runners=Array.from({length:Math.min(limit,items.length)}, async()=>{
-      while(index<items.length){
-        const current=items[index++];
-        await worker(current);
-      }
-    });
-    await Promise.all(runners);
-  }
-
-  async function refreshAll({silent=false,onlyAssetId=null,includeContent=false}={}) {
-    if(refreshController){if(!silent)showToast('Yenileme zaten Ã§alÄ±ÅŸÄ±yor');return;}
-    refreshController={cancelled:false};
-    const btn=$('#syncBtn'); btn?.classList.add('loading');
-    if(!silent)showToast('Fiyatlar hÄ±zlÄ±ca gÃ¼ncelleniyorâ€¦',1400);
-    const assets=state.assets.filter(a=>!onlyAssetId||a.id===onlyAssetId), failed=[]; let success=0;
-    const contentTask = (!onlyAssetId && includeContent) ? refreshContent({silent:true}) : Promise.resolve();
-    await runWithConcurrency(assets, async asset=>{
-      if(refreshController?.cancelled)return;
-      try{await refreshOneAssetPrice(asset);success++;}
-      catch(error){asset.dataStatus=asset.price?'cached':'error';asset.dataError=error.message;failed.push(`${asset.symbol}: ${error.message}`);}
-    },4);
-    if(!onlyAssetId && Array.isArray(state.watchlist) && state.watchlist.length){
-      await runWithConcurrency(state.watchlist, async w=>{
-        try{const pseudo={...w,sourceSymbol:w.sourceSymbol||inferSourceSymbol(w.symbol,w.type)};const q=await quoteForAsset(pseudo);if(Number(q.price)>0){w.price=Number(q.price);w.prevClose=Number(q.prevClose||q.price);w.changePct=Number(q.changePct||0);w.currency=q.currency||w.currency;w.sourceSymbol=pseudo.sourceSymbol;w.lastUpdated=new Date().toISOString();w.dataError=null;}}catch(error){w.dataError=error.message;}
-      },4);
-    }
-    if(success){state.market.lastSync=new Date().toISOString();state.market.lastError=failed.length?`${failed.length} varlÄ±k son deÄŸerle gÃ¶steriliyor`:null;}
-    else if(failed.length)state.market.lastError=failed[0];
-    saveState(); refreshController=null; btn?.classList.remove('loading'); renderPage(false); updateSyncText(); scheduleEventNotifications(); syncNativeWidget();
-    // TemettÃ¼/KAP gibi aÄŸÄ±r iÅŸler fiyat ekranÄ±nÄ± bekletmeden arka planda tamamlanÄ±r.
-    if(!onlyAssetId && assets.length) setTimeout(()=>runWithConcurrency(assets, enrichAssetEvents, 2).then(()=>saveState()).catch(()=>{}),300);
-    await contentTask.catch(()=>{});
-    if(!silent)showToast(success?`${success} varlÄ±k gÃ¼ncellendi${failed.length?`, ${failed.length} son deÄŸerle kaldÄ±`:''}`:`Veri alÄ±namadÄ±; son kayÄ±tlar korundu`,3000);
-  }
-
-  function refreshIntervalMinutes() {
-    return Math.max(15, Number(state.settings.refreshMinutes || ((state.settings.refreshHours||6)*60) || 15));
-  }
-
-  function shouldAutoRefresh() {
-    if(!state.settings.autoRefresh||!state.assets.length)return false;
-    const last=state.market.lastSync?new Date(state.market.lastSync).getTime():0;
-    return Date.now()-last>refreshIntervalMinutes()*60_000;
-  }
-
-  function shouldAutoRefreshContent() {
-    if(!state.settings.autoRefresh)return false;
-    const last=state.market.lastContentSync?new Date(state.market.lastContentSync).getTime():0;
-    return Date.now()-last>refreshIntervalMinutes()*60_000;
-  }
-
-  function triggerAutoRefresh() {
-    if(!navigator.onLine)return;
-    if(shouldAutoRefresh()) refreshAll({silent:true,includeContent:shouldAutoRefreshContent()});
-    else if(shouldAutoRefreshContent()) refreshContent({silent:true});
-  }
-
-  function startAutoRefreshLoop() {
-    if(autoRefreshTimer) clearInterval(autoRefreshTimer);
-    autoRefreshTimer=setInterval(triggerAutoRefresh,60_000);
-  }
-
-  function syncNativeWidget() {
-    try {
-      if(!window.Android?.saveWidgetState)return;
-      const m=portfolioMetrics(),next=upcomingEvents(1)[0],payload={total:m.total,dailyPct:m.dailyPct,daily:m.daily,annualDividend:m.annualDividend,nextSymbol:next?assetById(next.assetId)?.symbol:'',nextAmount:next?eventNet(next):0,nextDate:next?(next.payDate||next.exDate):'',lastSync:state.market.lastSync,privacy:state.settings.privacy,backendUrl:state.settings.backendUrl,backendToken:state.settings.backendToken,refreshHours:Number(state.settings.refreshHours||6),refreshMinutes:refreshIntervalMinutes(),fx:{...state.market.fx},assets:state.assets.map(a=>({id:a.id,symbol:a.symbol,sourceSymbol:a.sourceSymbol,type:a.type,currency:a.currency,quantity:a.quantity,price:a.price,baseValue:assetValue(a)}))};
-      window.Android.saveWidgetState(JSON.stringify(payload));
-    } catch(error){console.warn('Widget bridge error',error);}
-  }
-
-  function applyNativeBackgroundPrices() {
-    try {
-      if (!window.Android?.getBackgroundPrices) return;
-      const raw = window.Android.getBackgroundPrices();
-      if (!raw) return;
-      const data = JSON.parse(raw);
-      if (!data || !Array.isArray(data.assets)) return;
-      data.assets.forEach(item => {
-        const asset = state.assets.find(a => a.id===item.id || a.symbol===item.symbol);
-        if (!asset) return;
-        if (Number(item.price)>0) asset.price=Number(item.price);
-        if (Number.isFinite(Number(item.changePct))) asset.changePct=Number(item.changePct);
-        if (Number(item.prevClose)>0) asset.prevClose=Number(item.prevClose);
-        asset.lastUpdated=data.updatedAt||asset.lastUpdated;
-        asset.dataStatus='background';
-      });
-      if (data.fx && typeof data.fx==='object') state.market.fx={...state.market.fx,...data.fx};
-      if (data.updatedAt && (!state.market.lastSync || new Date(data.updatedAt)>new Date(state.market.lastSync))) state.market.lastSync=data.updatedAt;
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch(error) { console.warn('Background price import', error); }
-  }
-
-  function scheduleEventNotifications() {
-    if(!state.settings.notifications)return;
-    try {
-      if(!window.Android?.scheduleNotification)return;
-      upcomingEvents(8,false).forEach(e=>{const a=assetById(e.assetId),date=parseDate(e.payDate||e.exDate),pre=new Date(date.getFullYear(),date.getMonth(),date.getDate()-1,10,0,0).getTime(),day=new Date(date.getFullYear(),date.getMonth(),date.getDate(),10,0,0).getTime();if(pre>Date.now())window.Android.scheduleNotification(`${a?.symbol||'Hisse'} temettÃ¼sÃ¼ yarÄ±n`,`${dateText(date,{day:'numeric',month:'long'})} Â· yaklaÅŸÄ±k ${money(eventNet(e),'TRY')}`,pre,`divpre_${e.id}`);if(day>Date.now())window.Android.scheduleNotification(`${a?.symbol||'Hisse'} Â· temettÃ¼ kazancÄ± olabilir`,`BugÃ¼n Ã¶deme tarihi Â· yaklaÅŸÄ±k ${money(eventNet(e),'TRY')}. AldÄ±ysan uygulamadan onayla.`,day,`divpay_${e.id}`);});
-      (state.ipoTracked||[]).forEach(i=>{[['demandStart','Halka arz talebi baÅŸlÄ±yor'],['demandEnd','Halka arzda son gÃ¼n'],['firstTradeDate','Borsada ilk iÅŸlem gÃ¼nÃ¼']].forEach(([key,title])=>{if(!i[key])return;const d=parseDate(i[key]),at=new Date(d.getFullYear(),d.getMonth(),d.getDate(),9,0,0).getTime();if(at>Date.now())window.Android.scheduleNotification(`${i.symbol||i.name} Â· ${title}`,`${dateText(d,{day:'numeric',month:'long'})} Â· ${i.name}`,at,`ipo_${i.id}_${key}`);});});
-    } catch(error){console.warn('Notification bridge',error);}
-  }
-
-  function showOnboarding() {
-    if(localStorage.getItem(ONBOARDING_KEY)||state.assets.length)return;
-    showModal(`<div class="modal-grabber"></div><div class="onboarding"><div class="onboarding-logo"><svg viewBox="0 0 48 48"><path d="M10 34V15.5c0-2.5 2-4.5 4.5-4.5H31l7 7v16c0 2.2-1.8 4-4 4H14c-2.2 0-4-1.8-4-4Z"/><path d="M18 30.5 23 25l4 3 6-8"/><path d="m30 20 3-1-1 3"/></svg></div><h2>Finansal<span style="color:var(--accent)">(EB)</span></h2><p>Snowball ve Stock Eventsâ€™in gÃ¼Ã§lÃ¼ iÅŸ akÄ±ÅŸlarÄ±ndan esinlenen; ancak arayÃ¼zÃ¼, verisi ve kayÄ±tlarÄ± sana ait olan TÃ¼rkÃ§e portfÃ¶y uygulamasÄ±.</p><div class="feature-grid"><div class="feature-item"><strong>TÃ¼m varlÄ±klar</strong><span>BIST, ABD, ETF, TEFAS, altÄ±n, gÃ¼mÃ¼ÅŸ ve Ã¶zel varlÄ±k</span></div><div class="feature-item"><strong>TemettÃ¼ merkezi</strong><span>AÃ§Ä±klanmÄ±ÅŸ ve tahmini Ã¶deme ayrÄ±mÄ±, net gelir</span></div><div class="feature-item"><strong>Ã–zgÃ¼rlÃ¼k hedefi</strong><span>AylÄ±k gider karÅŸÄ±lama ve uzun vadeli projeksiyon</span></div><div class="feature-item"><strong>Ã–zel ve yerel</strong><span>PortfÃ¶y cihazÄ±nda kalÄ±r; kendi sunucun seÃ§ilebilir</span></div></div><div class="button-row"><button class="secondary-btn" id="startEmpty">Kendi portfÃ¶yÃ¼m</button><button class="primary-btn" id="startDemo">Ã–rneÄŸi incele</button></div><div class="disclaimer">Uygulama yatÄ±rÄ±m tavsiyesi vermez. Ãœcretsiz veri kaynaklarÄ±nÄ±n gecikmesi veya kesintisi olabilir; son baÅŸarÄ±lÄ± deÄŸer korunur.</div></div>`,{dismissible:false});
-    $('#startEmpty').addEventListener('click',()=>{localStorage.setItem(ONBOARDING_KEY,'1');state=blankState();saveState();closeModal();renderPage();setTimeout(showAssetForm,200);});
-    $('#startDemo').addEventListener('click',()=>{localStorage.setItem(ONBOARDING_KEY,'1');state=demoState();saveState();closeModal();renderPage();showToast('Ã–rnek portfÃ¶y aÃ§Ä±ldÄ±');});
-  }
-
-  function setupGlobalEvents() {
-    $$('.nav-item').forEach(btn=>btn.addEventListener('click',()=>navigate(btn.dataset.page)));
-    $('#fab').addEventListener('click',()=>state.assets.length?showTransactionForm():showAssetForm());
-    $('#privacyBtn').addEventListener('click',()=>{state.settings.privacy=!state.settings.privacy;saveState();renderPage();showToast(state.settings.privacy?'Tutarlar gizlendi':'Tutarlar gÃ¶steriliyor');});
-    $('#syncBtn').addEventListener('click',()=>refreshAll({includeContent:true}));
-    $('#moreBtn').addEventListener('click',showSettings);
-    $('#importInput').addEventListener('change',e=>{const file=e.target.files?.[0];if(file)importData(file);e.target.value='';});
-    window.addEventListener('online',()=>{showToast('Ä°nternet baÄŸlantÄ±sÄ± geri geldi');triggerAutoRefresh();});
-    document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')setTimeout(triggerAutoRefresh,250);});
-    window.addEventListener('focus',()=>setTimeout(triggerAutoRefresh,250));
-    window.addEventListener('offline',()=>showToast('Ã‡evrimdÄ±ÅŸÄ±: son veriler gÃ¶steriliyor'));
-    document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();});
-  }
-
-  function initPwa() {
-    if('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(()=>{});
-  }
-
-  function init() {
-    const params = new URLSearchParams(location.search);
-    if (params.get('demo') !== '1') applyNativeBackgroundPrices();
-    if (params.get('demo') === '1' && !state.assets.length) {
-      state = demoState();
-      localStorage.setItem(ONBOARDING_KEY, '1');
-      saveState();
-    }
-    renderIcons();setupGlobalEvents();renderPage();showOnboarding();initPwa();scheduleEventNotifications();startAutoRefreshLoop();
-    if(params.get('demo') !== '1')setTimeout(triggerAutoRefresh,350);
-  }
-
-  document.addEventListener('DOMContentLoaded',init);
-})();
+YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éíçİ;é:-jZ.¶›­–)Ş³Rò¢f–æç6Â„T"’(	B¶œYö—6VÂ÷'Fl;g’fRFVÖWGL;ÂF¶—W–wVÆÖ<K¢¢FÖÖVâ—7FVÖ6’F&lKæF:vÌKYüK#²fW&–ÆW"6–†¦F6¶ÆìK"à¢¢—–6fW&–ÆW&’–&Ææâ¶œYö—6VÂ…\:ræö·F<KfW–FW7FV¶ÆVæVâ:|K²¶–æ¶Æ";Ç¦W&–æFVâ–Væ–ÆVæ—"à¢¢ğ¢‚‚’Óâ°¢wW6R7G&–7Bs° ¢6öç7BõdU%4”ôâÒs"ããÖÇ†ãs°¢6öç7BDTdTÅEô$4´TäEõU$ÂÒv‡GG3¢òö&–¶'GW&—¦Òæ6öÒöf–æç6ÆV"Ö’ö’ç‡s°¢6öç7B5Dõ$tUô´U’Òvf–æç6ÆV%÷7FFU÷cs°¢6öç7Bôä$ô$D”äuô´U’Òvf–æç6ÆV%ööæ&ö&FVE÷cs°¢6öç7BD’ÒƒeóCó°¢6öç7BE$õ•ôõTä4RÒ3ã3Cscƒ°¢6öç7BÔôåD…2Ò²tö6²rÂ|YçV&BrÂtÖ'BrÂtæ—6ârÂtÖœK2rÂt†¦—&ârÂuFVÖ×W¢rÂtI÷W7F÷2rÂtW–Ì;ÆÂrÂtV¶–ÒrÂt¶<KÒrÂt&ÌK²uÓ°¢6öç7BÔôåD…5õ4„õ%BÒ²tö6rÂ|YçV"rÂtÖ"rÂtæ—2rÂtÖ’rÂt†¢rÂuFVÒrÂtI÷RrÂtW–ÂrÂtV¶’rÂt¶2rÂt&uÓ°¢6öç7BtTT´D•2Ò²u§BrÂu6ÂrÂ|8v"rÂuW"rÂt7VÒrÂt6×BrÂu¢uÓ°¢6öç7B4ôÄõ%2Ò²r3#VCV&BrÂr3c6–fbrÂr6ff3cVrÂr6“ƒVfbrÂr6fcv3“rÂr3cVCS†BrÂr6fc–#SRrÂr3v&CvVBuÓ°¢6öç7BÖ&¶WDW‡æFVBÒ¶æWw3¦fÇ6RÂ6ÆVæF#¦fÇ6RÂW‡W'G3¦fÇ6RÂ÷'FföÆ–÷3¦fÇ6RÂFöÖW7F–3¦fÇ6RÂgVæG3¦fÇ6RÂ6÷W&6W3¦fÇ6WÓ°¢ÆWBÖ&¶WD6ö×&TÖöFRÒw7Fö6·2s°¢ÆWBÖ&¶WD—ôÖöFRÒvÖ–æRs°¢ÆWBÖ&¶WDæWw4ÖöFRÒv–×÷'FçBs°¢6öç7B4õ$RÒv–æF÷räf–æç6ÄT$6÷&S°¢–b‚4õ$R’F‡&÷ræWrW'&÷"‚tf–æç6ÄT"f–æç2:vV¶—&F\Iö’œ;Æ¶ÆVæVÖVF’âr“° ¢6öç7BE•UôÔUDÒ°¢$•5C¢²Æ&VÃ¢t$•5B†—76W6’rÂ7W'&Væ7“¢uE%’rÒÀ¢U3¢²Æ&VÃ¢t$B†—76W6’rÂ7W'&Væ7“¢uU4BrÒÀ¢UDc¢²Æ&VÃ¢tUDbrÂ7W'&Væ7“¢uU4BrÒÀ¢DTd3¢²Æ&VÃ¢uDTd2föçRrÂ7W'&Væ7“¢uE%’rÒÀ¢tôÄC¢²Æ&VÃ¢tÇLKârÂ7W'&Væ7“¢uE%’rÒÀ¢4”ÅdU#¢²Æ&VÃ¢t|;ÆÜ;ÌYòrÂ7W'&Væ7“¢uE%’rÒÀ¢eƒ¢²Æ&VÃ¢tL;gf—¢rÂ7W'&Væ7“¢uE%’rÒÀ¢5%•Dó¢²Æ&VÃ¢t·&—FòrÂ7W'&Væ7“¢uU4BrÒÀ¢$ôäC¢²Æ&VÃ¢uF‡f–ÂòWW&ö&öæBrÂ7W'&Væ7“¢uU4BrÒÀ¢44ƒ¢²Æ&VÃ¢tæ¶—BrÂ7W'&Væ7“¢uE%’rÒÀ¢5U5DôÓ¢²Æ&VÃ¢|9g¦VÂf&ÌK²rÂ7W'&Væ7“¢uE%’rĞ¢Ó° ¢6öç7B”4ôå2Ò°¢†öÖS¢sÇ7frf–Wt&÷ƒÒ##B#B#ãÇF‚CÒ&Ó2’Ór’wc–""Ó"&‚ÓGbÓtƒ—ctƒV""Ó"Ó%¢"óãÂ÷7fsârÀ¢÷'FföÆ–ó¢sÇ7frf–Wt&÷ƒÒ##B#B#ãÇ&V7BƒÒ#2"“Ò#b"v–GFƒÒ#‚"†V–v‡CÒ#B"'ƒÒ#""óãÇF‚CÒ$Ó‚ecFƒ‡c$Ó2ƒ„Ó’Fƒb"óãÂ÷7fsârÀ¢F—f–FVæC¢sÇ7frf–Wt&÷ƒÒ##B#B#ãÆ6—&6ÆR7ƒÒ#""7“Ò#""#Ò#’"óãÇF‚CÒ$ÓRãR‚ãV2ÒãrÒã‚Óã‚Óã"Ó2ã2Óã"Óã‚Ó2ã"ã’Ó2ã""ã22ãBbãBã2bãBBã‚ãRÓãB"ãBÓ2ãB"ãBÓãbÓ"ã‚ÒãRÓ2ãbÓãTÓ"WcB"óãÂ÷7fsârÀ¢6ÆVæF#¢sÇ7frf–Wt&÷ƒÒ##B#B#ãÇ&V7BƒÒ#2"“Ò#R"v–GFƒÒ#‚"†V–v‡CÒ#b"'ƒÒ#""óãÇF‚CÒ$Ób7cDÓ‚7cDÓ2ƒ‚"óãÂ÷7fsârÀ¢æÇ—F–73¢sÇ7frf–Wt&÷ƒÒ##B#B#ãÇF‚CÒ$ÓB#cÓ#cDÓb#bÓtÓ#"#ƒ""óãÂ÷7fsârÀ¢6WGF–æw3¢sÇ7frf–Wt&÷ƒÒ##B#B#ãÆ6—&6ÆR7ƒÒ#""7“Ò#""#Ò#2"óãÇF‚CÒ$Ó’ãBVãrãrã2ã–ÂããÓ"ã‚"ã‚ÒãÒããrãrÓã’Òã2ãrãrÓãgbã&‚ÓEc#ãrãrÓÓãbãrãrÓã’ã6ÂÒããÃBã"vÂãÒããrãrã2Óã”ãrãr2Dƒ"ã‡bÓDƒ6ãrãrãbÓãrãrÒã2Óã”ÃBã"rrBã&Âãããrãr’BãfãrãrÓãgbÒã&ƒEc6ãrãrãbãrãrã’Òã6ÂãÒãÃ’ã‚vÂÒãããrãrÒã2ã’ãrãrãb‚ã'cDƒ#ãrãrÓãb¢"óãÂ÷7fsârÀ¢&Vg&W6ƒ¢sÇ7frf–Wt&÷ƒÒ##B#B#ãÇF‚CÒ$Ó#gcV‚ÓTÓB‡bÓVƒR"óãÇF‚CÒ$Óbã–rrãRÓ"ãdÃ#ÓB6Ã"ãBBãdrrrã’R"óãÂ÷7fsârÀ¢W–S¢sÇ7frf–Wt&÷ƒÒ##B#B#ãÇF‚CÒ$Ó"'32ãRÓbÓbbbÓ2ãRbÓe3"""%¢"óãÆ6—&6ÆR7ƒÒ#""7“Ò#""#Ò#"ãR"óãÂ÷7fsârÀ¢W–Töfc¢sÇ7frf–Wt&÷ƒÒ##B#B#ãÇF‚CÒ&Ó22‚„Óãbbã$ãRãR"f3bãRbfrrÓ"ã"ã„Óbã"bã$32ãB‚ã"""'32ãRbf3ãR"ã‚Òã2BÒã„Ó’ã‚’ã†22BãBBãB"óãÂ÷7fsârÀ¢ÇW3¢sÇ7frf–Wt&÷ƒÒ##B#B#ãÇF‚CÒ$Ó"WcDÓR&ƒB"óãÂ÷7fsârÀ¢6V&6ƒ¢sÇ7frf–Wt&÷ƒÒ##B#B#ãÆ6—&6ÆR7ƒÒ#"7“Ò#"#Ò#r"óãÇF‚CÒ&Ó##ÓBÓB"óãÂ÷7fsârÀ¢6ö–ã¢sÇ7frf–Wt&÷ƒÒ##B#B#ãÆVÆÆ—6R7ƒÒ#""7“Ò#b"'ƒÒ#r"'“Ò#2"óãÇF‚CÒ$ÓRgcf3ãr2ã2r73rÓã2rÓ5cdÓR'cf3ãr2ã2r73rÓã2rÓ7bÓb"óãÂ÷7fsârÀ¢F&vWC¢sÇ7frf–Wt&÷ƒÒ##B#B#ãÆ6—&6ÆR7ƒÒ#""7“Ò#""#Ò#’"óãÆ6—&6ÆR7ƒÒ#""7“Ò#""#Ò#R"óãÆ6—&6ÆR7ƒÒ#""7“Ò#""#Ò#ãR"óãÂ÷7fsârÀ¢&VÆÃ¢sÇ7frf–Wt&÷ƒÒ##B#B#ãÇF‚CÒ$Ó‚†bbÓ"3rÓ2rÓ2–ƒ†3Ó"Ó2Ó"Ó2Ó”Ó#ƒB"óãÂ÷7fsârÀ¢6†–VÆC¢sÇ7frf–Wt&÷ƒÒ##B#B#ãÇF‚CÒ$Ó"2Bgcf3R2ãB‚ã‚’BãbÒã’‚ÓB‚Ó•ce¢"óãÇF‚CÒ&Ó’"""BÓR"óãÂ÷7fsârÀ¢WÆöC¢sÇ7frf–Wt&÷ƒÒ##B#B#ãÇF‚CÒ$Ó"ecDÓr–ÃRÓRRTÓB#ƒb"óãÂ÷7fsârÀ¢F÷væÆöC¢sÇ7frf–Wt&÷ƒÒ##B#B#ãÇF‚CÒ$Ó"Gc$ÓrÃRRRÓTÓB#ƒb"óãÂ÷7fsârÀ¢6W'fW#¢sÇ7frf–Wt&÷ƒÒ##B#B#ãÇ&V7BƒÒ#2"“Ò#B"v–GFƒÒ#‚"†V–v‡CÒ#b"'ƒÒ#""óãÇ&V7BƒÒ#2"“Ò#B"v–GFƒÒ#‚"†V–v‡CÒ#b"'ƒÒ#""óãÇF‚CÒ$Órv‚ãÓrv‚ãÓvƒtÓvƒr"óãÂ÷7fsârÀ¢G&6ƒ¢sÇ7frf–Wt&÷ƒÒ##B#B#ãÇF‚CÒ$ÓBvƒdÓ’ucFƒgc4ÓrvÃFƒ†ÃÓDÓcdÓBcb"óãÂ÷7fsârÀ¢VF—C¢sÇ7frf–Wt&÷ƒÒ##B#B#ãÇF‚CÒ$ÓB#ƒDÃ’–ÂÓBÓDÃBgcE¤Ó2ãRbãVÃBB"óãÂ÷7fsârÀ¢–æfó¢sÇ7frf–Wt&÷ƒÒ##B#B#ãÆ6—&6ÆR7ƒÒ#""7“Ò#""#Ò#’"óãÇF‚CÒ$Ó"cdÓ"v‚ã"óãÂ÷7fsârÀ¢G&VæC¢sÇ7frf–Wt&÷ƒÒ##B#B#ãÇF‚CÒ&Ó2rbÓbBB‚Ó”ÓbfƒWcR"óãÂ÷7fsârÀ¢vÆÆWC¢sÇ7frf–Wt&÷ƒÒ##B#B#ãÇF‚CÒ$ÓBfƒF"""'cƒF""Ó"Ó%cf222Ó6ƒ""óãÇF‚CÒ$ÓRƒgcF‚Óf""ÓE¢"óãÂ÷7fsârÀ¢6Æ÷6S¢sÇ7frf–Wt&÷ƒÒ##B#B#ãÇF‚CÒ&Óbb"$Ó‚bb‚"óãÂ÷7fsârÀ¢6†Wg&öå&–v‡C¢sÇ7frf–Wt&÷ƒÒ##B#B#ãÇF‚CÒ&Ó’‚bÓbÓbÓb"óãÂ÷7fsârÀ¢Æö6³¢sÇ7frf–Wt&÷ƒÒ##B#B#ãÇ&V7BƒÒ#B"“Ò#"v–GFƒÒ#b"†V–v‡CÒ#"'ƒÒ#""óãÇF‚CÒ$Ó‚cvBB‚c2"óãÂ÷7fsârÀ¢v–FvWC¢sÇ7frf–Wt&÷ƒÒ##B#B#ãÇ&V7BƒÒ#2"“Ò#2"v–GFƒÒ#‚"†V–v‡CÒ#‚"'ƒÒ#""óãÇ&V7BƒÒ#2"“Ò#2"v–GFƒÒ#‚"†V–v‡CÒ#R"'ƒÒ#""óãÇ&V7BƒÒ#2"“Ò#"v–GFƒÒ#‚"†V–v‡CÒ#"'ƒÒ#""óãÇ&V7BƒÒ#2"“Ò#2"v–GFƒÒ#‚"†V–v‡CÒ#‚"'ƒÒ#""óãÂ÷7fsârÀ¢æWw3¢sÇ7frf–Wt&÷ƒÒ##B#B#ãÇF‚CÒ$ÓBFƒgcdƒG¢"óãÇF‚CÒ$Ór†ƒÓr&ƒÓrfƒb"óãÂ÷7fsârÀ¢Ö&¶WC¢sÇ7frf–Wt&÷ƒÒ##B#B#ãÇF‚CÒ$Ó2‚‚6ÃB2rÓ’"óãÇF‚CÒ$ÓRvƒGcB"óãÇF‚CÒ$Ó2#ƒ‚"óãÂ÷7fsârÀ¢V÷ÆS¢sÇ7frf–Wt&÷ƒÒ##B#B#ãÆ6—&6ÆR7ƒÒ#’"7“Ò#‚"#Ò#2"óãÆ6—&6ÆR7ƒÒ#r"7“Ò#"#Ò#"ãR"óãÇF‚CÒ$Ó2#2ãBÓB"ãRÓbbÓg3Rãb"bdÓBV32RãbbR"óãÂ÷7fsârÀ¢66†fÆ÷s¢sÇ7frf–Wt&÷ƒÒ##B#B#ãÇF‚CÒ$Ór7cTÓ2vÃBÓBBDÓr#cdÓ2vÃBBBÓB"óãÂ÷7fsâp¢Ó° ¢6öç7BBÒ‡6VÆV7F÷"Â&ö÷BÒFö7VÖVçB’Óâ&ö÷BçVW'•6VÆV7F÷"‡6VÆV7F÷"“°¢6öç7BBBÒ‡6VÆV7F÷"Â&ö÷BÒFö7VÖVçB’Óâ²ââç&ö÷BçVW'•6VÆV7F÷$ÆÂ‡6VÆV7F÷"•Ó°¢6öç7BV–BÒ‡&Vf—‚Òv–Br’ÓâG·&Vf—‡ÕòG´FFRææ÷r‚’çFõ7G&–ærƒ3b—ÕòG´ÖF‚ç&æFöÒ‚’çFõ7G&–ærƒ3b’ç6Æ–6Rƒ"Ã‚—Ö°¢6öç7B6Æ×Ò†âÂÖ–âÂÖ‚’ÓâÖF‚æÖ‚†Ö–âÂÖF‚æÖ–â†Ö‚ÂçVÖ&W"†â’ÇÂ’“°¢6öç7B&÷VæBÒ†âÂF–v—G2Ò"’ÓâçVÖ&W"„çVÖ&W"†âÇÂ’çFôf—†VB†F–v—G2’“°¢6öç7BW62Ò‡fÇVR’Óâ7G&–ær‡fÇVRóòrr’ç&WÆ6R‚õ²cÃâr%ÒörÂ2Óâ‡²rbs¢rf×²rÂsÂs¢rfÇC²rÂsâs¢rfwC²rÂ"r#¢rb33“²rÂr"s¢rgV÷C²wÕ¶5Ò’“°¢6öç7B6ÆVWÒ†×2’ÓâæWr&öÖ—6R‡&W6öÇfRÓâ6WEF–ÖV÷WB‡&W6öÇfRÂ×2’“°¢6öç7B—6ôFFRÒ†FFRÒæWrFFR‚’’Óâ°¢6öç7BBÒæWrFFR†FFR“°¢&WGW&âG¶BævWDgVÆÅ–V"‚—ÒÒGµ7G&–ær†BævWDÖöçF‚‚’³’çE7F'Bƒ"Âsr—ÒÒGµ7G&–ær†BævWDFFR‚’’çE7F'Bƒ"Âsr—Ö°¢Ó°¢6öç7BFDF—2Ò†FFRÂF—2’ÓâæWrFFR†æWrFFR†FFR’ævWEF–ÖR‚’²F—2¢D’“°¢6öç7B'6TFFRÒ‡fÇVR’Óâ°¢–b‚fÇVR’&WGW&âæWrFFR‚“°¢–b‡fÇVR–ç7Fæ6VöbFFR’&WGW&âfÇVS°¢6öç7B·’ÆÒÆEÒÒ7G&–ær‡fÇVR’ç6Æ–6RƒÃ’ç7Æ—B‚rÒr’æÖ„çVÖ&W"“°¢&WGW&âæWrFFR‡’Â†ÒÇÂ’ÓÂBÇÂÂ"“°¢Ó°¢6öç7B6ÖTF’Ò†Æ"’Óâ—6ôFFR†’ÓÓÒ—6ôFFR†"“°¢6öç7B7W'&Væ7•7–Ö&öÂÒ†2’Óâ‡µE%“¢~(+¢rÅU4C¢rBrÄUU#¢~(*ÂrÄt%¢|*2rÅ„S¢vw"rÅ„s¢vw"wÕ¶5ÒÇÂ2ÇÂrr“°¢6öç7BçVÖ&W$f×BÒ‡fÇVRÂF–v—G2Ò"’ÓâæWr–çFÂäçVÖ&W$f÷&ÖB‚wG"ÕE"rÂ²Ö–æ–×VÔg&7F–öäF–v—G3¢F–v—G2ÂÖ†–×VÔg&7F–öäF–v—G3¢F–v—G2Ò’æf÷&ÖB„çVÖ&W"‡fÇVRÇÂ’“°¢6öç7B6ö×7Df×BÒ‡fÇVR’ÓâæWr–çFÂäçVÖ&W$f÷&ÖB‚wG"ÕE"rÂ²æ÷FF–öã¢v6ö×7BrÂÖ†–×VÔg&7F–öäF–v—G3£Ò’æf÷&ÖB„çVÖ&W"‡fÇVRÇÂ’“°¢6öç7BÖöæW’Ò‡fÇVRÂ7W'&Væ7’ÒuE%’rÂ6ö×7BÒfÇ6RÂÖ„F–v—G2Ò"’Óâ°¢6öç7BâÒçVÖ&W"‡fÇVRÇÂ“°¢–b†6ö×7B’&WGW&âG¶7W'&Væ7•7–Ö&öÂ†7W'&Væ7’—ÒG¶6ö×7Df×B†â—Ö°¢G'’°¢&WGW&âæWr–çFÂäçVÖ&W$f÷&ÖB‚wG"ÕE"rÂ²7G–ÆS¢v7W'&Væ7’rÂ7W'&Væ7’ÂÖ†–×VÔg&7F–öäF–v—G3¦Ö„F–v—G2ÂÖ–æ–×VÔg&7F–öäF–v—G3¦Ö„F–v—G2Ò’æf÷&ÖB†â“°¢Ò6F6‚…ò’°¢&WGW&âG¶çVÖ&W$f×B†âÆÖ„F–v—G2—ÒG¶7W'&Væ7—Ö°¢Ğ¢Ó°¢6öç7B7BÒ‡fÇVRÂF–v—G2Ò"’ÓâG´çVÖ&W"‡fÇVRÇÂ’ãÒòr²r¢rwÒG¶çVÖ&W$f×B‡fÇVRÆF–v—G2—ÒV°¢6öç7BFFUFW‡BÒ‡fÇVRÂ÷F–öç2Ò¶F“¢s"ÖF–v—BrÆÖöçFƒ¢w6†÷'BrÇ–V#¢vçVÖW&–2wÒ’Óâ'6TFFR‡fÇVR’çFôÆö6ÆTFFU7G&–ær‚wG"ÕE"rÂ÷F–öç2“°¢6öç7BF–ÖTvòÒ†FFR’Óâ°¢–b‚FFR’&WGW&ât†Vì;Ç¢–Væ–ÆVæÖVF’s°¢6öç7BF–fbÒFFRææ÷r‚’ÒæWrFFR†FFR’ævWEF–ÖR‚“°¢–b†F–fbÂcó’&WGW&ât¢;fæ6R|;Ææ6VÆÆVæF’s°¢–b†F–fbÂ5ócó’&WGW&âG´ÖF‚æfÆö÷"†F–fbócó—ÒF²;fæ6R|;Ææ6VÆÆVæF–°¢–b†F–fbÂD’’&WGW&âG´ÖF‚æfÆö÷"†F–fbó5ócó—Ò6;fæ6R|;Ææ6VÆÆVæF–°¢&WGW&âG´ÖF‚æfÆö÷"†F–fbôD’—Ò|;Æâ;fæ6R|;Ææ6VÆÆVæF–°¢Ó° ¢gVæ7F–öâ&Ææµ7FFR‚’°¢&WGW&â°¢fW'6–öã¢"À¢FVÖó¢fÇ6RÀ¢6WGF–æw3¢°¢&6T7W'&Væ7“¢uE%’rÀ¢&6¶VæEW&Ã¢DTdTÅEô$4´TäEõU$ÂÀ¢&6¶VæEFö¶Vã¢rrÀ¢&Vg&W6„†÷W'3¢bÀ¢&Vg&W6„Ö–çWFW3¢RÀ¢æ÷F–f–6F–öç3¢G'VRÀ¢WFõ&Vg&W6ƒ¢G'VRÀ¢&—f7“¢fÇ6RÀ¢ÖöçF†Ç”W‡Vç6S¢SÀ¢ÖöçF†Ç”6öçG&–'WF–öã¢SÀ¢W‡V7FVE&WGW&ã¢‚À¢W‡V7FVDF—f–FVæDw&÷wFƒ¢bÀ¢F—f–FVæDvöÄæçVÃ¢cÀ¢&V–çfW7DF—f–FVæG3¢G'VRÀ¢F†VÖS¢vF&²p¢ÒÀ¢Ö&¶WC¢°¢gƒ¢²E%“¢ÂU4C¢CãRÂUU#¢C‚ã2Ât%¢SRã‚ÒÀ¢Æ7E7–æ3¢çVÆÂÀ¢Æ7DW'&÷#¢çVÆÂÀ¢æWw3¢µÒÀ¢Ö7&ôWfVçG3¢µÒÀ¢W‡W'Ef–Ww3¢µÒÀ¢–çfW7F÷%÷'FföÆ–÷3¢µÒÀ¢FöÖW7F–5÷'FföÆ–÷3¢µÒÀ¢gVæE6÷W&6W3¢µÒÀ¢÷'FföÆ–ô6ö×&—6öã¢²6öÖÖöå7Fö6·3¢µÒÂ–ç7F—GWF–öç3¢µÒÒÀ¢6÷W&6T6FÆös¢µÒÀ¢—ô—FV×3¢µÒÀ¢—ôæWw3¢µÒÀ¢—õ6÷W&6W3¢µÒÀ¢Æ7D6öçFVçE7–æ3¢çVÆÂÀ¢6öçFVçDW'&÷#¢çVÆÀ¢ÒÀ¢76WG3¢µÒÀ¢G&ç67F–öç3¢µÒÀ¢F—f–FVæDWfVçG3¢µÒÀ¢66†fÆ÷w3¢µÒÀ¢vF6†Æ—7C¢µÒÀ¢66„ÆVFvW#¢µÒÀ¢—õG&6¶VC¢µÒÀ¢6ÆVæF%f–Ws¢²–V#¢æWrFFR‚’ævWDgVÆÅ–V"‚’ÂÖöçFƒ¢æWrFFR‚’ævWDÖöçF‚‚’Â6VÆV7FVC¢—6ôFFR‚’Ğ¢Ó°¢Ğ ¢gVæ7F–öâFVÖõ7FFR‚’°¢6öç7B2Ò&Ææµ7FFR‚“°¢2æFVÖòÒG'VS°¢6öç7BFöF’ÒæWrFFR‚“°¢6öç7B7W'&VçE–V"ÒFöF’ævWDgVÆÅ–V"‚“°¢6öç7BgWGW&RÒ†F—2’Óâ—6ôFFR†FDF—2‡FöF’ÂF—2’“°¢6öç7B7BÒ†F—2’Óâ—6ôFFR†FDF—2‡FöF’ÂÖF—2’“°¢2æÖ&¶WBæÆ7E7–æ2ÒæWrFFR‚’çFô•4õ7G&–ær‚“°¢2æ76WG2Ò°¢²–C¢v÷GW'2rÂ7–Ö&öÃ¢uEU%2rÂ6÷W&6U7–Ö&öÃ¢uEU%2ä•2rÂæÖS¢uL;Ç&YòrÂG—S¢t$•5BrÂ7W'&Væ7“¢uE%’rÂVçF—G“£#cÂft6÷7C£SBã#RÂ&–6S£ƒrãCÂ&Wd6Æ÷6S£ƒBãÂ6†ævU7C£ãs’ÂF&vWEvV–v‡C£#"ÂF—f–FVæEFƒ£RÂæçVÄF—f–FVæEW%6†&S£rã2Â†—7F÷'“¥³S‚Ãc"ÃSrÃcbÃsÃc‚ÃsrÃsBÃƒÃs’ÃƒBÃƒrãEÒÒÀ¢²–C¢v÷66†BrÂ7–Ö&öÃ¢u44„BrÂ6÷W&6U7–Ö&öÃ¢u44„BrÂæÖS¢u66‡v"Rå2âF—f–FVæBWV—G’UDbrÂG—S¢tUDbrÂ7W'&Væ7“¢uU4BrÂVçF—G“£RÂft6÷7C£#bãƒÂ&–6S£#’ãsBÂ&Wd6Æ÷6S£#’ãSRÂ6†ævU7C¢ãcBÂF&vWEvV–v‡C£#BÂF—f–FVæEFƒ£#ÂæçVÄF—f–FVæEW%6†&S£ãÂ†—7F÷'“¥³#RãbÃ#bãÃ#Rã’Ã#bãrÃ#rã2Ã#rãÃ#‚ãÃ#‚ãRÃ#‚ã"Ã#’ãÃ#’ãRÃ#’ãsEÒÒÀ¢²–C¢vöòrÂ7–Ö&öÃ¢tòrÂ6÷W&6U7–Ö&öÃ¢tòrÂæÖS¢u&VÇG’–æ6öÖRrÂG—S¢uU2rÂ7W'&Væ7“¢uU4BrÂVçF—G“£sÂft6÷7C£SRãÂ&–6S£cã#RÂ&Wd6Æ÷6S£cãc2Â6†ævU7C¢Òãc2ÂF&vWEvV–v‡C£bÂF—f–FVæEFƒ£#ÂæçVÄF—f–FVæEW%6†&S£2ã#BÂ†—7F÷'“¥³SBã"ÃSRãRÃSbãÃSRãrÃSrã2ÃS‚ãÃSrãRÃS’ãÃS‚ãbÃS’ã‚ÃcãbÃcã#UÒÒÀ¢²–C¢v÷FÖrrÂ7–Ö&öÃ¢uDÔrrÂ6÷W&6U7–Ö&öÃ¢uDÔrrÂæÖS¢t²÷'Fl;g’–Væ’FV¶æöÆö¦–ÆW"–&æ<K†—76RföçRrÂG—S¢uDTd2rÂ7W'&Væ7“¢uE%’rÂVçF—G“£CÂft6÷7C¢ãC‚Â&–6S¢ãS3bÂ&Wd6Æ÷6S¢ãS3"Â6†ævU7C¢ãsRÂF&vWEvV–v‡C£#2ÂF—f–FVæEFƒ£ÂæçVÄF—f–FVæEW%6†&S£Â†—7F÷'“¥²ãCÂãC"ÂãC2ÂãCBÂãCRÂãCbÂãCrÂãC‚ÂãC’ÂãSÂãS"ÂãS3eÒÒÀ¢²–C¢vövöÆBrÂ7–Ö&öÃ¢tu$ÒÅD”ârÂ6÷W&6U7–Ö&öÃ¢tu$ÕôÅD”ârÂæÖS¢tw&ÒÇLKârÂG—S¢ttôÄBrÂ7W'&Væ7“¢uE%’rÂVçF—G“£bã"Âft6÷7C£C#cÂ&–6S£C“3RÂ&Wd6Æ÷6S£C“Â6†ævU7C¢ãc’ÂF&vWEvV–v‡C£RÂF—f–FVæEFƒ£ÂæçVÄF—f–FVæEW%6†&S£Â†—7F÷'“¥³C#ÃC#ƒÃC3ÃCCRÃCCsÃCSCÃCcÃCc“ÃCsSÃCƒ#RÃC“ÃC“3UÒĞ¢Ó°¢2çG&ç67F–öç2Ò°¢¶–C¢wCrÆ76WD–C¢v÷GW'2rÇG—S¢v'W’rÆFFS§7Bƒ3c’ÇVçF—G“£#cÇ&–6S£SBã#RÆfVS£Æ7W'&Væ7“¢uE%’wÒÀ¢¶–C¢wC"rÆ76WD–C¢v÷66†BrÇG—S¢v'W’rÆFFS§7Bƒ3’ÇVçF—G“£RÇ&–6S£#bãƒÆfVS£Bã’Æ7W'&Væ7“¢uU4BwÒÀ¢¶–C¢wC2rÆ76WD–C¢vöòrÇG—S¢v'W’rÆFFS§7Bƒ#s’ÇVçF—G“£sÇ&–6S£SRãÆfVS£"ãÆ7W'&Væ7“¢uU4BwÒÀ¢¶–C¢wCBrÆ76WD–C¢v÷FÖrrÇG—S¢v'W’rÆFFS§7Bƒ#S’ÇVçF—G“£CÇ&–6S¢ãC‚ÆfVS£Æ7W'&Væ7“¢uE%’wÒÀ¢¶–C¢wCRrÆ76WD–C¢vövöÆBrÇG—S¢v'W’rÆFFS§7Bƒ“’ÇVçF—G“£bã"Ç&–6S£C#cÆfVS£Æ7W'&Væ7“¢uE%’wĞ¢Ó°¢2æF—f–FVæDWfVçG2Ò°¢¶–C¢vCrÆ76WD–C¢v÷66†BrÆW„FFS§7Bƒ#R’Ç”FFS§7BƒR’ÆÖ÷VçEW%6†&S¢ã#C‚Â7W'&Væ7“¢uU4BrÇ7FGW3¢v6öæf—&ÖVBrÇ&V6V—fVC§G'VRÇ6÷W&6S¢tFVÖòwÒÀ¢¶–C¢vC"rÆ76WD–C¢vöòrÆW„FFS§7Bƒ“R’Ç”FFS§7Bƒƒ’ÆÖ÷VçEW%6†&S¢ã#cBÂ7W'&Væ7“¢uU4BrÇ7FGW3¢v6öæf—&ÖVBrÇ&V6V—fVC§G'VRÇ6÷W&6S¢tFVÖòwÒÀ¢¶–C¢vC2rÆ76WD–C¢vöòrÆW„FFS§7BƒcR’Ç”FFS§7BƒS’ÆÖ÷VçEW%6†&S¢ã#cBÂ7W'&Væ7“¢uU4BrÇ7FGW3¢v6öæf—&ÖVBrÇ&V6V—fVC§G'VRÇ6÷W&6S¢tFVÖòwÒÀ¢¶–C¢vCBrÆ76WD–C¢v÷GW'2rÆW„FFS§7Bƒ3‚’Ç”FFS§7Bƒ3b’ÆÖ÷VçEW%6†&S£ã3s“’Â7W'&Væ7“¢uE%’rÇ7FGW3¢v6öæf—&ÖVBrÇ&V6V—fVC§G'VRÇ6÷W&6S¢tFVÖòwÒÀ¢¶–C¢vCRrÆ76WD–C¢v÷66†BrÆW„FFS§7Bƒ3"’Ç”FFS§7Bƒ#B’ÆÖ÷VçEW%6†&S¢ã#SRÂ7W'&Væ7“¢uU4BrÇ7FGW3¢v6öæf—&ÖVBrÇ&V6V—fVC§G'VRÇ6÷W&6S¢tFVÖòwÒÀ¢¶–C¢vCbrÆ76WD–C¢vöòrÆW„FFS§7Bƒ3R’Ç”FFS§7Bƒ#’ÆÖ÷VçEW%6†&S¢ã#rÂ7W'&Væ7“¢uU4BrÇ7FGW3¢v6öæf—&ÖVBrÇ&V6V—fVC§G'VRÇ6÷W&6S¢tFVÖòwÒÀ¢¶–C¢vCrrÆ76WD–C¢vöòrÆW„FFS¦gWGW&RƒB’Ç”FFS¦gWGW&Rƒ’’ÆÖ÷VçEW%6†&S¢ã#rÂ7W'&Væ7“¢uU4BrÇ7FGW3¢v6öæf—&ÖVBrÇ&V6V—fVC¦fÇ6RÇ6÷W&6S¢tFVÖòwÒÀ¢¶–C¢vC‚rÆ76WD–C¢v÷66†BrÆW„FFS¦gWGW&Rƒ#B’Ç”FFS¦gWGW&Rƒ3’ÆÖ÷VçEW%6†&S¢ã#S‚Â7W'&Væ7“¢uU4BrÇ7FGW3¢vW7F–ÖFVBrÇ&V6V—fVC¦fÇ6RÇ6÷W&6S¢tv\:vÖœYòL;Ç¦VâF†Ö–æ’wÒÀ¢¶–C¢vC’rÆ76WD–C¢v÷GW'2rÆW„FFS¦gWGW&Rƒ3B’Ç”FFS¦gWGW&Rƒ3b’ÆÖ÷VçEW%6†&S£bãsCc’Â7W'&Væ7“¢uE%’rÇ7FGW3¢v6öæf—&ÖVBrÇ&V6V—fVC¦fÇ6RÇ6÷W&6S¢tFVÖòwÒÀ¢¶–C¢vCrÆ76WD–C¢vöòrÆW„FFS¦gWGW&Rƒ3R’Ç”FFS¦gWGW&RƒS’ÆÖ÷VçEW%6†&S¢ã#rÂ7W'&Væ7“¢uU4BrÇ7FGW3¢vW7F–ÖFVBrÇ&V6V—fVC¦fÇ6RÇ6÷W&6S¢tv\:vÖœYòL;Ç¦VâF†Ö–æ’wÒÀ¢¶–C¢vCrÆ76WD–C¢vöòrÆW„FFS¦gWGW&Rƒcb’Ç”FFS¦gWGW&Rƒƒ’ÆÖ÷VçEW%6†&S¢ã#rÂ7W'&Væ7“¢uU4BrÇ7FGW3¢vW7F–ÖFVBrÇ&V6V—fVC¦fÇ6RÇ6÷W&6S¢tv\:vÖœYòL;Ç¦VâF†Ö–æ’wÒÀ¢¶–C¢vC"rÆ76WD–C¢v÷66†BrÆW„FFS¦gWGW&RƒR’Ç”FFS¦gWGW&Rƒ#"’ÆÖ÷VçEW%6†&S¢ã#c"Â7W'&Væ7“¢uU4BrÇ7FGW3¢vW7F–ÖFVBrÇ&V6V—fVC¦fÇ6RÇ6÷W&6S¢tv\:vÖœYòL;Ç¦VâF†Ö–æ’wĞ¢Ó°¢2æ66†fÆ÷w2Ò°¢¶–C¢v3rÇG—S¢v6öçG&–'WF–öârÆFFS§7Bƒ3c’ÆÖ÷VçC£CRÆ7W'&Væ7“¢uE%’rÆæ÷FS¢t&YöÆæ|K:r–LK,KÜKwÒÀ¢¶–C¢v3"rÇG—S¢v6öçG&–'WF–öârÆFFS§7Bƒ3’ÆÖ÷VçC£ƒ#ƒ#Æ7W'&Væ7“¢uE%’rÆæ÷FS¢t$B÷'Fl;g’¶F¼K<KwÒÀ¢¶–C¢v32rÇG—S¢v6öçG&–'WF–öârÆFFS§7Bƒ#S’ÆÖ÷VçC£s3Æ7W'&Væ7“¢uE%’rÆæ÷FS¢tföâ¶F¼K<KwĞ¢Ó°¢2ç6WGF–æw2æF—f–FVæDvöÄæçVÂÒc°¢2ç6WGF–æw2æÖöçF†Ç”W‡Vç6RÒS°¢&WGW&â3°¢Ğ ¢gVæ7F–öâæ÷&ÖÆ—¦U7FFR‡&r’°¢6öç7B&6RÒ&Ææµ7FFR‚“°¢–b‚&rÇÂG—Vöb&rÓÒvö&¦V7Br’&WGW&â&6S°¢6öç7B66„ÆVFvW"Ò'&’æ—4'&’‡&ræ66„ÆVFvW"’ò&ræ66„ÆVFvW"¢µÓ°¢6öç7BF—f–FVæDWfVçG2Ò4õ$RæÖ–w&FTF—f–FVæDWfVçG2‡&ræF—f–FVæDWfVçG2Â66„ÆVFvW"Â¶FVÖó§&ræFVÖòÓÓÒG'VWÒ“°¢&WGW&â°¢ââæ&6RÀ¢ââç&rÀ¢6WGF–æw3¢²ââæ&6Rç6WGF–æw2Ââââ‡&rç6WGF–æw2ÇÂ·Ò’Â&6¶VæEW&Ã¢7G&–ær‚‡&rç6WGF–æw2ÇÂ·Ò’æ&6¶VæEW&ÂÇÂDTdTÅEô$4´TäEõU$Â’ÒÀ¢Ö&¶WC¢²ââæ&6RæÖ&¶WBÂâââ‡&ræÖ&¶WBÇÂ·Ò’Âgƒ¢²ââæ&6RæÖ&¶WBæg‚Ââââ‚‡&ræÖ&¶WBÇÂ·Ò’æg‚ÇÂ·Ò’ÒÒÀ¢76WG3¢'&’æ—4'&’‡&ræ76WG2’ò&ræ76WG2¢µÒÀ¢G&ç67F–öç3¢'&’æ—4'&’‡&rçG&ç67F–öç2’ò&rçG&ç67F–öç2¢µÒÀ¢fW'6–öã¢"À¢F—f–FVæDWfVçG2À¢66†fÆ÷w3¢'&’æ—4'&’‡&ræ66†fÆ÷w2’ò&ræ66†fÆ÷w2¢µÒÀ¢vF6†Æ—7C¢'&’æ—4'&’‡&rçvF6†Æ—7B’ò&rçvF6†Æ—7B¢µÒÀ¢66„ÆVFvW"À¢—õG&6¶VC¢'&’æ—4'&’‡&ræ—õG&6¶VB’ò&ræ—õG&6¶VB¢µÒÀ¢6ÆVæF%f–Ws¢²ââæ&6Ræ6ÆVæF%f–WrÂâââ‡&ræ6ÆVæF%f–WrÇÂ·Ò’Ğ¢Ó°¢Ğ ¢gVæ7F–öâÆöE7FFR‚’°¢G'’°¢6öç7B&rÒÆö6Å7F÷&vRævWD—FVÒ…5Dõ$tUô´U’“°¢&WGW&â&ròæ÷&ÖÆ—¦U7FFR„¥4ôâç'6R‡&r’’¢&Ææµ7FFR‚“°¢Ò6F6‚†W'&÷"’°¢6öç6öÆRçv&â‚u7FFRÆöBW'&÷"rÂW'&÷"“°¢&WGW&â&Ææµ7FFR‚“°¢Ğ¢Ğ ¢ÆWB7FFRÒÆöE7FFR‚“°¢7–æ4ÆÄ76WDÆVFvW'2‚“°¢ÆWB7W'&VçEvRÒvF6†&ö&Bs°¢ÆWB÷'FföÆ–ôf–ÇFW"ÒtÄÂs°¢ÆWB÷'FföÆ–õVW'’Òrs°¢ÆWBæÇ—F–74f–ÇFW"ÒtÄÂs°¢ÆWBæÇ—F–75W&–öBÒs’s°¢ÆWBFö7EF–ÖW"ÒçVÆÃ°¢ÆWB&Vg&W6„6öçG&öÆÆW"ÒçVÆÃ°¢ÆWB6öçFVçE&Vg&W6…&öÖ—6RÒçVÆÃ°¢ÆWBWFõ&Vg&W6…F–ÖW"ÒçVÆÃ°¢6öç7BæF—fTÖ&¶WE&WVW7G2ÒæWrÖ‚“°¢ÆWBæF—fTÖ&¶WE6WVVæ6RÒ° ¢v–æF÷räf–æç6ÄT$æF—fRÒ°¢öäÖ&¶WE&W7VÇB‡&WVW7D–BÂ–ÆöB’°¢6öç7BVæF–ærÒæF—fTÖ&¶WE&WVW7G2ævWB…7G&–ær‡&WVW7D–B’“°¢–b‚VæF–ær’&WGW&ã°¢æF—fTÖ&¶WE&WVW7G2æFVÆWFR…7G&–ær‡&WVW7D–B’“°¢6ÆV%F–ÖV÷WB‡VæF–ærçF–ÖW"“°¢G'’°¢6öç7B&W7VÇBÒG—Vöb–ÆöBÓÓÒw7G&–ærrò¥4ôâç'6R‡–ÆöB’¢–ÆöC°¢–b‚&W7VÇCòæö²’F‡&÷ræWrW'&÷"‡&W7VÇCòæW'&÷"ÇÂu—–6fW&—6’ÌKæÖLKr“°¢VæF–ærç&W6öÇfR‡&W7VÇB“°¢Ò6F6‚†W'&÷"’°¢VæF–ærç&V¦V7B†W'&÷"–ç7Fæ6VöbW'&÷"òW'&÷"¢æWrW'&÷"…7G&–ær†W'&÷"’’“°¢Ğ¢Ğ¢Ó° ¢gVæ7F–öâæF—fTÖ&¶WD6ÆÂ†7F–öâÂ&×2Ò·ÒÂF–ÖV÷WBÒ##’°¢–b‚v–æF÷räæG&ö–Còç&WVW7DÖ&¶WDFF’&WGW&â&öÖ—6Rç&V¦V7B†æWrW'&÷"‚tæG&ö–BfW&’¼;g,;Ç<;Â·VÆÆìKÆÜK–÷"r’“°¢6öç7B&WVW7D–BÒÖ&¶WEòG´FFRææ÷r‚’çFõ7G&–ærƒ3b—ÕòG²²¶æF—fTÖ&¶WE6WVVæ6WÖ°¢&WGW&âæWr&öÖ—6R‚‡&W6öÇfRÂ&V¦V7B’Óâ°¢6öç7BF–ÖW"Ò6WEF–ÖV÷WB‚‚’Óâ°¢æF—fTÖ&¶WE&WVW7G2æFVÆWFR‡&WVW7D–B“°¢&V¦V7B†æWrW'&÷"‚u—–6fW&’—7F\Iö’¦ÖâYüKÜKæ\I÷&LKr’“°¢ÒÂF–ÖV÷WB“°¢æF—fTÖ&¶WE&WVW7G2ç6WB‡&WVW7D–BÂ·&W6öÇfRÂ&V¦V7BÂF–ÖW'Ò“°¢G'’°¢v–æF÷räæG&ö–Bç&WVW7DÖ&¶WDFF‡&WVW7D–BÂ7F–öâÂ¥4ôâç7G&–æv–g’‡&×2’“°¢Ò6F6‚†W'&÷"’°¢6ÆV%F–ÖV÷WB‡F–ÖW"“°¢æF—fTÖ&¶WE&WVW7G2æFVÆWFR‡&WVW7D–B“°¢&V¦V7B†W'&÷"“°¢Ğ¢Ò“°¢Ğ ¢gVæ7F–öâ6fU7FFR‡·&VæFW"ÒfÇ6WÒÒ·Ò’°¢Æö6Å7F÷&vRç6WD—FVÒ…5Dõ$tUô´U’Â¥4ôâç7G&–æv–g’‡7FFR’“°¢Ç•&—f7’‚“°¢7–æ4æF—fUv–FvWB‚“°¢–b‡&VæFW"’&VæFW%vR‚“°¢Ğ ¢gVæ7F–öâ76WD'”–B†–B’²&WGW&â7FFRæ76WG2æf–æB†Óâæ–BÓÓÒ–B“²Ğ¢gVæ7F–öâg…&FR†7W'&Væ7’’²&WGW&âçVÖ&W"‡7FFRæÖ&¶WBæg…¶7W'&Væ7•ÒÇÂ†7W'&Væ7’ÓÓÒ7FFRç6WGF–æw2æ&6T7W'&Væ7’ò¢’“²Ğ¢gVæ7F–öâ76WEfÇVR†76WB’²&WGW&âçVÖ&W"†76WBçVçF—G’ÇÂ’¢çVÖ&W"†76WBç&–6RÇÂ’¢g…&FR†76WBæ7W'&Væ7’“²Ğ¢gVæ7F–öâG&ç67F–öå÷6—F–öâ†76WD–BÂ7WFöfefÇVRÒçVÆÂÂ7G&–7D&Vf÷&RÒfÇ6R’°¢6öç7B76WBÒ76WD'”–B†76WD–B“°¢–b‚76WB’&WGW&â²VçF—G“£Âft6÷7C£Â&VÆ—¦VE&öf—C£Ó°¢6öç7B7WFöfbÒ7WFöfefÇVRò'6TFFR†7WFöfefÇVR’¢çVÆÃ°¢6öç7BG‡2Ò7FFRçG&ç67F–öç0¢æf–ÇFW"‡BÓâBæ76WD–BÓÓÒ76WD–Bbb‡BçG—RÓÓÒv'W’rÇÂBçG—RÓÓÒw6VÆÂr’bbBæFFR¢ç6Æ–6R‚¢ç6÷'B‚†Æ"’Óâ'6TFFR†æFFR’Ò'6TFFR†"æFFR’“°¢–b‚G‡2æÆVæwF‚’&WGW&â²VçF—G“¤çVÖ&W"†76WBçVçF—G—ÇÃ’Âft6÷7C¤çVÖ&W"†76WBæft6÷7GÇÃ’Â&VÆ—¦VE&öf—C£Ó°¢ÆWBVçF—G’ÒÂft6÷7BÒÂ&VÆ—¦VE&öf—BÒ°¢f÷"†6öç7BBöbG‡2’°¢6öç7BFBÒ'6TFFR‡BæFFR“°¢–b†7WFöfbbb‡7G&–7D&Vf÷&RòFBãÒ7WFöfb¢FBâ7WFöfb’’6öçF–çVS°¢6öç7BÒÖF‚æÖ‚ƒÂçVÖ&W"‡BçVçF—G—ÇÃ’“°¢6öç7B&–6RÒÖF‚æÖ‚ƒÂçVÖ&W"‡Bç&–6WÇÃ’“°¢6öç7BfVRÒÖF‚æÖ‚ƒÂçVÖ&W"‡BæfVWÇÃ’“°¢–b‡BçG—RÓÓÒv'W’r’°¢6öç7BæW‡EG’ÒVçF—G’²°¢ft6÷7BÒæW‡EG’ò‚‡VçF—G’¢ft6÷7B’²‡¢&–6R’²fVR’òæW‡EG’¢°¢VçF—G’ÒæW‡EG“°¢ÒVÇ6R–b‡BçG—RÓÓÒw6VÆÂr’°¢6öç7B6öÆBÒÖF‚æÖ–â‡VçF—G’Â“°¢&VÆ—¦VE&öf—B³Ò6öÆB¢‡&–6RÒft6÷7B’ÒfVS°¢VçF—G’ÒÖF‚æÖ‚ƒÂVçF—G’Ò6öÆB“°¢–b‡VçF—G’ÓÓÒ’ft6÷7BÒ°¢Ğ¢Ğ¢&WGW&â²VçF—G’Âft6÷7BÂ&VÆ—¦VE&öf—BÓ°¢Ğ¢gVæ7F–öâ7–æ476WDÆVFvW"†76WB’°¢6öç7B÷2ÒG&ç67F–öå÷6—F–öâ†76WBæ–B“°¢6öç7B†5G‚Ò7FFRçG&ç67F–öç2ç6öÖR‡BÓâBæ76WD–BÓÓÒ76WBæ–Bbb‡BçG—RÓÓÒv'W’rÇÂBçG—RÓÓÒw6VÆÂr’“°¢–b††5G‚’²76WBçVçF—G’Ò÷2çVçF—G“²76WBæft6÷7BÒ÷2æft6÷7C²76WBç&VÆ—¦VE&öf—BÒ÷2ç&VÆ—¦VE&öf—C²Ğ¢Ğ¢gVæ7F–öâ7–æ4ÆÄ76WDÆVFvW'2‚’²7FFRæ76WG2æf÷$V6‚‡7–æ476WDÆVFvW"“²Ğ¢gVæ7F–öâ76WD6÷7B†76WB’²6öç7B÷3×G&ç67F–öå÷6—F–öâ†76WBæ–B“²&WGW&âçVÖ&W"‡÷2çVçF—G—ÇÃ’¢çVÖ&W"‡÷2æft6÷7GÇÃ’¢g…&FR†76WBæ7W'&Væ7’“²Ğ¢gVæ7F–öâ76WE&öf—B†76WB’²&WGW&â76WEfÇVR†76WB’Ò76WD6÷7B†76WB“²Ğ¢gVæ7F–öâ76WE&öf—E7B†76WB’²6öç7B2Ò76WD6÷7B†76WB“²&WGW&â2ò†76WE&öf—B†76WB’ò2’¢¢²Ğ¢gVæ7F–öâVçF—G”DFFR†76WD–BÂFFUfÇVR’²&WGW&âÖF‚æÖ‚ƒÂG&ç67F–öå÷6—F–öâ†76WD–BÂFFUfÇVRÂfÇ6R’çVçF—G’“²Ğ¢gVæ7F–öâVÆ–v–&ÆUVçF—G”DW„FFR†76WD–BÂFFUfÇVR’°¢òòFVÖWGL;Â†¶¼Kœ:v–â†²·VÆÆìKÒ†W‚ÖFFR’|;Æì;ÆæFR–KÆâÌKYò†²¶¦æLK&Ö£°¢òòò|;Æâ–KÆâ6LKYò—6R;fæ6V¶’|;Æâ6†—ÆœIö’æVFVæ—–ÆR†¶¼K÷'FFâ¶ÆLK&Ö¢à¢&WGW&âÖF‚æÖ‚ƒÂG&ç67F–öå÷6—F–öâ†76WD–BÂFFUfÇVRÂG'VR’çVçF—G’“°¢Ğ¢gVæ7F–öâWfVçDw&÷72†WfVçB’°¢6öç7B76WBÒ76WD'”–B†WfVçBæ76WD–B“°¢–b‚76WB’&WGW&â°¢6öç7BVÆ–v–&ÆUG’ÒWfVçBæW„FFRòVÆ–v–&ÆUVçF—G”DW„FFR†WfVçBæ76WD–BÂWfVçBæW„FFR’¢VçF—G”DFFR†WfVçBæ76WD–BÂWfVçBç”FFR“°¢&WGW&âVÆ–v–&ÆUG’¢çVÖ&W"†WfVçBæÖ÷VçEW%6†&RÇÂ“°¢Ğ¢gVæ7F–öâWFöÖF–4F—f–FVæEF‚†76WBÂFFUfÇVRÒçVÆÂ’°¢–b‚76WB’&WGW&â°¢–b†76WBæWFôF—f–FVæEF‚ÓÓÒfÇ6R’&WGW&â6Æ×†76WBæF—f–FVæEF‚óòÂÂ“°¢–b†76WBçG—RÓÓÒt$•5Br’°¢6öç7BBÒFFUfÇVRò'6TFFR†FFUfÇVR’¢æWrFFR‚“°¢6öç7B6†ævTFFRÒ'6TFFR‚s##BÓ"Ó#"r“°¢&WGW&âBãÒ6†ævTFFRòR¢°¢Ğ¢òò$BôUDb7F÷¬K–¶ÖWBÂrÓ„$TâöæÆYöÖfRÖVæ·VÂL;Ç,;ÆæR|;g&RF\IöœYöV&–Æ—#°¢òò'RæVFVæÆR¶œKFÌK·VÆÆìK<K÷&ìKìK÷FöÖF–²f'6œKÒ–W&–æR¶÷'W–÷'W¢à¢&WGW&â6Æ×†76WBæF—f–FVæEF‚óòÂÂ“°¢Ğ¢gVæ7F–öâWfVçDæWB†WfVçB’°¢6öç7B76WBÒ76WD'”–B†WfVçBæ76WD–B“°¢–b‚76WB’&WGW&â°¢6öç7BWfVçDFFRÒWfVçBç”FFRÇÂWfVçBæW„FFRÇÂçVÆÃ°¢6öç7BF‚Ò6Æ×†WfVçBçF…&FRóòWFöÖF–4F—f–FVæEF‚†76WBÆWfVçDFFR’ÂÂ“°¢6öç7B6ö×WFVBÒWfVçDw&÷72†WfVçB’¢ƒÒF‚ò’¢g…&FR†WfVçBæ7W'&Væ7’ÇÂ76WBæ7W'&Væ7’“°¢&WGW&â4õ$Rç7F&ÆTF—f–FVæDæWB†WfVçBÂ6ö×WFVB“°¢Ğ¢gVæ7F–öâ÷'FföÆ–ôÖWG&–72†76WDÆ—7BÒ7FFRæ76WG2’°¢6öç7B66÷VD76WG2Ò'&’æ—4'&’†76WDÆ—7B’ò76WDÆ—7B¢7FFRæ76WG3°¢6öç7B76WD–G2ÒæWr6WB‡66÷VD76WG2æÖ†Óâæ–B’“°¢6öç7BF÷FÂÒ66÷VD76WG2ç&VGV6R‚‡7VÒÆ’Óâ7VÒ²76WEfÇVR†’Â“°¢6öç7B6÷7BÒ66÷VD76WG2ç&VGV6R‚‡7VÒÆ’Óâ7VÒ²76WD6÷7B†’Â“°¢6öç7B&öf—BÒF÷FÂÒ6÷7C°¢6öç7BF–Ç’Ò66÷VD76WG2ç&VGV6R‚‡7VÒÆ’Óâ°¢6öç7B7W'&VçBÒ76WEfÇVR†“°¢6öç7B7ÒçVÖ&W"†æ6†ævU7BÇÂ’ò°¢&WGW&â7VÒ²†7âÓò7W'&VçBÒ7W'&VçBòƒ²7’¢“°¢ÒÂ“°¢6öç7BF–Ç•7BÒF÷FÂÒF–Ç’òF–Ç’ò‡F÷FÂÒF–Ç’’¢¢°¢6öç7Bæ÷rÒæWrFFR‚“°¢6öç7BVæBÒFDF—2†æ÷rÂ3cR“°¢6öç7BæçVÄF—f–FVæBÒ7FFRæF—f–FVæDWfVçG0¢æf–ÇFW"†RÓâ76WD–G2æ†2†Ræ76WD–B’bb'6TFFR†Rç”FFRÇÂRæW„FFR’ãÒFDF—2†æ÷rÂÓ’bb'6TFFR†Rç”FFRÇÂRæW„FFR’ÃÒVæB¢ç&VGV6R‚‡7VÒÆR’Óâ7VÒ²WfVçDæWB†R’Â“°¢6öç7BÆÄæçVÄfÆÆ&6²Ò66÷VD76WG2ç&VGV6R‚‡7VÒÆ’Óâ7VÒ²çVÖ&W"†çVçF—G—ÇÃ’¢çVÖ&W"†ææçVÄF—f–FVæEW%6†&WÇÃ’¢ƒÖ6Æ×†WFöÖF–4F—f–FVæEF‚†’ÃÃ’ó’¢g…&FR†æ7W'&Væ7’’Â“°¢6öç7BæçVÂÒæçVÄF—f–FVæBÇÂÆÄæçVÄfÆÆ&6³°¢6öç7B––VÆDöä6÷7BÒ6÷7BòæçVÂò6÷7B¢¢°¢6öç7BF—f–FVæE––VÆBÒF÷FÂòæçVÂòF÷FÂ¢¢°¢&WGW&â²F÷FÂÂ6÷7BÂ&öf—BÂ&öf—E7C¢6÷7Bò&öf—Bö6÷7B£¢ÂF–Ç’ÂF–Ç•7BÂæçVÄF—f–FVæC¢æçVÂÂÖöçF†Ç”F—f–FVæC¢æçVÂó"Â––VÆDöä6÷7BÂF—f–FVæE––VÆBÓ°¢Ğ ¢gVæ7F–öâF—f–FVæDÖöçF‡2‡–V"ÒæWrFFR‚’ævWDgVÆÅ–V"‚’’°¢6öç7BfÇVW2Ò'&’æg&öÒ‡¶ÆVæwFƒ£'ÒÂ…òÆÖöçF‚’Óâ‡¶ÖöçF‚Â6öæf—&ÖVC£ÂW7F–ÖFVC£Â–C£Ò’“°¢7FFRæF—f–FVæDWfVçG2æf÷$V6‚†RÓâ°¢6öç7BBÒ'6TFFR†Rç”FFRÇÂRæW„FFR“°¢–b†BævWDgVÆÅ–V"‚’ÓÒ–V"’&WGW&ã°¢6öç7BÖ÷VçBÒWfVçDæWB†R“°¢6öç7B'V6¶WBÒ4õ$RæF—f–FVæD'V6¶WB†R“°¢fÇVW5¶BævWDÖöçF‚‚•Õ¶'V6¶WEÒ³ÒÖ÷VçC°¢Ò“°¢&WGW&âfÇVW3°¢Ğ ¢gVæ7F–öâW6öÖ–ætWfVçG2†Æ–Ö—BÒ‚Â–æ6ÇVFTW7F–ÖFVBÒG'VR’°¢6öç7Bg&öÒÒFDF—2†æWrFFR‚’ÂÓ“°¢&WGW&â7FFRæF—f–FVæDWfVçG0¢æf–ÇFW"†RÓâ'6TFFR†Rç”FFRÇÂRæW„FFR’ãÒg&öÒbb†–æ6ÇVFTW7F–ÖFVBÇÂRç7FGW2ÓÓÒv6öæf—&ÖVBr’¢ç6÷'B‚†Æ"’Óâ'6TFFR†ç”FFRÇÂæW„FFR’Ò'6TFFR†"ç”FFRÇÂ"æW„FFR’¢ç6Æ–6RƒÆÆ–Ö—B“°¢Ğ ¢gVæ7F–öâ&VæFW$–6öç2‚’°¢BB‚u¶FFÖ–6öåÒr’æf÷$V6‚†æöFRÓâ²æöFRæ–ææW$…DÔÂÒ”4ôå5¶æöFRæFF6WBæ–6öåÒÇÂrs²Ò“°¢B‚r7&—f7”'Fâr’æ–ææW$…DÔÂÒ7FFRç6WGF–æw2ç&—f7’ò”4ôå2æW–Töfb¢”4ôå2æW–S°¢B‚r77–æ4'Fâr’æ–ææW$…DÔÂÒ”4ôå2ç&Vg&W6ƒ°¢B‚r6f"r’æ–ææW$…DÔÂÒ”4ôå2çÇW3°¢Ğ ¢gVæ7F–öâÇ•&—f7’‚’°¢Fö7VÖVçBæFö7VÖVçDVÆVÖVçBç7G–ÆRç6WE&÷W'G’‚rÒÖÖöæW’Ö&ÇW"rÂ7FFRç6WGF–æw2ç&—f7’òsw‚r¢s‚r“°¢–b‚B‚r7&—f7”'Fâr’’B‚r7&—f7”'Fâr’æ–ææW$…DÔÂÒ7FFRç6WGF–æw2ç&—f7’ò”4ôå2æW–Töfb¢”4ôå2æW–S°¢Ğ ¢gVæ7F–öâWFFU7–æ5FW‡B‚’°¢6öç7BæöFRÒB‚r77–æ5FW‡Br“°¢–b‚æöFR’&WGW&ã°¢–b‡7FFRæÖ&¶WBæÆ7DW'&÷"’æöFRçFW‡D6öçFVçBÒ6öâfW&’¶÷'VçW–÷"+rG·F–ÖTvò‡7FFRæÖ&¶WBæÆ7E7–æ2—Ö°¢VÇ6RæöFRçFW‡D6öçFVçBÒ7FFRæÖ&¶WBæÆ7E7–æ2òF–ÖTvò‡7FFRæÖ&¶WBæÆ7E7–æ2’¢u–W&VÂfR;g¦VÂ÷'Fl;g’s°¢Ğ ¢gVæ7F–öâ6†÷uFö7B†ÖW76vRÂGW&F–öâÒ#C’°¢6öç7BFö7BÒB‚r7Fö7Br“°¢Fö7BçFW‡D6öçFVçBÒÖW76vS°¢Fö7Bæ6Æ74Æ—7BæFB‚w6†÷rr“°¢6ÆV%F–ÖV÷WB‡Fö7EF–ÖW"“°¢Fö7EF–ÖW"Ò6WEF–ÖV÷WB‚‚’ÓâFö7Bæ6Æ74Æ—7Bç&VÖ÷fR‚w6†÷rr’ÂGW&F–öâ“°¢G'’²v–æF÷räæG&ö–Còæ†F–3òâ‚“²Ò6F6‚…ò’·Ğ¢Ğ ¢gVæ7F–öâ6†÷tÖöFÂ†‡FÖÂÂ¶F—6Ö—76–&ÆRÒG'VRÂ6Æ74æÖRÒrwÒÒ·Ò’°¢6öç7BÆ–W"ÒB‚r6ÖöFÄÆ–W"r“°¢Æ–W"æ–ææW$…DÔÂÒÇ6V7F–öâ6Æ73Ò&ÖöFÂG¶6Æ74æÖWÒ"&öÆSÒ&F–Æör"&–ÖÖöFÃÒ'G'VR#âG¶‡FÖÇÓÂ÷6V7F–öãæ°¢Æ–W"æ6Æ74Æ—7BæFB‚v÷Vâr“°¢Æ–W"ç6WDGG&–'WFR‚v&–Ö†–FFVârÂvfÇ6Rr“°¢6öç7B6Æ÷6RÒ‚’Óâ6Æ÷6TÖöFÂ‚“°¢–b†F—6Ö—76–&ÆR’°¢Æ–W"æöæ6Æ–6²ÒRÓâ²–b†RçF&vWBÓÓÒÆ–W"’6Æ÷6R‚“²Ó°¢BB‚u¶FFÖÖöFÂÖ6Æ÷6UÒÂæÖöFÂÖ6Æ÷6RrÂÆ–W"’æf÷$V6‚†'WGFöâÓâ'WGFöâæFDWfVçDÆ—7FVæW"‚v6Æ–6²rÂ6Æ÷6R’“°¢ÒVÇ6RÆ–W"æöæ6Æ–6²ÒçVÆÃ°¢Ğ ¢gVæ7F–öâ6Æ÷6TÖöFÂ‚’°¢6öç7BÆ–W"ÒB‚r6ÖöFÄÆ–W"r“°¢Æ–W"æ6Æ74Æ—7Bç&VÖ÷fR‚v÷Vâr“°¢Æ–W"ç6WDGG&–'WFR‚v&–Ö†–FFVârÂwG'VRr“°¢6WEF–ÖV÷WB‚‚’Óâ²–b‚Æ–W"æ6Æ74Æ—7Bæ6öçF–ç2‚v÷Vâr’’Æ–W"æ–ææW$…DÔÂÒrs²ÒÂƒ“°¢Ğ ¢v–æF÷räf–æç6ÄT$†æFÆT&6²Ò‚’Óâ°¢6öç7BÆ–W"ÒB‚r6ÖöFÄÆ–W"r“°¢–b‚Æ–W#òæ6Æ74Æ—7Bæ6öçF–ç2‚v÷Vâr’’&WGW&âfÇ6S°¢6Æ÷6TÖöFÂ‚“°¢&WGW&âG'VS°¢Ó° ¢gVæ7F–öâFVÖô&ææW"‚’°¢&WGW&â7FFRæFVÖòòÆF—b6Æ73Ò&FVÖòÖ&ææW"#ãÇ7ãì9g&æV²fW&–ÆW"|;g7FW&–Æ—–÷#²GWF&Æ"vW,:vV²÷'Fl;gœ;ÆâF\Iö–ÆF—"ãÂ÷7ããÆ'WGFöâFFÖ7F–öãÒ&6ÆV"ÖFVÖò#ä&üYò&YöÆÂö'WGFöããÂöF—cæ¢rs°¢Ğ ¢gVæ7F–öâvT†VFW"†¶–6¶W"ÂF—FÆRÂ7V'F—FÆRÒrrÂ7F–öâÒrr’°¢&WGW&âÆF—b6Æ73Ò'vRÖ†VFW"#ãÆF—cãÆF—b6Æ73Ò'vRÖ¶–6¶W"#âG¶W62†¶–6¶W"—ÓÂöF—cãÆƒ6Æ73Ò'vR×F—FÆR#âG¶W62‡F—FÆR—ÓÂöƒâG·7V'F—FÆRòÆF—b6Æ73Ò'vR×7V'F—FÆR#âG¶W62‡7V'F—FÆR—ÓÂöF—cæ¢rwÓÂöF—câG¶7F–öçÓÂöF—cæ°¢Ğ ¢gVæ7F–öâ†W&ô6&B†ÖWG&–72’°¢6öç7B6–vä6Æ72ÒÖWG&–72æF–Ç’ãÒòw÷6—F—fRr¢væVvF—fRs°¢&WGW&âÇ6V7F–öâ6Æ73Ò&†W&òÖ6&B#à¢ÆF—b6Æ73Ò&†W&ò×F÷#ãÇ7â6Æ73Ò&†W&òÖÆ&VÂ#åF÷ÆÒ÷'Fl;g’F\IöW&“Â÷7ããÇ7â6Æ73Ò&Æ—fR×–ÆÂ#ãÆ’6Æ73Ò&Æ—fRÖF÷B#ãÂö“âG·7FFRæFVÖòòtFVÖòr¢7FFRæÖ&¶WBæÆ7E7–æ2òt|;Ææ6VÂr¢u–W&VÂwÓÂ÷7ããÂöF—cà¢ÆF—b6Æ73Ò&†W&ò×fÇVR#âG¶ÖöæW’†ÖWG&–72çF÷FÂÂuE%’r—ÓÂöF—cà¢ÆF—b6Æ73Ò&†W&òÖ6†ævR#ãÇ7â6Æ73Ò&6†ævRÖ&FvRG·6–vä6Æ77Ò#âG·7B†ÖWG&–72æF–Ç•7B—ÓÂ÷7ããÇ7ãä'V|;ÆâG¶ÖöæW’„ÖF‚æ'2†ÖWG&–72æF–Ç’’ÂuE%’r—ÓÂ÷7ããÂöF—cà¢ÆF—b6Æ73Ò&†W&òÖÖWG&–72#à¢ÆF—b6Æ73Ò&†W&òÖÖWG&–2#ãÆF—b6Æ73Ò&Æ&VÂ#åF÷ÆÒÖÆ—–WCÂöF—cãÆF—b6Æ73Ò'fÇVR#âG¶ÖöæW’†ÖWG&–72æ6÷7BÂuE%’r—ÓÂöF—cãÂöF—cà¢ÆF—b6Æ73Ò&†W&òÖÖWG&–2#ãÆF—b6Æ73Ò&Æ&VÂ#åF÷ÆÒ¶¦ì:sÂöF—cãÆF—b6Æ73Ò'fÇVRG¶ÖWG&–72ç&öf—CãÓòw÷6—F—fRs¢væVvF—fRwÒ#âG¶ÖöæW’†ÖWG&–72ç&öf—BÂuE%’r—ÓÂöF—cãÂöF—cà¢ÆF—b6Æ73Ò&†W&òÖÖWG&–2#ãÆF—b6Æ73Ò&Æ&VÂ#ävWF—&“ÂöF—cãÆF—b6Æ73Ò'fÇVRG¶ÖWG&–72ç&öf—CãÓòw÷6—F—fRs¢væVvF—fRwÒ#âG·7B†ÖWG&–72ç&öf—E7B—ÓÂöF—cãÂöF—cà¢ÂöF—cà¢Â÷6V7F–öãæ°¢Ğ ¢gVæ7F–öâF—f–FVæD&$6†'B‡–V"ÒæWrFFR‚’ævWDgVÆÅ–V"‚’’°¢6öç7BÖöçF‡2ÒF—f–FVæDÖöçF‡2‡–V"“°¢6öç7BF÷FÇ2ÒÖöçF‡2æÖ†ÒÓâÒæ6öæf—&ÖVB²ÒæW7F–ÖFVB“°¢6öç7BÖ‚ÒÖF‚æÖ‚‚ââçF÷FÇ2Â“°¢6öç7BF÷FÂÒF÷FÇ2ç&VGV6R‚†Æ"“Óæ¶"Ã“°¢&WGW&âÇ6V7F–öâ6Æ73Ò&6&B6†'BÖ6&B#à¢ÆF—b6Æ73Ò&6†'BÖ†VB#ãÆF—cãÆF—b6Æ73Ò&ÖWG&–2ÖÆ&VÂ#âG·–V'ÒæWBFVÖWGL;Â¼KYüKÂöF—cãÆF—b6Æ73Ò&6†'BÖ&–r#âG¶ÖöæW’‡F÷FÂÂuE%’r—ÓÂöF—cãÂöF—cãÆF—b6Æ73Ò'W&–öB×7v—F6‚#ãÆ'WGFöâ6Æ73Ò&7F—fR#ã"“Âö'WGFöããÆ'WGFöâFF×vRÖvóÒ&6ÆVæF"#åF·f–ÓÂö'WGFöããÂöF—cãÂöF—cà¢ÆF—b6Æ73Ò&&"Ö6†'B#âG¶ÖöçF‡2æÖ‚†ÒÆ’’Óâ°¢6öç7BfÇVRÒF÷FÇ5¶•Ó°¢6öç7B†V–v‡BÒÖF‚æÖ‚‡fÇVRöÖ‚£ÂfÇVRòB¢“°¢&WGW&âÆF—b6Æ73Ò&&"Ö6öÂ"7G–ÆSÒ"ÒÖƒ¢G¶†V–v‡GÒR#ãÇ7â6Æ73Ò&&"×F—#âG¶ÖöæW’‡fÇVRÂuE%’rÇG'VRÃ—ÓÂ÷7ããÆ’6Æ73Ò&&"G¶ÒæW7F–ÖFVBâòvW7F–ÖFVBs¢rwÒ"7G–ÆSÒ&†V–v‡C¢G¶†V–v‡GÒR#ãÂö“ãÇ7â6Æ73Ò&&"ÖÖöçF‚#âG´ÔôåD…5õ4„õ%E¶•×ÓÂ÷7ããÂöF—cæ°¢Ò’æ¦ö–â‚rr—ÓÂöF—cà¢ÆF—b6Æ73Ò&6†'BÖfö÷B#ãÇ7ããÆ’6Æ73Ò&ÆVvVæBÖF÷B#ãÂö“ä:|K¶ÆæÜKYòöÌKæÜKYóÂ÷7ããÇ7ããÆ’6Æ73Ò&ÆVvVæBÖF÷BW7F–ÖFVB#ãÂö“åF†Ö–æ“Â÷7ããÂöF—cà¢Â÷6V7F–öãæ°¢Ğ ¢gVæ7F–öâWfVçE7FGW4ÖWF†WfVçB’°¢–b†WfVçBç&V6V—fVBÇÂWfVçBç7FGW2ÓÓÒv†—7F÷&–6Âr’&WGW&â²6Æ74æÖS¢v†—7F÷&–6ÂrÂÆ&VÃ¢tÌKæLKrÓ°¢–b†WfVçBç7FGW2ÓÓÒv6öæf—&ÖVBr’&WGW&â²6Æ74æÖS¢v6öæf—&ÖVBrÂÆ&VÃ¢t:|K¶ÆæÜKYòrÓ°¢–b†WfVçBç7FGW2ÓÓÒw&÷÷6VBr’&WGW&â²6Æ74æÖS¢w&÷÷6VBrÂÆ&VÃ¢|Yæ—&¶WBFV¶Æ–f’rÓ°¢&WGW&â²6Æ74æÖS¢vW7F–ÖFVBrÂÆ&VÃ¢uF†Ö–æ’rÓ°¢Ğ ¢gVæ7F–öâWfVçE&÷r†WfVçB’°¢6öç7B76WBÒ76WD'”–B†WfVçBæ76WD–B“°¢–b‚76WB’&WGW&ârs°¢6öç7BBÒ'6TFFR†WfVçBç”FFRÇÂWfVçBæW„FFR“°¢6öç7BÖ÷VçBÒWfVçDæWB†WfVçB“°¢6öç7BF—2ÒÖF‚æ6V–Â‚†BÒæWrFFR‚’’òD’“°¢6öç7BÖWFÒF—2Âò|9fFVÖRvW,:vV¶Æ\Y÷F’r¢F—2ÓÓÒòt'V|;Æâr¢G¶F—7Ò|;Æâ6öç&°¢&WGW&âÆ'F–6ÆR6Æ73Ò&WfVçB×&÷r"FFÖ76WBÖ–CÒ"G¶W62†76WBæ–B—Ò#à¢ÆF—b6Æ73Ò&WfVçBÖFFR#ãÆF—cãÇ7G&öæsâGµ7G&–ær†BævWDFFR‚’’çE7F'Bƒ"Âsr—ÓÂ÷7G&öæsãÇ7ãâG´ÔôåD…5õ4„õ%E¶BævWDÖöçF‚‚•×ÓÂ÷7ããÂöF—cãÂöF—cà¢ÆF—b6Æ73Ò&WfVçBÖÖ–â#ãÆF—b6Æ73Ò&WfVçB×F—FÆR#âG¶W62†76WBç7–Ö&öÂ—Ò+rG¶WfVçBç”FFRòuFVÖWGL;Â;fFVÖW6’r¢t†²·VÆÆìKÒwÓÂöF—cãÆF—b6Æ73Ò&WfVçBÖÖWF#âG¶ÖWFÒ+rG¶çVÖ&W$f×B‡VçF—G”DFFR†76WBæ–BÆWfVçBæW„FFWÇÆWfVçBç”FFR’Â76WBçG—SÓÓÒuDTd2só£"—Ò†²6†–&’FWCÂöF—cãÇ7â6Æ73Ò'7FGW2×–ÆÂG¶WfVçE7FGW4ÖWF†WfVçB’æ6Æ74æÖWÒ#âG¶WfVçE7FGW4ÖWF†WfVçB’æÆ&VÇÓÂ÷7ããÂöF—cà¢ÆF—b6Æ73Ò&WfVçBÖÖ÷VçB#âG¶ÖöæW’†Ö÷VçBÂuE%’r—ÓÂöF—cà¢Âö'F–6ÆSæ°¢Ğ ¢gVæ7F–öâ76WE&÷r†76WB’°¢6öç7BfÇVRÒ76WEfÇVR†76WB“°¢6öç7B6†ævRÒçVÖ&W"†76WBæ6†ævU7BÇÂ“°¢6öç7BG—RÒE•UôÔUD¶76WBçG—UÓòæÆ&VÂÇÂ76WBçG—S°¢&WGW&âÆ'F–6ÆR6Æ73Ò&76WB×&÷r"FFÖ76WBÖ–CÒ"G¶W62†76WBæ–B—Ò#à¢ÆF—b6Æ73Ò&76WBÖÆövò#âG¶W62‡6†÷'E7–Ö&öÂ†76WBç7–Ö&öÂ’—ÓÂöF—cà¢ÆF—cãÆF—b6Æ73Ò&76WBÖæÖR#âG¶W62†76WBç7–Ö&öÂ—ÒÇ7â7G–ÆSÒ&6öÆ÷#§f"‚ÒÖ×WFVB“¶föçB×vV–v‡C£S#ì+rG¶W62†76WBææÖRÇÂG—R—ÓÂ÷7ããÂöF—cãÆF—b6Æ73Ò&76WBÖÖWF#âG¶çVÖ&W$f×B†76WBçVçF—G’Â76WBçG—SÓÓÒuDTd2só£B—ÒFWB+rG¶ÖöæW’†76WBç&–6RÆ76WBæ7W'&Væ7’ÆfÇ6RÆ76WBç&–6SÃóC£"—ÓÂöF—cãÂöF—cà¢ÆF—b6Æ73Ò&76WB×fÇVW2#ãÆF—b6Æ73Ò&76WB×fÇVR#âG¶ÖöæW’‡fÇVRÂuE%’r—ÓÂöF—cãÆF—b6Æ73Ò&76WBÖ6†ævRG¶6†ævSãÓòw÷6—F—fRs¢væVvF—fRwÒ#âG·7B†6†ævR—ÓÂöF—cãÂöF—cà¢Âö'F–6ÆSæ°¢Ğ ¢gVæ7F–öâ6†÷'E7–Ö&öÂ‡7–Ö&öÂ’°¢6öç7B6ÆVâÒ7G&–ær‡7–Ö&öÂÇÂrr’ç&WÆ6R‚õµäÕ¦×¬8|IìK9lYì9ÃÓ•ÒörÂrr’çFõWW$66R‚“°¢&WGW&â6ÆVâæÆVæwF‚ÃÒBò6ÆVâ¢6ÆVâç6Æ–6RƒÃ2“°¢Ğ ¢gVæ7F–öâ&VæFW$F6†&ö&B‚’°¢6öç7BÒÒ÷'FföÆ–ôÖWG&–72‚“°¢6öç7BW6öÖ–ærÒW6öÖ–ætWfVçG2ƒB“°¢6öç7BæW‡BÒW6öÖ–æu³Ó°¢6öç7BæW‡DÖ÷VçBÒæW‡BòWfVçDæWB†æW‡B’¢°¢6öç7BæW‡DFFRÒæW‡BòFFUFW‡B†æW‡Bç”FFRÇÂæW‡BæW„FFRÇ¶F“¢vçVÖW&–2rÆÖöçFƒ¢vÆöærwÒ’¢uÆæÆæÜKYò;fFVÖR–ö²s°¢6öç7BvöÂÒçVÖ&W"‡7FFRç6WGF–æw2æF—f–FVæDvöÄæçVÂÇÂ“°¢6öç7BvöÅ7BÒvöÂòÖF‚æÖ–âƒÆÒææçVÄF—f–FVæBövöÂ£’¢°¢6öç7BWfVçG4‡FÖÂÒW6öÖ–æræÆVæwF‚òW6öÖ–æræÖ†WfVçE&÷r’æ¦ö–â‚rr’¢V×G•7FFR‚v6ö–ârÂu–¶ÆYöâFVÖWGL;Â–ö²rÂuFVÖWGL;Â:|K¶ÆÖ<KfW–F†Ö–âV¶ÆVæFœIö–æFR'W&F|;g,;ÆæV6V²âr“°¢&WGW&âG¶FVÖô&ææW"‚—Ğ¢G·vT†VFW"‚t|;Ææ6VÂGW'VÒrÂu÷'Fl;gœ;ÆâFV²V·&æFrÂt†—76RÂföâÂÖFVâfRæ¶—B&—&Æ–·FRr—Ğ¢G·7FFRæ76WG2æÆVæwF‚ò†W&ô6&B†Ò’¢V×G•÷'FföÆ–ô†W&ò‚—Ğ¢Ç6V7F–öâ6Æ73Ò'6V7F–öâ#ãÆF—b6Æ73Ò&w&–B×Gvò#à¢Æ'F–6ÆR6Æ73Ò&6&BÖWG&–2Ö6&B#ãÆF—b6Æ73Ò&–6öâÖ6—&6ÆR#âG´”4ôå2æ6ö–çÓÂöF—cãÆF—b6Æ73Ò&ÖWG&–2ÖÆ&VÂ#åœKÆÌK²æWBFVÖWGL;ÃÂöF—cãÆF—b6Æ73Ò&ÖWG&–2×fÇVR#âG¶ÖöæW’†ÒææçVÄF—f–FVæBÂuE%’r—ÓÂöF—cãÆF—b6Æ73Ò&ÖWG&–2Öæ÷FR#ä–ÌK²÷'FÆÖG¶ÖöæW’†ÒæÖöçF†Ç”F—f–FVæBÂuE%’r—ÓÂöF—cãÂö'F–6ÆSà¢Æ'F–6ÆR6Æ73Ò&6&BÖWG&–2Ö6&B#ãÆF—b6Æ73Ò&–6öâÖ6—&6ÆR#âG´”4ôå2æ6ÆVæF'ÓÂöF—cãÆF—b6Æ73Ò&ÖWG&–2ÖÆ&VÂ#å<K&F¶’;fFVÖSÂöF—cãÆF—b6Æ73Ò&ÖWG&–2×fÇVR#âG¶æW‡BòÖöæW’†æW‡DÖ÷VçBÂuE%’r’¢~(	BwÓÂöF—cãÆF—b6Æ73Ò&ÖWG&–2Öæ÷FR#âG¶W62†æW‡DFFR—ÓÂöF—cãÂö'F–6ÆSà¢ÂöF—cãÂ÷6V7F–öãà¢Ç6V7F–öâ6Æ73Ò'6V7F–öâ#ãÆF—b6Æ73Ò&6&B"7G–ÆSÒ'FF–æs£W‚g‚#ãÆF—b6Æ73Ò'6V7F–öâÖ†VB"7G–ÆSÒ&Ö&v–ã£#ãÇ7â6Æ73Ò'6V7F–öâ×F—FÆR#åFVÖWGL;Â†VFVf“Â÷7ããÇ7â6Æ73Ò'6V7F–öâÖÆ–æ²#âG¶çVÖ&W$f×B†vöÅ7BÃ—ÒSÂ÷7ããÂöF—cãÆF—b6Æ73Ò'&öw&W72#ãÆ’7G–ÆSÒ'v–GFƒ¢G¶vöÅ7GÒR#ãÂö“ãÂöF—cãÆF—b6Æ73Ò&6†'BÖfö÷B"7G–ÆSÒ&Ö&v–â×F÷£‡‚#ãÇ7ãåœKÆÌK²G¶ÖöæW’†ÒææçVÄF—f–FVæBÂuE%’r—ÓÂ÷7ããÇ7ãä†VFVbG¶ÖöæW’†vöÂÂuE%’r—ÓÂ÷7ããÂöF—cãÂöF—cãÂ÷6V7F–öãà¢Ç6V7F–öâ6Æ73Ò'6V7F–öâ#âG¶F—f–FVæD&$6†'B‚—ÓÂ÷6V7F–öãà¢Ç6V7F–öâ6Æ73Ò'6V7F–öâ#ãÆF—b6Æ73Ò'6V7F–öâÖ†VB#ãÇ7â6Æ73Ò'6V7F–öâ×F—FÆR#å–¶ÆYöâ;fFVÖVÆW#Â÷7ããÆ'WGFöâ6Æ73Ò'6V7F–öâÖÆ–æ²"FF×vRÖvóÒ&6ÆVæF"#åL;ÆÒF·f–ÓÂö'WGFöããÂöF—cãÆF—b6Æ73Ò&WfVçBÖÆ—7B#âG¶WfVçG4‡FÖÇÓÂöF—cãÂ÷6V7F–öãæ°¢Ğ ¢gVæ7F–öâV×G•÷'FföÆ–ô†W&ò‚’°¢&WGW&âÇ6V7F–öâ6Æ73Ò&V×G’#ãÆF—b6Æ73Ò&V×G’Ö–6öâ#âG´”4ôå2ç÷'FföÆ–÷ÓÂöF—cãÆF—b6Æ73Ò&V×G’×F—FÆR#å÷'Fl;gœ;Æâ†Vì;Ç¢&üYóÂöF—cãÆF—b6Æ73Ò&V×G’×FW‡B#ä$•5BÂ$B†—76W6’ÂUDbÂDTd2föçRÂÇLKâÂ|;ÆÜ;ÌYòfW–;g¦VÂf&ÌK²V¶ÆW–W&V²F¶–&R&YöÆãÂöF—cãÆ'WGFöâ6Æ73Ò'&–Ö'’Ö'Fâ"7G–ÆSÒ&Ö&v–â×F÷£W‚"FFÖ7F–öãÒ&FBÖ76WB#ìKÆ²f&ÌKIüKV¶ÆSÂö'WGFöããÂ÷6V7F–öãæ°¢Ğ ¢gVæ7F–öâV×G•7FFR†–6öâÂF—FÆRÂFW‡B’°¢&WGW&âÆF—b6Æ73Ò&V×G’#ãÆF—b6Æ73Ò&V×G’Ö–6öâ#âG´”4ôå5¶–6öåÒÇÂ”4ôå2æ–æf÷ÓÂöF—cãÆF—b6Æ73Ò&V×G’×F—FÆR#âG¶W62‡F—FÆR—ÓÂöF—cãÆF—b6Æ73Ò&V×G’×FW‡B#âG¶W62‡FW‡B—ÓÂöF—cãÂöF—cæ°¢Ğ ¢gVæ7F–öâF—f–FVæD66„&Ææ6R‚’°¢&WGW&â‡7FFRæ66„ÆVFvW'ÇÅµÒ’ç&VGV6R‚‡7VÒÇ&÷r“Óç7VÒ²çVÖ&W"‡&÷ræÖ÷VçEG'—ÇÃ’Ã“°¢Ğ ¢gVæ7F–öâvF6†Æ—7E&÷r‡r’°¢6öç7BÖ÷fSÔçVÖ&W"‡ræ6†ævU7GÇÃ“°¢&WGW&âÆF—b6Æ73Ò&76WB×&÷rvF6‚×&÷r"FF×vF6‚Ö–CÒ"G¶W62‡ræ–B—Ò#ãÆF—b6Æ73Ò&76WBÖÆövò#î)ˆSÂöF—cãÆF—b6Æ73Ò&76WBÖÖ–â#ãÆF—b6Æ73Ò&76WBÖæÖR#âG¶W62‡rç7–Ö&öÂ—ÓÂöF—cãÆF—b6Æ73Ò&76WB×7V"#âG¶W62‡rææÖWÇÅE•UôÔUD·rçG—UÓòæÆ&VÇÇÂ|K¦ÆVÖRr—ÓÂöF—cãÂöF—cãÆF—b6Æ73Ò&76WB×&–v‡B#ãÆF—b6Æ73Ò&76WB×fÇVR#âG¶ÖöæW’‡rç&–6WÇÃÇræ7W'&Væ7—ÇÂuE%’rÆfÇ6RÄçVÖ&W"‡rç&–6WÇÃ“ÃóC£"—ÓÂöF—cãÆF—b6Æ73Ò&76WBÖ6†ævRG¶Ö÷fSãÓòw÷6—F—fRs¢væVvF—fRwÒ#âG·7B†Ö÷fR—ÓÂöF—cãÂöF—cãÂöF—cæ°¢Ğ ¢gVæ7F–öâW&–öDF—2†¶W’’²&WGW&â‡²sÒs£#"Âs4Òs£cbÂsdÒs£#Âs’s£#S"ÂtÄÂs£“““—Ò•¶¶W•×ÇÃ#S#²Ğ¢gVæ7F–öâæÇ—F–7476WG2‚’²&WGW&âæÇ—F–74f–ÇFW#ÓÓÒtÄÂrò²ââç7FFRæ76WG5Ò¢7FFRæ76WG2æf–ÇFW"†ÓæçG—SÓÓÖæÇ—F–74f–ÇFW"“²Ğ¢gVæ7F–öâW&–öD76WE&WGW&â†76WBÂ¶W’’°¢6öç7B†—7CÒ†76WBæ†—7F÷'—ÇÅµÒ’æÖ„çVÖ&W"’æf–ÇFW"„çVÖ&W"æ—4f–æ—FR“°¢–b††—7BæÆVæwFƒÃ"’&WGW&â°¢6öç7B&6³ÔÖF‚æÖ–â††—7BæÆVæwF‚ÓÇW&–öDF—2†¶W’’“°¢6öç7B7F'CÖ†—7E´ÖF‚æÖ‚ƒÆ†—7BæÆVæwF‚ÓÖ&6²•ÒÂVæCÖ†—7BæB‚Ó“°¢&WGW&â7F'Bò†VæB×7F'B’÷7F'B£¢°¢Ğ¢gVæ7F–öâ&VÆ—¦VE&öf—D–åW&–öB†76WD–G2Æ¶W’’°¢6öç7Bg&öÓÖFDF—2†æWrFFR‚’Â×W&–öDF—2†¶W’’“°¢ÆWBF÷FÃÓ°¢76WD–G2æf÷$V6‚†–CÓç°¢6öç7BÖ76WD'”–B†–B“²–b‚—&WGW&ã°¢6öç7BG‡3×7FFRçG&ç67F–öç2æf–ÇFW"‡CÓçBæ76WD–CÓÓÖ–BbgBçG—SÓÓÒw6VÆÂrbg'6TFFR‡BæFFR“ãÖg&öÒ“°¢G‡2æf÷$V6‚‡CÓç°¢6öç7B&Vf÷&S×G&ç67F–öå÷6—F–öâ†–BÇBæFFRÇG'VR“°¢F÷FÂ³ÒÖF‚æÖ–â„çVÖ&W"‡BçVçF—G—ÇÃ’ÄçVÖ&W"†&Vf÷&RçVçF—G—ÇÃ’’¢„çVÖ&W"‡Bç&–6WÇÃ’ÔçVÖ&W"†&Vf÷&Ræft6÷7GÇÃ’’¦g…&FR†æ7W'&Væ7’’ÔçVÖ&W"‡BæfVWÇÃ’¦g…&FR†æ7W'&Væ7’“°¢Ò“°¢Ò“°¢&WGW&âF÷FÃ°¢Ğ¢gVæ7F–öâF—f–FVæG4–åW&–öB†76WD–G2Æ¶W’’°¢6öç7B–G3ÖæWr6WB†76WD–G2’Æg&öÓÖFDF—2†æWrFFR‚’Â×W&–öDF—2†¶W’’“°¢&WGW&â7FFRæF—f–FVæDWfVçG2æf–ÇFW"†SÓæ–G2æ†2†Ræ76WD–B’bfRç&V6V—fVBbg'6TFFR†Rç”FFWÇÆRæW„FFR“ãÖg&öÒ’ç&VGV6R‚‡7VÒÆR“Óç7VÒ¶WfVçDæWB†R’Ã“°¢Ğ¢gVæ7F–öâæÇ—F–75G&VæB†76WDÆ—7BÆ¶W’’°¢–b‚76WDÆ—7BæÆVæwF‚—&WGW&âµÓ°¢6öç7Bö–çG3Ó#°¢6öç7B÷WCÕµÓ°¢f÷"†ÆWB“Ó¶“Çö–çG3¶’²²—°¢ÆWBcÓ°¢76WDÆ—7Bæf÷$V6‚†Óç°¢6öç7B†—7CÒ†æ†—7F÷'—ÇÅµÒ’æÖ„çVÖ&W"’æf–ÇFW"„çVÖ&W"æ—4f–æ—FR“²–b‚†—7BæÆVæwF‚—&WGW&ã°¢6öç7B7ãÔÖF‚æÖ–â††—7BæÆVæwF‚ÓÇW&–öDF—2†¶W’’“°¢6öç7B–GƒÔÖF‚æÖ‚ƒÆ†—7BæÆVæwF‚ÓÔÖF‚ç&÷VæB‡7â¢‡ö–çG2ÓÖ’’ò‡ö–çG2Ó’’“°¢b³ÒçVÖ&W"†çVçF—G—ÇÃ’¤çVÖ&W"††—7E¶–G…×ÇÆç&–6WÇÃ’¦g…&FR†æ7W'&Væ7’“°¢Ò“°¢÷WBçW6‚‡b“°¢Ğ¢&WGW&â÷WC°¢Ğ¢gVæ7F–öâÖ–æ•G&VæE7fr‡fÇVW2—°¢–b‡fÇVW2æÆVæwFƒÃ'ÇÂfÇVW2ç6öÖR‡cÓçcã’—&WGW&âsÆF—b6Æ73Ò&V×G’×FW‡B"7G–ÆSÒ&Ö&v–ã£#äw&f–²œ:v–â–WFW&Æ’v\:vÖœYòf—–B–ö²ãÂöF—câs°¢6öç7BsÓ3#ÆƒÓÇCÓ‚ÆÖ–ãÔÖF‚æÖ–â‚ââçfÇVW2’ÆÖƒÔÖF‚æÖ‚‚ââçfÇVW2’Ç&ævSÖÖ‚ÖÖ–çÇÃ°¢6öç7BG3×fÇVW2æÖ‚‡bÆ’“Óå·B¶’¢‡rÓ"§B’ò‡fÇVW2æÆVæwF‚Ó’Æ‚×BÒ‡bÖÖ–â’÷&ævR¢†‚Ó"§B•Ò“°¢6öç7BC×G2æÖ‚‡Æ’“ÓæG¶“òtÂs¢tÒwÒG·³ÒçFôf—†VBƒ—ÒÂG·³ÒçFôf—†VBƒ—Ö’æ¦ö–â‚rr“°¢&WGW&âÇ7fr6Æ73Ò&æÇ—F–72ÖÆ–æR"f–Wt&÷ƒÒ#G·wÒG¶‡Ò"&W6W'fT7V7E&F–óÒ&æöæR#ãÇF‚CÒ"G¶GÒ"óãÂ÷7fsæ°¢Ğ ¢gVæ7F–öâ&VæFW%÷'FföÆ–ò‚’°¢ÆWB66÷VD76WG2Ò²ââç7FFRæ76WG5Ó°¢–b‡÷'FföÆ–ôf–ÇFW"ÓÒtÄÂr’66÷VD76WG2Ò66÷VD76WG2æf–ÇFW"†ÓâçG—RÓÓÒ÷'FföÆ–ôf–ÇFW"“°¢6öç7BÒÒ÷'FföÆ–ôÖWG&–72‡66÷VD76WG2“°¢ÆWB76WG2Ò²ââç66÷VD76WG5Ó°¢–b‡÷'FföÆ–õVW'’’°¢6öç7BÒ÷'FföÆ–õVW'’çFôÆö6ÆUWW$66R‚wG"ÕE"r“°¢76WG2Ò76WG2æf–ÇFW"†ÓâG¶ç7–Ö&öÇÒG¶ææÖWÒGµE•UôÔUD¶çG—UÓòæÆ&VÇÖçFôÆö6ÆUWW$66R‚wG"ÕE"r’æ–æ6ÇVFW2‡’“°¢Ğ¢76WG2ç6÷'B‚†Æ"’Óâ76WEfÇVR†"’Ò76WEfÇVR†’“°¢6öç7Bf–ÇFW'2Òµ²tÄÂrÂuL;ÆÜ;ÂuÒÅ²t$•5BrÂt$•5BuÒÅ²uU2rÂt$BuÒÅ²tUDbrÂtUDbuÒÅ²uDTd2rÂtföâuÒÅ²ttôÄBrÂtÇLKâuÒÅ²u4”ÅdU"rÂt|;ÆÜ;ÌYòuÒÅ²t5U5DôÒrÂtFœIöW"uÕÓ°¢&WGW&âG¶FVÖô&ææW"‚—Ğ¢G·vT†VFW"‚uf&ÌK¶Æ,KÒrÂu÷'Fl;g’rÂtÖÆ—–WBÂ|;Ææ6VÂF\IöW"fRFIüKÌKÒrÆÆ'WGFöâ6Æ73Ò&†VFW"Ö7F–öâ"FFÖ7F–öãÒ&FBÖ76WB#â²f&ÌK³Âö'WGFöãæ—Ğ¢ÆF—b6Æ73Ò'6V&6‚Ö&÷‚#âG´”4ôå2ç6V&6‡ÓÆ–çWB–CÒ&76WE6V&6‚"fÇVSÒ"G¶W62‡÷'FföÆ–õVW'’—Ò"Æ6V†öÆFW#Ò%6VÖ&öÂfW–f&ÌK²&#ãÂöF—cà¢ÆF—b6Æ73Ò'–ÆÂ×&÷r"7G–ÆSÒ&Ö&v–â×F÷£‚#âG¶f–ÇFW'2æÖ‚…¶¶W’ÆÆ&VÅÒ“ÓæÆ'WGFöâ6Æ73Ò&f–ÇFW"×–ÆÂG·÷'FföÆ–ôf–ÇFW#ÓÓÖ¶W“òv7F—fRs¢rwÒ"FFÖf–ÇFW#Ò"G¶¶W—Ò#âG¶Æ&VÇÓÂö'WGFöãæ’æ¦ö–â‚rr—ÓÂöF—cà¢Ç6V7F–öâ6Æ73Ò'7VÖÖ'’×7G&—7VÖÖ'’×7G&—×÷'FföÆ–ò#ãÆF—b6Æ73Ò'7VÖÖ'’Ö—FVÒ#ãÆF—b6Æ73Ò'7VÖÖ'’ÖÆ&VÂ#äF\IöW#ÂöF—cãÆF—b6Æ73Ò'7VÖÖ'’×fÇVR#âG¶ÖöæW’†ÒçF÷FÂÂuE%’r—ÓÂöF—cãÂöF—cãÆF—b6Æ73Ò'7VÖÖ'’Ö—FVÒ#ãÆF—b6Æ73Ò'7VÖÖ'’ÖÆ&VÂ#äÖÆ—–WCÂöF—cãÆF—b6Æ73Ò'7VÖÖ'’×fÇVR#âG¶ÖöæW’†Òæ6÷7BÂuE%’r—ÓÂöF—cãÂöF—cãÆF—b6Æ73Ò'7VÖÖ'’Ö—FVÒ#ãÆF—b6Æ73Ò'7VÖÖ'’ÖÆ&VÂ#åF÷ÆÓÂöF—cãÆF—b6Æ73Ò'7VÖÖ'’×fÇVRG¶Òç&öf—CãÓòw÷6—F—fRs¢væVvF—fRwÒ#âG¶ÖöæW’†Òç&öf—BÂuE%’r—ÓÂöF—cãÆF—b6Æ73Ò'7VÖÖ'’×7V"G¶Òç&öf—E7CãÓòw÷6—F—fRs¢væVvF—fRwÒ#âG·7B†Òç&öf—E7B—ÓÂöF—cãÂöF—cãÆF—b6Æ73Ò'7VÖÖ'’Ö—FVÒ#ãÆF—b6Æ73Ò'7VÖÖ'’ÖÆ&VÂ#ä'V|;ÆãÂöF—cãÆF—b6Æ73Ò'7VÖÖ'’×fÇVRG¶ÒæF–Ç“ãÓòw÷6—F—fRs¢væVvF—fRwÒ#âG¶ÖöæW’†ÒæF–Ç’ÂuE%’r—ÓÂöF—cãÆF—b6Æ73Ò'7VÖÖ'’×7V"G¶ÒæF–Ç•7CãÓòw÷6—F—fRs¢væVvF—fRwÒ#âG·7B†ÒæF–Ç•7B—ÓÂöF—cãÂöF—cãÂ÷6V7F–öãà¢G·&VæFW$—õ6V7F–öâ‚—Ğ¢Ç6V7F–öâ6Æ73Ò'6V7F–öâ#ãÆF—b6Æ73Ò'6V7F–öâÖ†VB#ãÇ7â6Æ73Ò'6V7F–öâ×F—FÆR#âG¶76WG2æÆVæwF‡Òf&ÌK³Â÷7ããÆ'WGFöâ6Æ73Ò'6V7F–öâÖÆ–æ²"FFÖ7F–öãÒ&FB×G&ç67F–öâ#ìKYöÆVÒV¶ÆSÂö'WGFöããÂöF—cãÆF—b6Æ73Ò&76WBÖÆ—7B#âG¶76WG2æÆVæwF‚ò76WG2æÖ†76WE&÷r’æ¦ö–â‚rr’¢V×G•7FFR‚w6V&6‚rÂu6öç\:r'VÇVæÖLKrÂtf–ÇG&W–’fW–&ÖÖWFæ–æ’F\IöœY÷F—"âr—ÓÂöF—cãÂ÷6V7F–öãà¢Ç6V7F–öâ6Æ73Ò'6V7F–öâ#ãÆF—b6Æ73Ò'6V7F–öâÖ†VB#ãÆF—cãÇ7â6Æ73Ò'6V7F–öâ×F—FÆR#ìK¦ÆVÖRÆ—7FW6“Â÷7ããÆF—b6Æ73Ò'6V7F–öâÖæ÷FR#å÷'Fl;g’F\IöW&–æR¶LKÆÖ£²ÆÖ²—7FVFœIö–âf&ÌK¶Æ,K'W&FF¶—WBãÂöF—cãÂöF—cãÆ'WGFöâ6Æ73Ò'6V7F–öâÖÆ–æ²"FFÖ7F–öãÒ&FB×vF6‚#â²F¶—WCÂö'WGFöããÂöF—cãÆF—b6Æ73Ò&76WBÖÆ—7B#âG·7FFRçvF6†Æ—7BæÆVæwF‚ò7FFRçvF6†Æ—7BæÖ‡vF6†Æ—7E&÷r’æ¦ö–â‚rr’¢V×G•7FFR‚vW–RrÂ|K¦ÆVÖRÆ—7FW6’&üYòrÂu÷'Fl;gœ;ÆæFRöÆÖ–â†—76RÂUDbÂföâfW–FœIöW"f&ÌK¶Æ,KV¶ÆW–V&–Æ—'6–ââr—ÓÂöF—cãÂ÷6V7F–öãæ°¢Ğ ¢gVæ7F–öâ&VæFW$F—f–FVæG2‚’°¢6öç7BÒÒ÷'FföÆ–ôÖWG&–72‚“°¢6öç7Bæ÷rÒæWrFFR‚“°¢6öç7B–E–V"Ò7FFRæF—f–FVæDWfVçG2æf–ÇFW"†RÓâ°¢6öç7BBÒ'6TFFR†Rç”FFRÇÂRæW„FFR“°¢&WGW&âBævWDgVÆÅ–V"‚’ÓÓÒæ÷rævWDgVÆÅ–V"‚’bb†Rç&V6V—fVBÇÂBÂæ÷r“°¢Ò’ç&VGV6R‚‡2ÆR“Óç2¶WfVçDæWB†R’Ã“°¢6öç7BVæF–æu–V"Ò7FFRæF—f–FVæDWfVçG2æf–ÇFW"†RÓâ°¢6öç7BBÒ'6TFFR†Rç”FFRÇÂRæW„FFR“°¢&WGW&âBævWDgVÆÅ–V"‚’ÓÓÒæ÷rævWDgVÆÅ–V"‚’bbBãÒæ÷s°¢Ò’ç&VGV6R‚‡2ÆR“Óç2¶WfVçDæWB†R’Ã“°¢6öç7B6öçG&–'WF÷'2Ò7FFRæ76WG2æÖ†Óâ°¢6öç7BÖ÷VçBÒ7FFRæF—f–FVæDWfVçG2æf–ÇFW"†SÓæRæ76WD–CÓÓÖæ–Bbb'6TFFR†Rç”FFWÇÆRæW„FFR“ãÖFDF—2†æ÷rÂÓ’bb'6TFFR†Rç”FFWÇÆRæW„FFR“ÃÖFDF—2†æ÷rÃ3cR’’ç&VGV6R‚‡2ÆR“Óç2¶WfVçDæWB†R’Ã’ÇÂçVÖ&W"†çVçF—G—ÇÃ’¤çVÖ&W"†ææçVÄF—f–FVæEW%6†&WÇÃ’¢ƒÖ6Æ×†WFöÖF–4F—f–FVæEF‚†’ÃÃ’ó’¦g…&FR†æ7W'&Væ7’“°¢&WGW&â¶76WC¦ÂÖ÷VçGÓ°¢Ò’æf–ÇFW"‡ƒÓç‚æÖ÷VçCã’ç6÷'B‚†Æ"“Óæ"æÖ÷VçBÖæÖ÷VçB“°¢6öç7BÖ„6öçG&–'WF–öâÒÖF‚æÖ‚‚ââæ6öçG&–'WF÷'2æÖ‡ƒÓç‚æÖ÷VçB’Ã“°¢6öç7BW6öÖ–ærÒW6öÖ–ætWfVçG2ƒ“°¢6öç7BvöÂÒçVÖ&W"‡7FFRç6WGF–æw2æF—f–FVæDvöÄæçVÂÇÂ“°¢6öç7B&öw&W72ÒvöÂòÖF‚æÖ–âƒÆÒææçVÄF—f–FVæBövöÂ£’¢°¢6öç7B66„&Ææ6SÖF—f–FVæD66„&Ææ6R‚“°¢6öç7B6öæf—&ÖF–öä6æF–FFW3×7FFRæF—f–FVæDWfVçG2æf–ÇFW"†SÓâRç&V6V—fVBbfRç7FGW2ÓÒvW7F–ÖFVBrbg'6TFFR†Rç”FFWÇÆRæW„FFR“ÃÖFDF—2†æWrFFR‚’Ã’bg'6TFFR†Rç”FFWÇÆRæW„FFR“ãÖFDF—2†æWrFFR‚’ÂÓB’“°¢&WGW&âG¶FVÖô&ææW"‚—Ğ¢G·vT†VFW"‚u6–bvVÆ—"rÂuFVÖWGL;ÂÖW&¶W¦’rÂt',;ÇBöæWBÂ:|K¶ÆæÜKYò÷F†Ö–æ’—,KÜKr—Ğ¢Ç6V7F–öâ6Æ73Ò&F—f–FVæBÖ†W&ò#ãÆF—b6Æ73Ò&F—f–FVæBÖ†W&òÖw&–B#ãÆF—cãÆF—b6Æ73Ò&F—f–FVæBÖÖ–âÖÆ&VÂ#ì9fì;ÆÜ;Ç¦FV¶’"’æWBvVÆ—#ÂöF—cãÆF—b6Æ73Ò&F—f–FVæBÖÖ–â×fÇVR#âG¶ÖöæW’†ÒææçVÄF—f–FVæBÂuE%’r—ÓÂöF—cãÆF—b6Æ73Ò&WfVçBÖÖWF"7G–ÆSÒ&6öÆ÷#¢6v3†3r#ä–ÌK²÷'FÆÖG¶ÖöæW’†ÒæÖöçF†Ç”F—f–FVæBÂuE%’r—ÓÂöF—cãÂöF—cãÆF—b6Æ73Ò&F—f–FVæB×6–FR#ãÆF—b6Æ73Ò&Ö–æ’×7FB#ãÆF—b6Æ73Ò&Æ&VÂ#åFVÖWGL;ÂfW&–Ö“ÂöF—cãÆF—b6Æ73Ò'fÇVR#âG¶çVÖ&W$f×B†ÒæF—f–FVæE––VÆBÃ"—ÒSÂöF—cãÂöF—cãÆF—b6Æ73Ò&Ö–æ’×7FB#ãÆF—b6Æ73Ò&Æ&VÂ#äÖÆ—–WFR|;g&SÂöF—cãÆF—b6Æ73Ò'fÇVR#âG¶çVÖ&W$f×B†Òç––VÆDöä6÷7BÃ"—ÒSÂöF—cãÂöF—cãÂöF—cãÂöF—cãÆF—b6Æ73Ò'&öw&W72×w&#ãÆF—b6Æ73Ò'&öw&W72Ö†VB#ãÇ7ãåœKÆÌK²vVÆ—"†VFVf“Â÷7ããÇ7ãâG¶çVÖ&W$f×B‡&öw&W72Ã—ÒSÂ÷7ããÂöF—cãÆF—b6Æ73Ò'&öw&W72#ãÆ’7G–ÆSÒ'v–GFƒ¢G·&öw&W77ÒR#ãÂö“ãÂöF—cãÂöF—cãÂ÷6V7F–öãà¢Ç6V7F–öâ6Æ73Ò'6V7F–öâ#ãÆF—b6Æ73Ò&w&–B×Gvò#ãÆ'F–6ÆR6Æ73Ò&6&BÖWG&–2Ö6&B#ãÆF—b6Æ73Ò&ÖWG&–2ÖÆ&VÂ#åFVÖWGL;ÂDÂ&¶—–W6“ÂöF—cãÆF—b6Æ73Ò&ÖWG&–2×fÇVR÷6—F—fR#âG¶ÖöæW’†66„&Ææ6RÂuE%’r—ÓÂöF—cãÆF—b6Æ73Ò&ÖWG&–2Öæ÷FR#äöæ–ÆæâFVÖWGL;ÆÆW"(‰"–Væ–FVâ–LK,KÖÆ#ÂöF—cãÂö'F–6ÆSãÆ'F–6ÆR6Æ73Ò&6&BÖWG&–2Ö6&B#ãÆF—b6Æ73Ò&ÖWG&–2ÖÆ&VÂ#äöæ’&V¶ÆW–VãÂöF—cãÆF—b6Æ73Ò&ÖWG&–2×fÇVR#âG¶6öæf—&ÖF–öä6æF–FFW2æÆVæwF‡ÓÂöF—cãÆF—b6Æ73Ò&ÖWG&–2Öæ÷FR#ì9fFVÖRvVÆF’Ö’¶öçG&öÂWCÂöF—cãÂö'F–6ÆSãÂöF—cãÂ÷6V7F–öãà¢G¶6öæf—&ÖF–öä6æF–FFW2æÆVæwFƒöÇ6V7F–öâ6Æ73Ò'6V7F–öâ#ãÆF—b6Æ73Ò'6V7F–öâÖ†VB#ãÇ7â6Æ73Ò'6V7F–öâ×F—FÆR#åFVÖWGL;Â¶¦æ<KöÆ&–Æ—#Â÷7ããÂöF—cãÆF—b6Æ73Ò&6&B6öæf—&ÖF–öâÖ6&B#âG¶6öæf—&ÖF–öä6æF–FFW2æÖ†SÓç¶6öç7BÖ76WD'”–B†Ræ76WD–B“·&WGW&âÆF—b6Æ73Ò&6öæf—&Ò×&÷r#ãÆF—cãÆ#âG¶W62†òç7–Ö&öÇÇÂt†—76Rr—ÓÂö#ãÆF—b6Æ73Ò&WfVçBÖÖWF#âG¶FFUFW‡B†Rç”FFWÇÆRæW„FFR—Ò+rG¶çVÖ&W$f×B†VÆ–v–&ÆUVçF—G”DW„FFR†Ræ76WD–BÆRæW„FFWÇÆRç”FFR’Ã"—ÒFWB+r–¶ÆYüK²G¶ÖöæW’†WfVçDæWB†R’ÂuE%’r—ÓÂöF—cãÂöF—cãÆ'WGFöâ6Æ73Ò'6ÖÆÂ×&–Ö'’"FFÖ7F–öãÒ&6öæf—&ÒÖF—f–FVæB"FFÖWfVçBÖ–CÒ"G¶Ræ–GÒ#ä¶öçG&öÂWCÂö'WGFöããÂöF—cæÒ’æ¦ö–â‚rr—ÓÂöF—cãÂ÷6V7F–öãæ¢rwĞ¢Ç6V7F–öâ6Æ73Ò'6V7F–öâ#ãÆF—b6Æ73Ò&w&–B×Gvò#ãÆ'F–6ÆR6Æ73Ò&6&BÖWG&–2Ö6&B#ãÆF—b6Æ73Ò&ÖWG&–2ÖÆ&VÂ#ä'RœKÂÌKæãÂöF—cãÆF—b6Æ73Ò&ÖWG&–2×fÇVR÷6—F—fR#âG¶ÖöæW’‡–E–V"ÂuE%’r—ÓÂöF—cãÆF—b6Æ73Ò&ÖWG&–2Öæ÷FR#äæWBvW,:vV¶Æ\YöVâ;fFVÖSÂöF—cãÂö'F–6ÆSãÆ'F–6ÆR6Æ73Ò&6&BÖWG&–2Ö6&B#ãÆF—b6Æ73Ò&ÖWG&–2ÖÆ&VÂ#ä'RœKÂ&V¶ÆVæVãÂöF—cãÆF—b6Æ73Ò&ÖWG&–2×fÇVR#âG¶ÖöæW’‡VæF–æu–V"ÂuE%’r—ÓÂöF—cãÆF—b6Æ73Ò&ÖWG&–2Öæ÷FR#ä:|K¶ÆæÜKYò²F†Ö–æ“ÂöF—cãÂö'F–6ÆSãÂöF—cãÂ÷6V7F–öãà¢Ç6V7F–öâ6Æ73Ò'6V7F–öâ#âG¶F—f–FVæD&$6†'B‚—ÓÂ÷6V7F–öãà¢Ç6V7F–öâ6Æ73Ò'6V7F–öâ#ãÆF—b6Æ73Ò'6V7F–öâÖ†VB#ãÇ7â6Æ73Ò'6V7F–öâ×F—FÆR#ävVÆ—"¶F¼K<KÂ÷7ããÇ7â6Æ73Ò'6V7F–öâÖÆ–æ²#ã"“Â÷7ããÂöF—cãÆF—b6Æ73Ò&6&B"7G–ÆSÒ'FF–æs£W‚#âG¶6öçG&–'WF÷'2æÆVæwF‚ò6öçG&–'WF÷'2æÖ‚‡¶76WBÆÖ÷VçGÒ“ÓæÆF—b6Æ73Ò'&V&Ææ6R×&÷r#ãÆF—b6Æ73Ò'&V&Ææ6RÖ†VB#ãÇ7ãâG¶W62†76WBç7–Ö&öÂ—ÓÂ÷7ããÇ7ãâG¶ÖöæW’†Ö÷VçBÂuE%’r—Ò+rG¶çVÖ&W$f×B†Ö÷VçBöÒææçVÄF—f–FVæB£Ã—ÒSÂ÷7ããÂöF—cãÆF—b6Æ73Ò&GVÂ×&öw&W72#ãÆ’6Æ73Ò&7GVÂ"7G–ÆSÒ'v–GFƒ¢G¶Ö÷VçBöÖ„6öçG&–'WF–öâ£ÒR#ãÂö“ãÂöF—cãÂöF—cæ’æ¦ö–â‚rr’¢ÆF—b6Æ73Ò&V×G’×FW‡B"7G–ÆSÒ&Ö&v–ã£#åFVÖWGL;Â;Ç&WFVâ&—"f&ÌK²V¶ÆVæÖVF’ãÂöF—cæÓÂöF—cãÂ÷6V7F–öãà¢Ç6V7F–öâ6Æ73Ò'6V7F–öâ#ãÆF—b6Æ73Ò'6V7F–öâÖ†VB#ãÇ7â6Æ73Ò'6V7F–öâ×F—FÆR#ì9fFVÖR¼KYüKÂ÷7ããÆ'WGFöâ6Æ73Ò'6V7F–öâÖÆ–æ²"FFÖ7F–öãÒ&FBÖF—f–FVæB#åFVÖWGL;ÂV¶ÆSÂö'WGFöããÂöF—cãÆF—b6Æ73Ò&WfVçBÖÆ—7B#âG·W6öÖ–æræÆVæwF‚òW6öÖ–æræÖ†WfVçE&÷r’æ¦ö–â‚rr’¢V×G•7FFR‚v6ö–ârÂ|9fFVÖR'VÇVæÖLKrÂt:|K¶ÆæâfW–F†Ö–æ’&—"FVÖWGL;ÂöÆœKV¶ÆRâr—ÓÂöF—cãÂ÷6V7F–öãæ°¢Ğ ¢gVæ7F–öâ&VæFW$6ÆVæF"‚’°¢6öç7Bf–WrÒ7FFRæ6ÆVæF%f–Ws°¢6öç7B–V"ÒçVÖ&W"‡f–Wrç–V"“°¢6öç7BÖöçF‚ÒçVÖ&W"‡f–WræÖöçF‚“°¢6öç7Bf—'7BÒæWrFFR‡–V"ÆÖöçF‚ÃÃ"“°¢6öç7BÆ7BÒæWrFFR‡–V"ÆÖöçF‚³ÃÃ"“°¢6öç7B7F'Döfg6WBÒ†f—'7BævWDF’‚’³b’Ss°¢6öç7B6VÆÇ2ÒµÓ°¢f÷"†ÆWB“Ó¶“ÃC#¶’²²’°¢6öç7BBÒæWrFFR‡–V"ÆÖöçF‚Ã×7F'Döfg6WB¶’Ã"“°¢6öç7BFFT—6òÒ—6ôFFR†B“°¢6öç7BWfVçG2Ò7FFRæF—f–FVæDWfVçG2æf–ÇFW"†RÓâ6ÖTF’‡'6TFFR†Rç”FFWÇÆRæW„FFR’ÆB’ÇÂ†RæW„FFRbb6ÖTF’‡'6TFFR†RæW„FFR’ÆB’’“°¢6VÆÇ2çW6‚‡¶BÆFFT—6òÆWfVçG2Æ÷WG6–FS¦BævWDÖöçF‚‚’ÓÖÖöçF‡Ò“°¢Ğ¢6öç7B6VÆV7FVBÒ'6TFFR‡f–Wrç6VÆV7FVB“°¢6öç7B6VÆV7FVDWfVçG2Ò7FFRæF—f–FVæDWfVçG2æf–ÇFW"†RÓâ6ÖTF’‡'6TFFR†Rç”FFWÇÆRæW„FFR’Ç6VÆV7FVB’ÇÂ†RæW„FFRbb6ÖTF’‡'6TFFR†RæW„FFR’Ç6VÆV7FVB’’“°¢&WGW&âG¶FVÖô&ææW"‚—Ğ¢G·vT†VFW"‚tvVÆ—"¦æF<KrÂuFVÖWGL;ÂF·f–Ö’rÂt†²·VÆÆìKÒfR;fFVÖR|;ÆæÆW&’rÆÆ'WGFöâ6Æ73Ò&†VFW"Ö7F–öâ"FFÖ7F–öãÒ&W‡÷'BÖ6ÆVæF"#åF·f–Ö’·F#Âö'WGFöãæ—Ğ¢Ç6V7F–öâ6Æ73Ò&6&B6ÆVæF"Ö6&B#ãÆF—b6Æ73Ò&6ÆVæF"Ö†VB#ãÆF—b6Æ73Ò&6ÆVæF"×F—FÆR#âG´ÔôåD…5¶ÖöçF…×ÒG·–V'ÓÂöF—cãÆF—b6Æ73Ò&6ÆVæF"Öæb#ãÆ'WGFöâFFÖ6ÂÖæcÒ"Ó#î(“Âö'WGFöããÆ'WGFöâFFÖ6Â×FöF“î(
+#Âö'WGFöããÆ'WGFöâFFÖ6ÂÖæcÒ##î(£Âö'WGFöããÂöF—cãÂöF—cãÆF—b6Æ73Ò'vVV¶F—2#âGµtTT´D•2æÖ†CÓæÆF—câG¶GÓÂöF—cæ’æ¦ö–â‚rr—ÓÂöF—cãÆF—b6Æ73Ò&6ÆVæF"Öw&–B#âG¶6VÆÇ2æÖ†3ÓæÆ'WGFöâ6Æ73Ò&F’Ö6VÆÂG¶2æ÷WG6–FSòv÷WG6–FRs¢rwÒG·6ÖTF’†2æBÆæWrFFR‚’“òwFöF’s¢rwÒG¶2æFFT—6óÓÓ×f–Wrç6VÆV7FVCòw6VÆV7FVBs¢rwÒ"FFÖFFSÒ"G¶2æFFT—6÷Ò#âG¶2æBævWDFFR‚—ÒG¶2æWfVçG2æÆVæwFƒöÇ7â6Æ73Ò&F’ÖF÷G2#âG¶2æWfVçG2ç6Æ–6RƒÃ2’æÖ†SÓæÆ’6Æ73Ò&F’ÖF÷BG¶Rç7FGW3ÓÓÒvW7F–ÖFVBsòwv&æ–ærs¢rwÒ#ãÂö“æ’æ¦ö–â‚rr—ÓÂ÷7ãæ¢rwÓÂö'WGFöãæ’æ¦ö–â‚rr—ÓÂöF—cãÂ÷6V7F–öãà¢Ç6V7F–öâ6Æ73Ò'6V7F–öâ#ãÆF—b6Æ73Ò'6V7F–öâÖ†VB#ãÇ7â6Æ73Ò'6V7F–öâ×F—FÆR#âG¶FFUFW‡B‡f–Wrç6VÆV7FVBÇ¶F“¢vçVÖW&–2rÆÖöçFƒ¢vÆöærrÇ–V#¢vçVÖW&–2wÒ—ÓÂ÷7ããÆ'WGFöâ6Æ73Ò'6V7F–öâÖÆ–æ²"FFÖ7F–öãÒ&FBÖF—f–FVæB"FFÖFFR×&Vf–ÆÃÒ"G·f–Wrç6VÆV7FVGÒ#äöÆ’V¶ÆSÂö'WGFöããÂöF—cãÆF—b6Æ73Ò&WfVçBÖÆ—7B#âG·6VÆV7FVDWfVçG2æÆVæwF‚ò6VÆV7FVDWfVçG2æÖ†WfVçE&÷r’æ¦ö–â‚rr’¢V×G•7FFR‚v6ÆVæF"rÂt'RF&–‡FRöÆ’–ö²rÂ|9fFVÖRfW–†²·VÆÆìKÒ|;Æì;Â6\:v–ÆFœIö–æFR—,KçLKÆ"'W&F|;g,;Æì;Ç"âr—ÓÂöF—cãÂ÷6V7F–öãà¢Ç6V7F–öâ6Æ73Ò'6V7F–öâ#ãÆF—b6Æ73Ò'6V7F–öâÖ†VB#ãÇ7â6Æ73Ò'6V7F–öâ×F—FÆR#å<K&F¶’;fFVÖVÆW#Â÷7ããÂöF—cãÆF—b6Æ73Ò&WfVçBÖÆ—7B#âG·W6öÖ–ætWfVçG2ƒR’æÖ†WfVçE&÷r’æ¦ö–â‚rr’ÇÂV×G•7FFR‚v6ö–ârÂu–¶ÆYöâ;fFVÖR–ö²rÂt†Vì;Ç¢&—"FVÖWGL;ÂF·f–Ö’öÇ\YöÖLKâr—ÓÂöF—cãÂ÷6V7F–öãæ°¢Ğ ¢gVæ7F–öâÆÆö6F–öä'’†¶W”fâÂ76WDÆ—7BÒ7FFRæ76WG2’°¢6öç7BÖÒæWrÖ‚“°¢76WDÆ—7Bæf÷$V6‚†Óâ°¢6öç7B¶W’Ò¶W”fâ†“°¢Öç6WB†¶W’Â†ÖævWB†¶W’—ÇÃ’¶76WEfÇVR†’“°¢Ò“°¢&WGW&â²ââæÖæVçG&–W2‚•ÒæÖ‚…¶æÖRÇfÇVUÒ“Óâ‡¶æÖRÇfÇVWÒ’’ç6÷'B‚†Æ"“Óæ"çfÇVRÖçfÇVR“°¢Ğ ¢gVæ7F–öâFöçWD‡FÖÂ†—FV×2ÂF÷FÂÂ6VçFW$Æ&VÂÒuF÷ÆÒr’°¢ÆWB7W'6÷"Ò°¢6öç7B6VvÖVçG2Ò—FV×2æÖ‚†—FVÒÆ’’Óâ°¢6öç7B7F'BÒF÷FÂò7W'6÷"÷F÷FÂ£3c¢°¢7W'6÷"³Ò—FVÒçfÇVS°¢6öç7BVæBÒF÷FÂò7W'6÷"÷F÷FÂ£3c¢°¢&WGW&âG´4ôÄõ%5¶’T4ôÄõ%2æÆVæwF…×ÒG·7F'GÖFVrG¶VæGÖFVv°¢Ò’æ¦ö–â‚rÂr“°¢&WGW&âÆF—b6Æ73Ò&FöçWB×w&#ãÆF—b6Æ73Ò&FöçWB"7G–ÆSÒ&&6¶w&÷VæC¦6öæ–2Öw&F–VçB‚G·6VvÖVçG2ÇÂr3s3#6R3cFVrwÒ’#ãÆF—b6Æ73Ò&FöçWBÖ6VçFW"#ãÇ7G&öæsâG¶ÖöæW’‡F÷FÂÂuE%’rÇG'VRÃ—ÓÂ÷7G&öæsãÇ7ãâG¶W62†6VçFW$Æ&VÂ—ÓÂ÷7ããÂöF—cãÂöF—cãÆF—b6Æ73Ò&ÆVvVæBÖÆ—7B#âG¶—FV×2ç6Æ–6RƒÃb’æÖ‚†—FVÒÆ’“ÓæÆF—b6Æ73Ò&ÆVvVæB×&÷r#ãÆ’6Æ73Ò&ÆVvVæB×7vF6‚"7G–ÆSÒ&&6¶w&÷VæC¢G´4ôÄõ%5¶’T4ôÄõ%2æÆVæwF…×Ò#ãÂö“ãÇ7â6Æ73Ò&ÆVvVæBÖæÖR#âG¶W62†—FVÒææÖR—ÓÂ÷7ããÇ7â6Æ73Ò&ÆVvVæB×fÇVR#âG·F÷FÃöçVÖ&W$f×B†—FVÒçfÇVR÷F÷FÂ£Ã“¢swÒSÂ÷7ããÂöF—cæ’æ¦ö–â‚rr—ÓÂöF—cãÂöF—cæ°¢Ğ ¢gVæ7F–öâ&ö¦V7F–öâ‚’°¢6öç7BÒÒ÷'FföÆ–ôÖWG&–72‚“°¢6öç7BÖöçF†Ç”6öçG&–'WF–öâÒÖF‚æÖ‚ƒÂçVÖ&W"‡7FFRç6WGF–æw2æÖöçF†Ç”6öçG&–'WF–öâÇÂ’“°¢6öç7BæçVÅ&WGW&âÒçVÖ&W"‡7FFRç6WGF–æw2æW‡V7FVE&WGW&âÇÂ’ó°¢6öç7BF&vWD–æ6öÖRÒÖF‚æÖ‚ƒÂçVÖ&W"‡7FFRç6WGF–æw2æF—f–FVæDvöÄæçVÂÇÂ’“°¢6öç7B7W'&VçE––VÆBÒÖF‚æÖ‚†ÒæF—f–FVæE––VÆBóÂã#R“°¢ÆWB&Ææ6RÒÒçF÷FÃ°¢ÆWB–V'2Ò°¢f÷"ƒ²–V'2ÂS²–V'2²²’°¢–b†&Ææ6R¢7W'&VçE––VÆBãÒF&vWD–æ6öÖR’'&V³°¢f÷"†ÆWBÖöçFƒÓ²ÖöçFƒÃ#²ÖöçF‚²²’&Ææ6RÒ&Ææ6R¢ƒ¶æçVÅ&WGW&âó"’¶ÖöçF†Ç”6öçG&–'WF–öã°¢Ğ¢&WGW&â²–V'2ÂgWGW&UfÇVS¢&Ææ6RÂF&vWD6—FÃ¢F&vWD–æ6öÖRö7W'&VçE––VÆBÂ7W'&VçD6÷fW&vS¢F&vWD–æ6öÖRòÒææçVÄF—f–FVæB÷F&vWD–æ6öÖR£¢Ó°¢Ğ ¢gVæ7F–öâ&VæFW$æÇ—F–72‚’°¢6öç7B66÷VCÖæÇ—F–7476WG2‚“°¢6öç7BÓ×÷'FföÆ–ôÖWG&–72‡66÷VB“°¢6öç7B–G3×66÷VBæÖ†Óææ–B“°¢6öç7B'•G—SÖÆÆö6F–öä'’†ÓâE•UôÔUD¶çG—UÓòæÆ&VÂÇÂçG—RÂ66÷VB“°¢6öç7B'”7W'&Væ7“ÖÆÆö6F–öä'’†Óâæ7W'&Væ7’ÇÂuE%’rÂ66÷VB“°¢6öç7BG&VæCÖæÇ—F–75G&VæB‡66÷VBÆæÇ—F–75W&–öB“°¢6öç7B&–6UvV–v‡FVC×66÷VBç&VGV6R‚‡7VÒÆ“Óç7VÒ¶76WEfÇVR†’§W&–öD76WE&WGW&â†ÆæÇ—F–75W&–öB’Ã“°¢6öç7BW&–öE7CÖÒçF÷FÃ÷&–6UvV–v‡FVBöÒçF÷FÃ£°¢6öç7BW&–öDÖ&¶WCÖÒçF÷FÂ§W&–öE7Bó°¢6öç7B&VÆ—¦VC×&VÆ—¦VE&öf—D–åW&–öB†–G2ÆæÇ—F–75W&–öB“°¢6öç7BF—g3ÖF—f–FVæG4–åW&–öB†–G2ÆæÇ—F–75W&–öB“°¢6öç7BW&–öEF÷FÃ×W&–öDÖ&¶WB·&VÆ—¦VB¶F—g3°¢6öç7BW&–öDf–ÇFW'3Õµ²tÄÂrÂuL;ÆÜ;ÂuÒÅ²t$•5BrÂt†—76RuÒÅ²uU2rÂt$BuÒÅ²tUDbrÂtUDbuÒÅ²uDTd2rÂtföâuÒÅ²ttôÄBrÂtÇLKâuÒÅ²u4”ÅdU"rÂt|;ÆÜ;ÌYòuÒÅ²t5U5DôÒrÂtFœIöW"uÕÓ°¢6öç7BW&–öG3Õµ²sÒrÂs’uÒÅ²s4ÒrÂs2’uÒÅ²sdÒrÂsb’uÒÅ²s’rÂsœKÂuÒÅ²tÄÂrÂuL;ÆÜ;ÂuÕÓ°¢6öç7BF÷×66÷VBæÖ†Óâ‡¶Ç#§W&–öD76WE&WGW&â†ÆæÇ—F–75W&–öB—Ò’’ç6÷'B‚‡‚Ç’“Óç’ç"×‚ç"“°¢&WGW&âG¶FVÖô&ææW"‚—Ğ¢G·vT†VFW"‚tL;fæV×6VÂ6öç\:vÆ"rÂtæÆ—¢fR&÷&ÆÖrÂtvVæVÂ÷'Fl;g’fR–LK,KÒL;Ç,;Â&¬KæF¼:'"÷¦&"r—Ğ¢ÆF—b6Æ73Ò'–ÆÂ×&÷ræÇ—F–72×–ÆÇ2#âG·W&–öDf–ÇFW'2æÖ‚…¶²ÆÅÒ“ÓæÆ'WGFöâ6Æ73Ò&f–ÇFW"×–ÆÂG¶æÇ—F–74f–ÇFW#ÓÓÖ³òv7F—fRs¢rwÒ"FFÖæÇ—F–72Öf–ÇFW#Ò"G¶·Ò#âG¶ÇÓÂö'WGFöãæ’æ¦ö–â‚rr—ÓÂöF—cà¢ÆF—b6Æ73Ò'W&–öB×7v—F6‚æÇ—F–72×W&–öG2#âG·W&–öG2æÖ‚…¶²ÆÅÒ“ÓæÆ'WGFöâ6Æ73Ò"G¶æÇ—F–75W&–öCÓÓÖ³òv7F—fRs¢rwÒ"FFÖæÇ—F–72×W&–öCÒ"G¶·Ò#âG¶ÇÓÂö'WGFöãæ’æ¦ö–â‚rr—ÓÂöF—cà¢Ç6V7F–öâ6Æ73Ò'7VÖÖ'’×7G&—7VÖÖ'’×7G&—×÷'FföÆ–ò#ãÆF—b6Æ73Ò'7VÖÖ'’Ö—FVÒ#ãÆF—b6Æ73Ò'7VÖÖ'’ÖÆ&VÂ#ä|;Ææ6VÂF\IöW#ÂöF—cãÆF—b6Æ73Ò'7VÖÖ'’×fÇVR#âG¶ÖöæW’†ÒçF÷FÂÂuE%’r—ÓÂöF—cãÂöF—cãÆF—b6Æ73Ò'7VÖÖ'’Ö—FVÒ#ãÆF—b6Æ73Ò'7VÖÖ'’ÖÆ&VÂ#åF÷ÆÒ²õ£ÂöF—cãÆF—b6Æ73Ò'7VÖÖ'’×fÇVRG¶Òç&öf—CãÓòw÷6—F—fRs¢væVvF—fRwÒ#âG¶ÖöæW’†Òç&öf—BÂuE%’r—ÓÂöF—cãÆF—b6Æ73Ò'7VÖÖ'’×7V"#âG·7B†Òç&öf—E7B—ÓÂöF—cãÂöF—cãÆF—b6Æ73Ò'7VÖÖ'’Ö—FVÒ#ãÆF—b6Æ73Ò'7VÖÖ'’ÖÆ&VÂ#äL;fæVÒ²õ£ÂöF—cãÆF—b6Æ73Ò'7VÖÖ'’×fÇVRG·W&–öEF÷FÃãÓòw÷6—F—fRs¢væVvF—fRwÒ#âG¶ÖöæW’‡W&–öEF÷FÂÂuE%’r—ÓÂöF—cãÆF—b6Æ73Ò'7VÖÖ'’×7V"G·W&–öE7CãÓòw÷6—F—fRs¢væVvF—fRwÒ#âG·7B‡W&–öE7B—ÓÂöF—cãÂöF—cãÆF—b6Æ73Ò'7VÖÖ'’Ö—FVÒ#ãÆF—b6Æ73Ò'7VÖÖ'’ÖÆ&VÂ#äL;fæVÒFVÖWGL;ÃÂöF—cãÆF—b6Æ73Ò'7VÖÖ'’×fÇVR÷6—F—fR#âG¶ÖöæW’†F—g2ÂuE%’r—ÓÂöF—cãÂöF—cãÂ÷6V7F–öãà¢Ç6V7F–öâ6Æ73Ò'6V7F–öâ#ãÆF—b6Æ73Ò&6&B6†'BÖ6&B#ãÆF—b6Æ73Ò'6V7F–öâÖ†VB"7G–ÆSÒ&Ö&v–ã£#ãÆF—cãÇ7â6Æ73Ò'6V7F–öâ×F—FÆR#å÷'Fl;g’F\IöW"\I÷&—6“Â÷7ããÆF—b6Æ73Ò'6V7F–öâÖæ÷FR#âG¶æÇ—F–75W&–öGÒ+rÖWf7WBFWFÆW"fR·VÆÆìKÆ&–Æ—"f—–Bv\:vÖœYö—–ÆR†W6Ææâ–¶ÆYüK²w&f–³ÂöF—cãÂöF—cãÂöF—câG¶Ö–æ•G&VæE7fr‡G&VæB—ÓÆF—b6Æ73Ò&6†'BÖfö÷B#ãÇ7ãâG·G&VæBæÆVæwFƒöÖöæW’‡G&VæE³ÒÂuE%’rÇG'VRÃ“¢~(	BwÓÂ÷7ããÇ7ãâG·G&VæBæÆVæwFƒöÖöæW’‡G&VæBæB‚Ó’ÂuE%’rÇG'VRÃ“¢~(	BwÓÂ÷7ããÂöF—cãÂöF—cãÂ÷6V7F–öãà¢Ç6V7F–öâ6Æ73Ò'6V7F–öâ#ãÆF—b6Æ73Ò&w&–B×Gvò#ãÆ'F–6ÆR6Æ73Ò&6&BÖWG&–2Ö6&B#ãÆF—b6Æ73Ò&ÖWG&–2ÖÆ&VÂ#ävW,:vV¶Æ\YöVâ6LKYò²õ£ÂöF—cãÆF—b6Æ73Ò&ÖWG&–2×fÇVRG·&VÆ—¦VCãÓòw÷6—F—fRs¢væVvF—fRwÒ#âG¶ÖöæW’‡&VÆ—¦VBÂuE%’r—ÓÂöF—cãÆF—b6Æ73Ò&ÖWG&–2Öæ÷FR#å6\:v–Æ’L;fæVÓÂöF—cãÂö'F–6ÆSãÆ'F–6ÆR6Æ73Ò&6&BÖWG&–2Ö6&B#ãÆF—b6Æ73Ò&ÖWG&–2ÖÆ&VÂ#ä'V|;Ææ¼;ÂF\IöœYö–ÓÂöF—cãÆF—b6Æ73Ò&ÖWG&–2×fÇVRG¶ÒæF–Ç“ãÓòw÷6—F—fRs¢væVvF—fRwÒ#âG¶ÖöæW’†ÒæF–Ç’ÂuE%’r—ÓÂöF—cãÆF—b6Æ73Ò&ÖWG&–2Öæ÷FR#âG·7B†ÒæF–Ç•7B—ÓÂöF—cãÂö'F–6ÆSãÂöF—cãÂ÷6V7F–öãà¢Ç6V7F–öâ6Æ73Ò'6V7F–öâ#ãÆF—b6Æ73Ò&6&B6†'BÖ6&B#ãÆF—b6Æ73Ò'6V7F–öâÖ†VB"7G–ÆSÒ&Ö&v–ã£#ãÇ7â6Æ73Ò'6V7F–öâ×F—FÆR#åf&ÌK²<KìKlKFIüKÌKÜKÂ÷7ããÇ7â6Æ73Ò'6V7F–öâÖÆ–æ²#âG·66÷VBæÆVæwF‡Òf&ÌK³Â÷7ããÂöF—câG¶FöçWD‡FÖÂ†'•G—RÆÒçF÷FÂÂu÷'Fl;g’r—ÓÂöF—cãÂ÷6V7F–öãà¢Ç6V7F–öâ6Æ73Ò'6V7F–öâ#ãÆF—b6Æ73Ò&6&B6†'BÖ6&B#ãÆF—b6Æ73Ò'6V7F–öâÖ†VB"7G–ÆSÒ&Ö&v–ã£#ãÇ7â6Æ73Ò'6V7F–öâ×F—FÆR#å&&—&–Ö’FIüKÌKÜKÂ÷7ããÂöF—câG¶FöçWD‡FÖÂ†'”7W'&Væ7’ÆÒçF÷FÂÂt·W"FIüKÌKÜKr—ÓÂöF—cãÂ÷6V7F–öãà¢Ç6V7F–öâ6Æ73Ò'6V7F–öâ#ãÆF—b6Æ73Ò'6V7F–öâÖ†VB#ãÇ7â6Æ73Ò'6V7F–öâ×F—FÆR#äL;fæVÒW&f÷&Öç<KÂ÷7ããÂöF—cãÆF—b6Æ73Ò&6&B"7G–ÆSÒ'FF–æs£W‚#âG·F÷æÆVæwFƒ÷F÷æÖ‡ƒÓæÆF—b6Æ73Ò'&V&Ææ6R×&÷r#ãÆF—b6Æ73Ò'&V&Ææ6RÖ†VB#ãÇ7ãâG¶W62‡‚æç7–Ö&öÂ—ÓÂ÷7ããÇ7â6Æ73Ò"G·‚ç#ãÓòw÷6—F—fRs¢væVvF—fRwÒ#âG·7B‡‚ç"—ÓÂ÷7ããÂöF—cãÆF—b6Æ73Ò&GVÂ×&öw&W72#ãÆ’6Æ73Ò&7GVÂ"7G–ÆSÒ'v–GFƒ¢G´ÖF‚æÖ–âƒÄÖF‚æ'2‡‚ç"’£"—ÒR#ãÂö“ãÂöF—cãÂöF—cæ’æ¦ö–â‚rr“¢sÆF—b6Æ73Ò&V×G’×FW‡B"7G–ÆSÒ&Ö&v–ã£#ä'Rf–ÇG&VFR–LK,KÒ'VÇVæ×W–÷"ãÂöF—câwÓÂöF—cãÂ÷6V7F–öãà¢ÆF—b6Æ73Ò&F—66Æ–ÖW"#äL;fæVÒw&f–¶ÆW&’;Æ7&WG6—¢¶–æ¶Æ&Fâ6–†¦FGWGVÆâf—–Bv\:vÖœYö–æR|;g&R–¶ÆYüK²†W6ÆìK"â¶W6–âfW&v’ö×V†6V&R&÷'RF\Iö–ÆF—#²ÌKYò×6LKYòfRFVÖWGL;Â¶œKFÆ,Kâ¶W6–â6öç\:vÆ,KâFVÖVÆ–F—"ãÂöF—cæ°¢Ğ ¢gVæ7F–öâg&–VæFÇ”Ö7&õF—FÆR†R’°¢6öç7B&rÒ7G&–ær†SòçF—FÆRÇÂrr’çG&–Ò‚“°¢6öç7BÖÒ°¢²öÖöæWF'’öÆ–7’6öÖÖ—GFVWÆ–çFW&W7B&FWÇöÆ–7’&FWÇ²ö’ÂuD4Ô"f—¢¶&,KuÒÀ¢²ö–æfÆF–öâ&W÷'Bö’ÂuD4Ô"VæfÆ7–öâ&÷'RuÒÀ¢²ö6öç7VÖW"&–6WÇL;Æ¶WF–6’f—–GÆ7’ö’ÂuL9ÄdRòVæfÆ7–öâfW&—6’uÒÀ¢²öw&÷72FöÖW7F–7Æw7–‡Æv—&—6f’ö’Ât,;Çœ;ÆÖRfW&—6’uÒÀ¢²÷VæV×Æ÷–ÖVçGÆœY÷6—¦Æ–²ö’Â|KY÷6—¦Æ–²fW&—6’uÒÀ¢²ö–æGW7G&–Â&öGV7F–öçÇ6æ–’;Ç&WBö’Âu6æ–’9Ç&WF–Ö’uÒÀ¢²ö&Ææ6Röb–ÖVçG7Ì;fFVÖVÆW"FVævW6’ö’Â|9fFVÖVÆW"FVævW6’uÒÀ¢²öf–ææ6–Â7F&–Æ—G’ö’Âtf–æç6ÂK7F–·&"&÷'RuĞ¢Ó°¢f÷"†6öç7B·'‚ÆÆ&VÅÒöbÖ’–b‡'‚çFW7B‡&r’’&WGW&âÆ&VÃ°¢&WGW&â&rÇÂG¶Sòç6÷W&6RÇÂtV¶öæöÖ’wÒGW—W'W7V°¢Ğ ¢gVæ7F–öâ6–×ÆT–×7EFW‡B‡F—FÆR’°¢6öç7BCÕ7G&–ær‡F—FÆWÇÂrr’çFôÆö6ÆTÆ÷vW$66R‚wG"ÕE"r“°¢–b‚öf—§Ç·ÆÖW&¶W¢&æ²òçFW7B‡B’’&WGW&âtf—¢ÂÖWfGVBÂL;gf—¢fR&÷'6K7Fæ'VÂ;Ç¦W&–æFRWF¶–Æ’öÆ&–Æ—"âs°¢–b‚öVæfÆ7–öçÇL;ÆfWÆ7’òçFW7B‡B’’&WGW&âtf—¢&V¶ÆVçF–ÆW&–æ’fRDÂf&ÌK¶Æ,Kâf—–FÆÖ<KìKWF¶–ÆW–V&–Æ—"âs°¢–b‚ö,;Çœ;ÆÖWÆw7–‡Ç6æ–’òçFW7B‡B’’&WGW&âtV¶öæöÖ–²,;Çœ;ÆÖR&V¶ÆVçF–ÆW&’fRYö—&¶WB¼:'&Æ,K:|K<KæFâ—¦ÆVæ—"âs°¢–b‚öœY÷6—¦Æ–²òçFW7B‡B’’&WGW&âtV¶öæöÖ–æ–â|;Æ<;ÂfRœ:rFÆW†¶¼KæFf–¶—"fW&—"âs°¢&WGW&âu—–6&V¶ÆVçF–ÆW&–æ’WF¶–ÆW–V&–ÆV6V²&—"fW&’fW–vVÆœYöÖVF—"âs°¢Ğ  ¢gVæ7F–öâ—õG&ç67F–öç2‚’°¢&WGW&â7FFRçG&ç67F–öç2æf–ÇFW"‡CÓçBçG—SÓÓÒv'W’rbbBçW&6†6T¶–æCÓÓÒv—òr“°¢Ğ ¢gVæ7F–öâ—ô†öÆF–ætw&÷W2‚’°¢6öç7B'”76WCÖæWrÖ‚“°¢—õG&ç67F–öç2‚’æf÷$V6‚‡CÓç°¢–b‚'”76WBæ†2‡Bæ76WD–B’–'”76WBç6WB‡Bæ76WD–BÅµÒ“°¢'”76WBævWB‡Bæ76WD–B’çW6‚‡B“°¢Ò“°¢&WGW&â²ââæ'”76WBæVçG&–W2‚•ÒæÖ‚…¶76WD–BÇG‡5Ò“Óç°¢6öç7BÖ76WD'”–B†76WD–B“°¢–b‚—&WGW&âçVÆÃ°¢G‡2ç6÷'B‚‡‚Ç’“Óç'6TFFR‡‚æFFR’×'6TFFR‡’æFFR’“°¢6öç7Bf—'7DFFS×G‡5³ÓòæFFWÇÂrs°¢6öç7B—õG“×G‡2ç&VGV6R‚‡2ÇB“Óç2´çVÖ&W"‡BçVçF—G—ÇÃ’Ã“°¢6öç7BvV–v‡FVC×G‡2ç&VGV6R‚‡2ÇB“Óç2´çVÖ&W"‡BçVçF—G—ÇÃ’¤çVÖ&W"‡Bæ—õ&–6Só÷Bç&–6Sóó’Ã“°¢6öç7B—õ&–6SÖ—õG“÷vV–v‡FVBö—õG“£°¢6öç7B6VÆÇ4gFW#×7FFRçG&ç67F–öç2æf–ÇFW"‡CÓçBæ76WD–CÓÓÖ76WD–BbgBçG—SÓÓÒw6VÆÂrbb‚f—'7DFFWÇÇ'6TFFR‡BæFFR“ã×'6TFFR†f—'7DFFR’’’ç&VGV6R‚‡2ÇB“Óç2´çVÖ&W"‡BçVçF—G—ÇÃ’Ã“°¢6öç7B&VÖ–æ–æsÔÖF‚æÖ‚ƒÄÖF‚æÖ–â„çVÖ&W"†çVçF—G—ÇÃ’Æ—õG’×6VÆÇ4gFW"’“°¢6öç7B7W'&VçCÔçVÖ&W"†ç&–6WÇÃ“°¢6öç7B&WGW&å7CÖ—õ&–6Sò‚†7W'&VçBÖ—õ&–6R’ö—õ&–6R£“£°¢&WGW&â¶76WC¦ÇG‡2Æf—'7DFFRÆ—õG’Æ—õ&–6RÇ&VÖ–æ–ærÆ7W'&VçBÇ&WGW&å7GÓ°¢Ò’æf–ÇFW"„&ööÆVâ’ç6÷'B‚†Æ"“Óç'6TFFR†"æf—'7DFFR’×'6TFFR†æf—'7DFFR’“°¢Ğ ¢6öç7BW‡FW&æÄ6&BÒ†‡&VbÂ6Ç2Â&öG’’ÓâÆ'WGFöâG—SÒ&'WGFöâ"6Æ73Ò&6öçFVçBÖ—FVÒW‡FW&æÂÖ6&BG¶6Ç7Ò"FFÖW‡FW&æÂ×W&ÃÒ"G¶W62†‡&VgÇÂrr—Ò#âG¶&öG—ÓÇ7â6Æ73Ò&6öçFVçBÖ÷Vâ#ä:r(i#Â÷7ããÂö'WGFöãæ° ¢gVæ7F–öâ—õ7FGW4Æ&VÂ†—FVÒ—°¢6öç7B3Õ7G&–ær†—FVÒç7FGW7ÇÂrr’çFôÆ÷vW$66R‚“°¢–b‡2æ–æ6ÇVFW2‚vW'FVÆVâr’—&WGW&âtW'FVÆVæF’s°¢–b‡2æ–æ6ÇVFW2‚wFÆWr’—&WGW&âuFÆWF÷ÆìK–÷"s°¢–b‡2æ–æ6ÇVFW2‚vœYöÆVÒr’—&WGW&â|KYöÆVÒ&YöÌK–÷"s°¢–b‡2æ–æ6ÇVFW2‚wFÖÒr—ÇÇ2æ–æ6ÇVFW2‚w6öç\:rr’—&WGW&âuFÆWFÖÖÆæLKs°¢&WGW&ât†Æ¶'¢|;ÆæFVÖ’s°¢Ğ ¢gVæ7F–öâ—õ&öw&W74‡FÖÂ†w&÷W—°¢6öç7BÖw&÷Wæ76WC°¢ÆWB†—7CÒ†æ†—7F÷'—ÇÅµÒ’æÖ„çVÖ&W"’æf–ÇFW"„çVÖ&W"æ—4f–æ—FR“°¢ÆWBFFW3Ô'&’æ—4'&’†æ†—7F÷'”FFW2“öæ†—7F÷'”FFW2ç6Æ–6R‚Ö†—7BæÆVæwF‚“¥µÓ°¢–b†w&÷Wæf—'7DFFRbbFFW2æÆVæwFƒÓÓÖ†—7BæÆVæwF‚—²6öç7B¦—VCÖ†—7BæÖ‚‡&–6RÆ’“Óâ‡·&–6RÆFFS¦FFW5¶•×Ò’’æf–ÇFW"‡ƒÓâ‚æFFRÇÂ7G&–ær‡‚æFFR’ç6Æ–6RƒÃ“ãÕ7G&–ær†w&÷Wæf—'7DFFR’ç6Æ–6RƒÃ’“²†—7C×¦—VBæÖ‡ƒÓç‚ç&–6R“²FFW3×¦—VBæÖ‡ƒÓç‚æFFR“²Ğ¢–b‚†—7BæÆVæwF‚—&WGW&âsÆF—b6Æ73Ò&V×G’×FW‡B"7G–ÆSÒ&Ö&v–ã£#ä†Æ¶'¢6öç&<K|;ÆæÌ;Æ²f—–Bv\:vÖœYö’–Æ²—–6–Væ–ÆVÖW6–æFVâ6öç&öÇ\Yö6²ãÂöF—câs°¢6öç7B&÷w3Ö†—7Bç6Æ–6R‚Ó’æÖ‚‡&–6RÆ’“Óç°¢6öç7B7&4–GƒÖ†—7BæÆVæwF‚ÔÖF‚æÖ–âƒÆ†—7BæÆVæwF‚’¶“°¢6öç7BFFSÖFFW5·7&4–G…×ÇÆ|;ÆâG·7&4–G‚³Ö°¢6öç7BÖ÷fSÖw&÷Wæ—õ&–6Sò‚‡&–6RÖw&÷Wæ—õ&–6R’öw&÷Wæ—õ&–6R£“£°¢&WGW&âÆF—b6Æ73Ò&—òÖF’×&÷r#ãÇ7ãâG¶W62†FFR—ÓÂ÷7ããÆ#âG¶ÖöæW’‡&–6RÆæ7W'&Væ7’ÆfÇ6RÇ&–6SÃóC£"—ÓÂö#ãÆVÒ6Æ73Ò"G¶Ö÷fSãÓòw÷6—F—fRs¢væVvF—fRwÒ#âG·7B†Ö÷fR—ÓÂöVÓãÂöF—cæ°¢Ò’æ¦ö–â‚rr“°¢&WGW&âG¶Ö–æ•G&VæE7fr††—7Bç6Æ–6R‚Ó3’—ÓÆF—b6Æ73Ò&—òÖF’ÖÆ—7B#âG·&÷w7ÓÂöF—cæ°¢Ğ ¢gVæ7F–öâ&VæFW$×”—÷2‚—°¢6öç7Bw&÷W3Ö—ô†öÆF–ætw&÷W2‚“°¢–b‚w&÷W2æÆVæwF‚—&WGW&âÆF—b6Æ73Ò&—òÖV×G’#ãÆ#ä†Vì;Ç¢†Æ¶'¦FâÆLKIüKâ†—76RœYö&WFÆVæÖVÖœYòãÂö#ãÇ7ãå÷'Fl;g’œYöÆVÖ’V¶ÆW&¶Vâ(	ÄÌKYòL;Ç,;Â(i"†Æ¶'¦FâFIüKLKÆâÆ÷N(	Ò6\:râ,;g–ÆV6R'RÆâ÷FöÖF–²öÇ\Y÷W"ãÂ÷7ããÆ'WGFöâG—SÒ&'WGFöâ"6Æ73Ò'&–Ö'’Ö'Fâ"FFÖ7F–öãÒ&FBÖ—òÖ'W’#ä†Æ¶'¢ÌKÜKV¶ÆSÂö'WGFöããÂöF—cæ°¢&WGW&âw&÷W2æÖ†sÓç°¢6öç7BÖræ76WC°¢6öç7BfÇVSÖrç&VÖ–æ–ær¦ræ7W'&VçB¦g…&FR†æ7W'&Væ7’“°¢6öç7B6÷7CÖrç&VÖ–æ–ær¦ræ—õ&–6R¦g…&FR†æ7W'&Væ7’“°¢6öç7B&öf—C×fÇVRÖ6÷7C°¢&WGW&âÆF—b6Æ73Ò&—òÖ†öÆF–ærÖ6&B"FFÖ—òÖ76WCÒ"G¶W62†æ–B—Ò#à¢ÆF—b6Æ73Ò&—òÖ†öÆF–ærÖ†VB#ãÆF—cãÆF—b6Æ73Ò&6öçFVçBÖ¶–6¶W"#ä„Ä´%¤DâÄD”´Ä$”ÓÂöF—cãÆF—b6Æ73Ò&6öçFVçB×F—FÆR#âG¶W62†ç7–Ö&öÂ—Ò+rG¶W62†ææÖR—ÓÂöF—cãÂöF—cãÇ7â6Æ73Ò&—òÖ&FvRG¶rç&WGW&å7CãÓòw÷6—F—fRs¢væVvF—fRwÒ#âG·7B†rç&WGW&å7B—ÓÂ÷7ããÂöF—cà¢ÆF—b6Æ73Ò&—ò×7FBÖw&–B#ãÆF—cãÇ7ãä'¢f—–LKÓÂ÷7ããÆ#âG¶ÖöæW’†ræ—õ&–6RÆæ7W'&Væ7’ÆfÇ6RÆræ—õ&–6SÃóC£"—ÓÂö#ãÂöF—cãÆF—cãÇ7ãìKÆ²FIüKLKÆãÂ÷7ããÆ#âG¶çVÖ&W$f×B†ræ—õG’Ã"—ÒÆ÷CÂö#ãÂöF—cãÆF—cãÇ7ãäŒ:&Ì:"VÆFSÂ÷7ããÆ#âG¶çVÖ&W$f×B†rç&VÖ–æ–ærÃ"—ÒÆ÷CÂö#ãÂöF—cãÆF—cãÇ7ãìKÆ²ÌKÓÂ÷7ããÆ#âG¶ræf—'7DFFSöFFUFW‡B†ræf—'7DFFR“¢~(	BwÓÂö#ãÂöF—cãÆF—cãÇ7ãä¶ÆâF\IöW#Â÷7ããÆ#âG¶ÖöæW’‡fÇVRÂuE%’r—ÓÂö#ãÂöF—cãÆF—cãÇ7ãä'¦Fâ²õ£Â÷7ããÆ"6Æ73Ò"G·&öf—CãÓòw÷6—F—fRs¢væVvF—fRwÒ#âG¶ÖöæW’‡&öf—BÂuE%’r—ÓÂö#ãÂöF—cãÂöF—cà¢G¶—õ&öw&W74‡FÖÂ†r—Ğ¢ÆF—b6Æ73Ò&—òÖ6&BÖ7F–öç2#ãÆ'WGFöâG—SÒ&'WGFöâ"6Æ73Ò'6V6öæF'’Ö'Fâ"FFÖ7F–öãÒ&—òÖFWF–Â"FFÖ76WBÖ–CÒ"G¶W62†æ–B—Ò#äFWF“Âö'WGFöããÆ'WGFöâG—SÒ&'WGFöâ"6Æ73Ò'&–Ö'’Ö'Fâ"FFÖ7F–öãÒ&FB×G&ç67F–öâÖ76WB"FFÖ76WBÖ–CÒ"G¶W62†æ–B—Ò#äÂò6BœYöÆVÖ“Âö'WGFöããÂöF—cà¢ÂöF—cæ°¢Ò’æ¦ö–â‚rr“°¢Ğ ¢gVæ7F–öâ&VæFW$—ô6ÆVæF"‚—°¢6öç7B—FV×3×7FFRæÖ&¶WBæ—ô—FV×7ÇÅµÓ°¢6öç7BG&6¶VC×7FFRæ—õG&6¶VGÇÅµÓ°¢–b‚—FV×2æÆVæwF‚—&WGW&âÆF—b6Æ73Ò&—òÖV×G’#ãÆ#ä÷FöÖF–²†Æ¶'¢F·f–Ö’Y÷RæF&üYòãÂö#ãÇ7ãå–Væ–ÆR–ÆR7VçV7VFâFV·&"FVæRâ&W6Ü:â5²ô´&IöÆçLKÆ,K&÷&Æ"6V¶ÖW6–æFR†W"¦Öâ·VÆÆìKÆ&–Æ—"ãÂ÷7ããÆ'WGFöâG—SÒ&'WGFöâ"6Æ73Ò'6V6öæF'’Ö'Fâ"FFÖ7F–öãÒ&FBÖ—ò×G&6²#äÖçVVÂ†Æ¶'¢F¶–&’V¶ÆSÂö'WGFöããÂöF—cæ°¢&WGW&â—FV×2ç6Æ–6RƒÃb’æÖ†—FVÓÓç°¢6öç7B—5G&6¶VC×G&6¶VBç6öÖR‡ƒÓâ‡‚ç7–Ö&öÂbf—FVÒç7–Ö&öÂbg‚ç7–Ö&öÃÓÓÖ—FVÒç7–Ö&öÂ—ÇÂ‡‚ææÖSÓÓÖ—FVÒææÖR’“°¢&WGW&âÆF—b6Æ73Ò&—òÖ6ÆVæF"Ö6&B#à¢ÆF—b6Æ73Ò&—òÖ†öÆF–ærÖ†VB#ãÆF—cãÆF—b6Æ73Ò&6öçFVçBÖ¶–6¶W"#âG¶W62†—õ7FGW4Æ&VÂ†—FVÒ’—ÓÂöF—cãÆF—b6Æ73Ò&6öçFVçB×F—FÆR#âG¶—FVÒç7–Ö&öÃöÆ#âG¶W62†—FVÒç7–Ö&öÂ—ÓÂö#â+r¢rwÒG¶W62†—FVÒææÖWÇÂt†Æ¶'¢r—ÓÂöF—cãÂöF—câG¶—FVÒç&–6SöÇ7â6Æ73Ò&—òÖ&FvR#âG¶ÖöæW’†—FVÒç&–6RÂuE%’r—ÓÂ÷7ãæ¢rwÓÂöF—cà¢ÆF—b6Æ73Ò&—òÖ–æfòÖÆ–æR#âG¶—FVÒæFVÖæDFFW3öÇ7ãï	ù8RG¶W62†—FVÒæFVÖæDFFW2—ÓÂ÷7ãæ¢rwÒG¶—FVÒæf—'7EG&FTFFSöÇ7ãï	ùIBKÆ²œYöÆVÓ¢G¶W62†—FVÒæf—'7EG&FTFFR—ÓÂ÷7ãæ¢rwÒG¶—FVÒæÖ&¶WCöÇ7ãï	øù²G¶W62†—FVÒæÖ&¶WB—ÓÂ÷7ãæ¢rwÓÂöF—cà¢G¶—FVÒç7VÖÖ'“öÆF—b6Æ73Ò&6öçFVçB×7VÖÖ'’#âG¶W62†—FVÒç7VÖÖ'’—ÓÂöF—cæ¢rwĞ¢ÆF—b6Æ73Ò&—òÖ6&BÖ7F–öç2#âG¶—FVÒçW&ÃöÆ'WGFöâG—SÒ&'WGFöâ"6Æ73Ò'6V6öæF'’Ö'FâW‡FW&æÂÖ6&B"FFÖW‡FW&æÂ×W&ÃÒ"G¶W62†—FVÒçW&Â—Ò#ä¶–æ²(isÂö'WGFöãæ¢rwÓÆ'WGFöâG—SÒ&'WGFöâ"6Æ73Ò'&–Ö'’Ö'Fâ"FFÖ7F–öãÒ'G&6²Ö—òÖ—FVÒ"FFÖ—ò×7–Ö&öÃÒ"G¶W62†—FVÒç7–Ö&öÇÇÂrr—Ò"FFÖ—òÖæÖSÒ"G¶W62†—FVÒææÖWÇÂrr—Ò"FFÖ—òÖFVÖæCÒ"G¶W62†—FVÒæFVÖæDFFW7ÇÂrr—Ò"FFÖ—ò×G&FSÒ"G¶W62†—FVÒæf—'7EG&FTFFWÇÂrr—Ò#âG¶—5G&6¶VCòuF¶—FR)É2s¢uF¶—WB	ùIBwÓÂö'WGFöããÂöF—cà¢ÂöF—cæ°¢Ò’æ¦ö–â‚rr“°¢Ğ ¢gVæ7F–öâ&VæFW$—õ&W÷'G2‚—°¢6öç7BæWw3×7FFRæÖ&¶WBæ—ôæWw7ÇÅµÓ°¢6öç7B6÷W&6W3×7FFRæÖ&¶WBæ—õ6÷W&6W7ÇÅµÓ°¢6öç7B6&G3ÖæWw2ç6Æ–6RƒÃb’æÖ†ãÓæW‡FW&æÄ6&B†âçW&ÂÂv—ò×&W÷'BrÆÆF—b6Æ73Ò&6öçFVçBÖ¶–6¶W"#âG¶W62†âçV&Æ—6†W'ÇÆâç6÷W&6WÇÂt†Æ¶'¢&÷'Rr—Ò+rG¶âçV&Æ—6†VDC÷F–ÖTvò†âçV&Æ—6†VDB“¢rwÓÂöF—cãÆF—b6Æ73Ò&6öçFVçB×F—FÆR#âG¶W62†âçF—FÆUG'ÇÆâçF—FÆR—ÓÂöF—cãÆF—b6Æ73Ò&6öçFVçB×7VÖÖ'’#âG¶W62†âç7VÖÖ'—ÇÂ|K¦†æÖRÂf—–BFW7—B&÷'RÂ6öç\:rfW–œYöÆVÒ&YöÆæ|K<KGW—W'W7Râr—ÓÂöF—cæ’’æ¦ö–â‚rr“°¢6öç7B6÷W&6T6&G3×6÷W&6W2æÖ‡3ÓæÆ'WGFöâG—SÒ&'WGFöâ"6Æ73Ò'6÷W&6RÖÖ–æ’W‡FW&æÂÖ6&B"FFÖW‡FW&æÂ×W&ÃÒ"G¶W62‡2çW&Â—Ò#ãÇ7ããÆ#âG¶W62‡2ææÖR—ÓÂö#ãÇ6ÖÆÃâG¶W62‡2ç&öÆWÇÂu&W6Ü:â¶–æ²r—ÓÂ÷6ÖÆÃãÂ÷7ããÆVÓî(isÂöVÓãÂö'WGFöãæ’æ¦ö–â‚rr“°¢&WGW&âG¶6&G3öÆF—b6Æ73Ò&6öçFVçBÖÆ—7B#âG¶6&G7ÓÂöF—cæ¢sÆF—b6Æ73Ò&V×G’×FW‡B#å–Væ’&÷"'VÇVæÖLKãÂöF—câwÓÆF—b6Æ73Ò'6÷W&6RÖw&–B—ò×6÷W&6RÖw&–B#âG·6÷W&6T6&G7ÓÂöF—cãÆF—b6Æ73Ò&F—66Æ–ÖW"#ä†Æ¶'¢&–Æv–ÆW&’÷FöÖF–²¶\YöfVF–Æ—#²FÆWF&–†–æ’Âf—–LKfRœYöÆVÒ&YöÆæ|K<KìK–LK,KÒ¶&,KfW&ÖVFVâ;fæ6R´õ5²ô&÷'6K7Fæ'VÂGW—W'W7VæFâFüI÷'VÆãÂöF—cæ°¢Ğ ¢gVæ7F–öâ&VæFW$—õ6V7F–öâ‚—°¢6öç7B6÷VçCÖ—ô†öÆF–ætw&÷W2‚’æÆVæwFƒ°¢&WGW&âÇ6V7F–öâ6Æ73Ò&6&BÖ&¶WBÖ6&B—òÖÖöGVÆR#ãÆF—b6Æ73Ò'6V7F–öâÖ†VB#ãÆF—cãÆF—b6Æ73Ò'6V7F–öâ×F—FÆR#ï	øú"†Æ¶'¢ÖW&¶W¦“ÂöF—cãÆF—b6Æ73Ò'6V7F–öâÖæ÷FR#åF·f–Ò²Yö—&¶WB&÷&Æ,K²¶VæF’†Æ¶'¢Æ÷FÆ,Kâ²†Æ¶'¢6öç&<K|;ÆæÌ;Æ²W&f÷&Öç2ãÂöF—cãÂöF—cãÆ'WGFöâG—SÒ&'WGFöâ"6Æ73Ò&†VFW"Ö7F–öâ"FFÖ7F–öãÒ&FBÖ—ò×G&6²#â²F¶—Âö'WGFöããÂöF—cà¢ÆF—b6Æ73Ò'6VvÖVçB×F'2—ò×F'2#ãÆ'WGFöâG—SÒ&'WGFöâ"6Æ73Ò"G¶Ö&¶WD—ôÖöFSÓÓÒv6ÆVæF"sòv7F—fRs¢rwÒ"FFÖ7F–öãÒ&—òÖÖöFR"FFÖ—òÖÖöFSÒ&6ÆVæF"#åF·f–ÓÂö'WGFöããÆ'WGFöâG—SÒ&'WGFöâ"6Æ73Ò"G¶Ö&¶WD—ôÖöFSÓÓÒvÖ–æRsòv7F—fRs¢rwÒ"FFÖ7F–öãÒ&—òÖÖöFR"FFÖ—òÖÖöFSÒ&Ö–æR#äÆLK¶Æ,KÒG¶6÷VçCö‚G¶6÷VçGÒ–¢rwÓÂö'WGFöããÆ'WGFöâG—SÒ&'WGFöâ"6Æ73Ò"G¶Ö&¶WD—ôÖöFSÓÓÒw&W÷'G2sòv7F—fRs¢rwÒ"FFÖ7F–öãÒ&—òÖÖöFR"FFÖ—òÖÖöFSÒ'&W÷'G2#å&÷&Æ#Âö'WGFöããÂöF—cà¢ÆF—b6Æ73Ò&—òÖ&öG’#âG¶Ö&¶WD—ôÖöFSÓÓÒvÖ–æRs÷&VæFW$×”—÷2‚“¦Ö&¶WD—ôÖöFSÓÓÒw&W÷'G2s÷&VæFW$—õ&W÷'G2‚“§&VæFW$—ô6ÆVæF"‚—ÓÂöF—cà¢Â÷6V7F–öãæ°¢Ğ ¢gVæ7F–öâ6†÷t—õG&6´f÷&Ò‡&Vf–ÆÃ×·Ò—°¢6öç7Bƒ×·7–Ö&öÃ¢rrÆæÖS¢rrÆFVÖæE7F'C¢rrÆFVÖæDVæC¢rrÆf—'7EG&FTFFS¢rrÇ&–6S¢rrÂââç&Vf–ÆÇÓ°¢6†÷tÖöFÂ†G¶ÖöFÄ†VFW"‚t†Æ¶'¬KF¶—WBr—ÓÆf÷&Ò–CÒ&—õG&6´f÷&Ò#ãÆF—b6Æ73Ò&f÷&ÒÖw&–B#ãÆF—b6Æ73Ò&f–VÆB#ãÆÆ&VÃä$•5B¶öGSÂöÆ&VÃãÆ–çWBæÖSÒ'7–Ö&öÂ"fÇVSÒ"G¶W62‡‚ç7–Ö&öÇÇÂrr—Ò"WFö6—FÆ—¦SÒ&6†&7FW'2#ãÂöF—cãÆF—b6Æ73Ò&f–VÆBgVÆÂ#ãÆÆ&VÃìYæ—&¶WCÂöÆ&VÃãÆ–çWBæÖSÒ&æÖR"fÇVSÒ"G¶W62‡‚ææÖWÇÂrr—Ò"&WV—&VCãÂöF—cãÆF—b6Æ73Ò&f–VÆB#ãÆÆ&VÃåFÆW&YöÆæ|K<KÂöÆ&VÃãÆ–çWBG—SÒ&FFR"æÖSÒ&FVÖæE7F'B"fÇVSÒ"G¶W62‡‚æFVÖæE7F'GÇÂrr—Ò#ãÂöF—cãÆF—b6Æ73Ò&f–VÆB#ãÆÆ&VÃåFÆW6öâ|;Æì;ÃÂöÆ&VÃãÆ–çWBG—SÒ&FFR"æÖSÒ&FVÖæDVæB"fÇVSÒ"G¶W62‡‚æFVÖæDVæGÇÂrr—Ò#ãÂöF—cãÆF—b6Æ73Ò&f–VÆB#ãÆÆ&VÃìKÆ²œYöÆVÒ|;Æì;ÃÂöÆ&VÃãÆ–çWBG—SÒ&FFR"æÖSÒ&f—'7EG&FTFFR"fÇVSÒ"G¶W62‡‚æf—'7EG&FTFFWÇÂrr—Ò#ãÂöF—cãÆF—b6Æ73Ò&f–VÆB#ãÆÆ&VÃä†Æ¶'¢f—–LKÂöÆ&VÃãÆ–çWBG—SÒ&çVÖ&W""7FWÒ&ç’"Ö–ãÒ#"æÖSÒ'&–6R"fÇVSÒ"G¶W62‡‚ç&–6WÇÂrr—Ò#ãÂöF—cãÂöF—cãÆF—b6Æ73Ò&f–VÆBÖ†–çB#åF&–†ÆW"÷FöÖF–²fW&–FVâvVÆÖVF——6RVÆÆRv—&V&–Æ—'6–ââ&–ÆF—&–ÖÆW"'R¶–F|;g&RöÇ\Y÷GW'VÇW"ãÂöF—cãÆF—b6Æ73Ò&'WGFöâ×&÷r#ãÆ'WGFöâG—SÒ&'WGFöâ"6Æ73Ò'6V6öæF'’Ö'Fâ"FFÖÖöFÂÖ6Æ÷6Såf¦v\:sÂö'WGFöããÆ'WGFöâ6Æ73Ò'&–Ö'’Ö'Fâ#åF¶–&RV¶ÆSÂö'WGFöããÂöF—cãÂöf÷&Óæ“°¢B‚r6—õG&6´f÷&Òr’æFDWfVçDÆ—7FVæW"‚w7V&Ö—BrÆSÓç¶Rç&WfVçDFVfVÇB‚“¶6öç7BfCÖæWrf÷&ÔFF†Ræ7W'&VçEF&vWB“¶6öç7B7–Ö&öÃÕ7G&–ær†fBævWB‚w7–Ö&öÂr—ÇÂrr’çFõWW$66R‚’çG&–Ò‚’ÆæÖSÕ7G&–ær†fBævWB‚væÖRr—ÇÂrr’çG&–Ò‚“¶–b‚æÖR—&WGW&ã¶6öç7BW†—7F–æs×7FFRæ—õG&6¶VBæf–æB†“Óâ‡7–Ö&öÂbf’ç7–Ö&öÃÓÓ×7–Ö&öÂ—ÇÂ‚7–Ö&öÂbf’ææÖSÓÓÖæÖR’“¶6öç7BæW‡C×²âââ†W†—7F–æwÇÇ·Ò’Æ–C¦W†—7F–æsòæ–GÇÇV–B‚v—òr’Ç7–Ö&öÂÆæÖRÆFVÖæE7F'C¥7G&–ær†fBævWB‚vFVÖæE7F'Br—ÇÂrr’ÆFVÖæDVæC¥7G&–ær†fBævWB‚vFVÖæDVæBr—ÇÂrr’Æf—'7EG&FTFFS¥7G&–ær†fBævWB‚vf—'7EG&FTFFRr—ÇÂrr’Ç&–6S¤çVÖ&W"†fBævWB‚w&–6Rr—ÇÃ’ÇWFFVDC¦æWrFFR‚’çFô•4õ7G&–ær‚—Ó¶–b†W†—7F–ær”ö&¦V7Bæ76–vâ†W†—7F–ærÆæW‡B“¶VÇ6R7FFRæ—õG&6¶VBçW6‚†æW‡B“·6fU7FFR‚“¶6Æ÷6TÖöFÂ‚“·&VæFW%vR†fÇ6R“·66†VGVÆTWfVçDæ÷F–f–6F–öç2‚“·6†÷uFö7B‚t†Æ¶'¢F¶–&RÌKæLKr“·Ò“°¢Ğ ¢gVæ7F–öâ6†÷t—ô†öÆF–ætFWF–Â†76WD–B—°¢6öç7BsÖ—ô†öÆF–ætw&÷W2‚’æf–æB‡ƒÓç‚æ76WBæ–CÓÓÖ76WD–B“¶–b‚r—&WGW&ã°¢6öç7BÖræ76WC°¢6†÷tÖöFÂ†G¶ÖöFÄ†VFW"†G¶ç7–Ö&öÇÒ†Æ¶'¢W&f÷&Öç<K—ÓÆF—b6Æ73Ò&FWF–Â×6†VWB#ãÆF—b6Æ73Ò&&–r×7–Ö&öÂ#âG¶W62†ç7–Ö&öÂ—ÓÂöF—cãÆF—b6Æ73Ò&FWF–Â×&–6R#âG¶ÖöæW’†ç&–6RÆæ7W'&Væ7’ÆfÇ6RÆç&–6SÃóC£"—ÓÂöF—cãÆF—b6Æ73Ò&76WBÖ6†ævRG¶rç&WGW&å7CãÓòw÷6—F—fRs¢væVvF—fRwÒ#âG·7B†rç&WGW&å7B—Ò†Æ¶'¢f—–LKæFãÂöF—câG¶—õ&öw&W74‡FÖÂ†r—ÓÆF—b6Æ73Ò&F—66Æ–ÖW"#ä¶Æâ†Æ¶'¢Æ÷GR†W6,KæF6LKYöÆ,Kâ;fæ6R†Æ¶'¢Æ÷FÆ,KæFâ:|K·LKIüK„d”dò’f'6œKÌK"â6öç&Fâ–LKIüKâæ÷&ÖÂÌKÖÆ"—,KÖÆ—–WBFYüK"ãÂöF—cãÆF—b6Æ73Ò&'WGFöâ×&÷r#ãÆ'WGFöâ6Æ73Ò'6V6öæF'’Ö'Fâ"–CÒ&—ô76WDFWF–Â#åf&ÌK²FWFœKÂö'WGFöããÆ'WGFöâ6Æ73Ò'&–Ö'’Ö'Fâ"–CÒ&—ôæWuG‚#äÂò6BV¶ÆSÂö'WGFöããÂöF—cãÂöF—cæ“°¢B‚r6—ô76WDFWF–Âr’æFDWfVçDÆ—7FVæW"‚v6Æ–6²rÂ‚“Óç6†÷t76WDFWF–Â†æ–B’“°¢B‚r6—ôæWuG‚r’æFDWfVçDÆ—7FVæW"‚v6Æ–6²rÂ‚“Óç6†÷uG&ç67F–öäf÷&Ò†æ–B’“°¢Ğ ¢gVæ7F–öâæWw5F÷–2†â—°¢6öç7BCÖG¶âçF—FÆUG'ÇÆâçF—FÆWÇÂrwÒG¶âç7VÖÖ'—ÇÂrwÒG¶âæ6FVv÷'—ÇÂrwÖçFôÆö6ÆTÆ÷vW$66R‚wG"ÕE"r“°¢–b‚÷6fY÷Ì:vLKY÷Æl;Ç¦WÆF\Yö¶W7Ç–LK,K×ÆæF÷Æ—&çÆ—7&–ÇÇV·&–æÇ'W7–Æ¦V÷öÆ—BòçFW7B‡B’’&WGW&â²t¦V÷öÆ—F–²rÂv7&—F–6ÂuÓ°¢–b‚÷WG&öÇÆ'&VçGÇwF—ÆFüIöÂv§ÆÆæwÆVæW&¦—ÆVÆV·G&–·Æ÷V7Æ¶'–¼KBòçFW7B‡B’’&WGW&â²tVæW&¦’rÂvVæW&w’uÓ°¢–b‚öœY÷6—¦Æ–·Æ—7F–†F×ÆœYò|;Æ<;ÇÆœYö|;Æ<;ÇÆÖY÷Ì;Æ7&WGÆ6v&—ÆVÖV¶Æ—ÆÖV×W"òçFW7B‡B’’&WGW&â²|K7F–†FÒbÖYòrÂvÆ–fRuÓ°¢–b‚ö\Iö—F–×Æö·VÇÌ;Ææ—fW'6—FWÌ;lI÷&Væ6—ÆÖV'Çœ;f·Ì;g7–ÒòçFW7B‡B’’&WGW&â²t\Iö—F–ÒrÂvÆ–fRuÓ°¢–b‚÷7÷'ÆgWF&öÇÇVVfÆf–fÆöÆ–×—–GÌYö×—–öâòçFW7B‡B’’&WGW&â²u7÷"rÂw7÷'BuÓ°¢–b‚÷6IöÌK·Ç6Æ|KçÇv†÷Æ–Æ:wÆ†7FæRòçFW7B‡B’’&WGW&â²u6IöÌK²rÂvÆ–fRuÓ°¢–b‚ö|KFÇF,K×Æ'\IöF—ÆÜK<K'Æ·W&·ÇFÖ÷ÆfòòçFW7B‡B’’&WGW&â²t|KFbF,KÒrÂvÆ–fRuÓ°¢–b‚÷–’¦V·Ì:v—ÇFV¶æöÆö¦—Æ’Ç6VÖ–6öæGV7F÷'Æçf–F–òçFW7B‡B’’&WGW&â²uFV¶æöÆö¦’rÂwFV6‚uÓ°¢–b‚öf—§ÆVæfÆ7–öçÇL;ÆfWÆfVGÇF6Ö'ÆV6'ÆÖW&¶W¢&æ¶Æ,;Çœ;ÆÖWÆvGÆ·W"òçFW7B‡B’’&WGW&â²tV¶öæöÖ’rÂvöff–6–ÂuÓ°¢–b‚ö&÷'6Æ†—76WÆ&—7GÆæ6FÇ2gÌYö—&¶WGÆ&–Æì:v÷ÇFVÖWGL;ÂòçFW7B‡B’’&WGW&â²u—–6rÂvÖ&¶WBuÓ°¢–b‚÷6\:v–×ÆŒ;Æ¼;ÆÖWGÆÖV6Æ—7Æ&Yö¶çÆ&¶çÇ6—–6WGÇfW&v—ÇF&–fWÆ|;Æ×,;Æ²òçFW7B‡B’’&WGW&â²u6—–6WBrÂwöÆ—F–72uÓ°¢&WGW&â²t|;ÆæFVÒrÂvæWWG&ÂuÓ°¢Ğ¢gVæ7F–öâæWw4–×÷'Fæ6R†â—°¢6öç7B·F÷–2ÇFöæUÓÖæWw5F÷–2†â“²6öç7BCÖG¶âçF—FÆUG'ÇÆâçF—FÆWÇÂrwÒG¶âç7VÖÖ'—ÇÂrwÖçFôÆö6ÆTÆ÷vW$66R‚wG"ÕE"r“°¢–b‡FöæSÓÓÒv7&—F–6ÂwÇÂö6–ÇÇ6öâF¶–¶Æf—¢¶&'ÆVæfÆ7–öçÇ6fY÷ÆF\Yö¶W7Ç–LK,K×ÆFW&V×ÇWG&öÂâ¢RòçFW7B‡B’’&WGW&â²uœ9Äµ4T²UD¼KrÂv†–v‚uÓ°¢–b…²tV¶öæöÖ’rÂtVæW&¦’rÂu—–6rÂu6—–6WBuÒæ–æ6ÇVFW2‡F÷–2’’&WGW&â²tLK´´BrÂvÖVF—VÒuÓ°¢&WGW&â²t,KÄ|KrÂvÆ÷ruÓ°¢Ğ¢gVæ7F–öâ÷'FföÆ–ôæWw4ÖF6‚†â—°¢6öç7BFW‡CÖG¶âçF—FÆUG'ÇÆâçF—FÆWÇÂrwÒG¶âç7VÖÖ'—ÇÂrwÖçFôÆö6ÆUWW$66R‚wG"ÕE"r“°¢&WGW&â7FFRæ76WG2æf–ÇFW"†Óæç7–Ö&öÂbgFW‡Bæ–æ6ÇVFW2…7G&–ær†ç7–Ö&öÂ’çFõWW$66R‚’’’ç6Æ–6RƒÃB“°¢Ğ¢gVæ7F–öâæWw4–×7DFWF–Â†â—°¢6öç7B·F÷–5ÓÖæWw5F÷–2†â“²6öç7BÖF6†W3×÷'FföÆ–ôæWw4ÖF6‚†â“°¢6öç7BÆ–fS×´VæW&¦“¢t¶'–¼KBÂVÆV·G&–²öFüIöÆv¢fRVÆY÷LK&ÖÖÆ—–WFÆW&–æ’WF¶–ÆW–V&–Æ—"ârÂ|K7F–†FÒbÖYòs¢tvVÆ—"Â6LKâÆÖ|;Æ<;ÂfRœ:rFÆW;Ç¦W&–æFRWF¶–Æ’öÆ&–Æ—"ârÄ\Iö—F–Ó¢t†æR,;ÇL:vW6’ÂvVì:r—7F–†FÜKfRW§VâfFVÆ’;Ç&WF¶VæÆœIö’WF¶–ÆW–V&–Æ—"ârÅ7÷#¢t,;Çœ;Æ²÷&væ—¦7–öâÂ–œKâÂGW&—¦ÒfW–7öç6÷&ÇV²WF¶—6’f'6V¶öæöÖ—–R–ç<K–&–Æ—"ârÅ6IöÌK³¢t†æR†&6ÖÆ,KÂœYö|;Æ<;ÂfR6IöÌK²Yö—&¶WFÆW&’;Ç¦W&–æFVâV¶öæöÖ–²WF¶—6’öÆ&–Æ—"ârÂt|KFbF,KÒs¢t|KFf—–FÆ,KfRVæfÆ7–öâ;Ç¦W&–æFVâ|;ÆæÌ;Æ²,;ÇL:vW–’WF¶–ÆW–V&–Æ—"âwÕ·F÷–5×ÇÂtFüI÷'VFâ|;ÆæÌ;Æ²WF¶—6’<KìK&ÌKöÆ&–Æ—#²f—–FÆ"fR&V¶ÆVçF–ÆW";Ç¦W&–æFVâFöÆ–ÌKWF¶—6’öÇ\Yö&–Æ—"âs°¢6öç7BG#×´¦V÷öÆ—F–³¢tVæW&¦’ÂLKYòF–6&WBÂ·W"fR&—6²&–Ö’;Ç¦W&–æFVâL;Ç&¶—–^(	—–’WF¶–ÆW–V&–Æ—"ârÄVæW&¦“¢uL;Ç&¶—–^(	–æ–âVæW&¦’—F†ÆBÖÆ—–WF’fRVæfÆ7–öâ|;g,;Æì;ÆÜ;Â:|K<KæFâ;fæVÖÆ–F—"ârÄV¶öæöÖ“¢tf—¢Â·W"ÂVæfÆ7–öâfRœ:rFÆW¶æÆÆ,K–ÆL;Ç&¶—–RV¶öæöÖ—6–æ’WF¶–ÆW–V&–Æ—"ârÅ6—–6WC¢ufW&v’ÂF\Y÷f–²ÂF–6&WBfRV¶öæöÖ’öÆ—F–¶<KF\IöœYö—'6R—–6Æ&–ç<K–&–Æ—"âwÕ·F÷–5×ÇÂu6V·L;g&VÂFÆWÂÖÆ—–WBfW–&V¶ÆVçF–ÆW";Ç¦W&–æFVâL;Ç&¶—–RV¶öæöÖ—6–æR–ç<K–&–Æ—"âs°¢6öç7BÖ&¶WC×´¦V÷öÆ—F–³¢uWG&öÂÂÇLKâÂL;gf—¢fR&—6¶Æ’f&ÌK¶Æ&F÷–æ¶ÌKIüK'LK&&–Æ—"ârÄVæW&¦“¢uWG&öÂöFüIöÆv¢Â†f<KÌK²ÂVÆY÷LK&ÖÂWG&ö¶–×–fRVæW&¦’†—76VÆW&–æ’WF¶–ÆW–V&–Æ—"ârÄV¶öæöÖ“¢uF‡f–ÂÂL;gf—¢ÂÇLKâfR†—76RF\IöW&ÆVÖVÆW&–æFRWF¶–Æ’öÆ&–Æ—"ârÅ—–6¢|Yæ—&¶WBf—–FÆÖÆ,KfR–LK,KÖ<K&—6²œY÷FŒKìKFüI÷'VFâWF¶–ÆW–V&–Æ—"âwÕ·F÷–5×ÇÂ|KÆv–Æ’6V·L;g&ÆW&FRf—–FÆÖfR&V¶ÆVçF–ÆW&’WF¶–ÆW–V&–Æ—"âs°¢6öç7B÷'FföÆ–óÖÖF6†W2æÆVæwFƒöFüI÷'VFâ\YöÆ\YöVæÆW#¢G¶ÖF6†W2æÖ†Óæç7–Ö&öÂ’æ¦ö–â‚rÂr—Òæ¢u÷'Fl;gœ;ÆæFR†&W"ÖWFæ—–ÆRFüI÷'VFâ\YöÆ\YöVâf&ÌK²'VÇVæÖLKâs°¢&WGW&âÆF—b6Æ73Ò&–×7BÖw&–B#ãÆF—cãÆ#ï	ùB|;ÆæÌ;Æ²†–LKÓÂö#ãÇ7ãâG¶W62†Æ–fR—ÓÂ÷7ããÂöF—cãÆF—cãÆ#ï	ø{Ÿ	ø{rL;Ç&¶—–SÂö#ãÇ7ãâG¶W62‡G"—ÓÂ÷7ããÂöF—cãÆF—cãÆ#ï	ù8‚—–6Æ#Âö#ãÇ7ãâG¶W62†Ö&¶WB—ÓÂ÷7ããÂöF—cãÆF—cãÆ#ï	ù+Â÷'Fl;gœ;ÆÓÂö#ãÇ7ãâG¶W62‡÷'FföÆ–ò—ÓÂ÷7ããÂöF—cãÂöF—cæ°¢Ğ¢gVæ7F–öâg&W6„æWw2†—FV×2ÆÖ„†÷W'3Óc‚—°¢6öç7Bæ÷sÔFFRææ÷r‚’ÂÖƒÖÖ„†÷W'2£3c°¢&WGW&â†—FV×7ÇÅµÒ’æf–ÇFW"†ãÓç¶6öç7BCÔFFRç'6R†âçV&Æ—6†VDGÇÂrr“·&WGW&âçVÖ&W"æ—4f–æ—FR‡B’bgCÃÖæ÷r³3cbb†æ÷r×B“ÃÖÖƒ·Ò’ç6÷'B‚†Æ"“ÓäFFRç'6R†"çV&Æ—6†VDGÇÃ’ÔFFRç'6R†çV&Æ—6†VDGÇÃ’“°¢Ğ¢gVæ7F–öâÖ&¶WEVÇ6R†ÆÂ—°¢6öç7B&V6VçCÖg&W6„æWw2†ÆÂÃC‚“°¢6öç7B&—7DæWw3×&V6VçBæf–ÇFW"†ãÓâö&—7GÆ&÷'6—7Fæ'VÇÆ&—7BÆ&æ¶<KÌK·Æ:|KIö6LKYòö’çFW7B†G¶âçF—FÆUG'ÇÆâçF—FÆWÇÂrwÒG¶âç7VÖÖ'—ÇÂrwÖ’“°¢6öç7BÖWFÄæWw3×&V6VçBæf–ÇFW"†ãÓâöÇLKçÆvöÆGÇ†WÆ|;ÆÜ;ÌY÷Æöç2ö’çFW7B†G¶âçF—FÆUG'ÇÆâçF—FÆWÇÂrwÒG¶âç7VÖÖ'—ÇÂrwÖ’“°¢6öç7BF÷vãÖ&—7DæWw2æf–ÇFW"†ãÓâöL;ÌY÷GÆL;ÌYü;ÌY÷Ç6LKY÷ÆvW&–ÆWÆ¶œKÆV·6—ÆæVvF–bö’çFW7B†G¶âçF—FÆUG'ÇÆâçF—FÆWÇÂrwÒG¶âç7VÖÖ'—ÇÂrwÖ’’æÆVæwFƒ°¢6öç7BWÖ&—7DæWw2æf–ÇFW"†ãÓâ÷œ;Æ·6VÇÆ'LKY÷Ç&ÆÆ—Æ¶¦ì:wÇ÷¦—F–bö’çFW7B†G¶âçF—FÆUG'ÇÆâçF—FÆWÇÂrwÒG¶âç7VÖÖ'—ÇÂrwßtï«h‘éì¶»§q«^vÅ¬Ñ•µ•ÑÓñ±•É‘•¸½Ñ½µ…Ñ¥¬¡•Í…Á±…»ÅÈì•É•­¥ÉÍ”“ñé•¹±•å•‰¥±¥ÉÍ¥¹¥è¸ğ½‘¥Øøğ½‘¥Øø(€€€€€€€€ñ‘¥Ø±…ÍÌô‰™¥•±™Õ¹µ™•”µ™¥•±ˆÍÑå±”ôˆ‘í„¹ÑåÁ”ôôôQLœüœœè‘¥ÍÁ±…äé¹½¹”ôˆøñ±…‰•°ù½¸çÙ¹•Ñ¥´ƒñÉ•Ñ¤€ ”½çÅ°¤ğ½±…‰•°øñ¥¹ÁÕĞ¹…µ”ô‰™Õ¹‘5…¹…•µ•¹Ñ••¹¹Õ…°ˆÑåÁ”ô‰¹Õµ‰•ÈˆÍÑ•Àô‰…¹äˆµ¥¸ôˆÀˆÙ…±Õ”ôˆ‘í„¹™Õ¹‘5…¹…•µ•¹Ñ••¹¹Õ…°€üü€œôˆÁ±…•¡½±‘•Èô‰-@Ñ…¸½Ñ½µ…Ñ¥¬ˆøğ½‘¥Øø(€€€€€€€€ñ‘¥Ø±…ÍÌô‰™¥•±™Õ¹µ™•”µ™¥•±ˆÍÑå±”ôˆ‘í„¹ÑåÁ”ôôôQLœüœœè‘¥ÍÁ±…äé¹½¹”ôˆøñ±…‰•°ù½¸çÙ¹•Ñ¥´ƒñÉ•Ñ¤€ ”½Ÿñ¸¤ğ½±…‰•°øñ¥¹ÁÕĞ¹…µ”ô‰™Õ¹‘5…¹…•µ•¹Ñ••…¥±äˆÑåÁ”ô‰¹Õµ‰•ÈˆÍÑ•Àô‰…¹äˆµ¥¸ôˆÀˆÙ…±Õ”ôˆ‘í„¹™Õ¹‘5…¹…•µ•¹Ñ••…¥±ä€üü€œôˆÁ±…•¡½±‘•Èô‰-@Ñ…¸½Ñ½µ…Ñ¥¬ˆÉ•…‘½¹±äøğ½‘¥Øø(€€€€€€€€ñ‘¥Ø±…ÍÌô‰™¥•±™Õ¹µ™•”µ™¥•±ˆÍÑå±”ôˆ‘í„¹ÑåÁ”ôôôQLœüœœè‘¥ÍÁ±…äé¹½¹”ôˆøñ±…‰•°ù½¸Ñ½Á±…´¥‘•È½É…»Ä€ ”¤ğ½±…‰•°øñ¥¹ÁÕĞ¹…µ”ô‰™Õ¹‘áÁ•¹Í•I…Ñ¥¼ˆÑåÁ”ô‰¹Õµ‰•ÈˆÍÑ•Àô‰…¹äˆµ¥¸ôˆÀˆÙ…±Õ”ôˆ‘í„¹™Õ¹‘áÁ•¹Í•I…Ñ¥¼€üü€œôˆÁ±…•¡½±‘•Èô‰Y…ÉÍ„-@Ñ…¸ˆøğ½‘¥Øø(€€€€€€€€ñ‘¥Ø±…ÍÌô‰™¥•±™Õ¹µ™•”µ™¥•±ˆÍÑå±”ôˆ‘í„¹ÑåÁ”ôôôQLœüœœè‘¥ÍÁ±…äé¹½¹”ôˆøñ±…‰•°ù¥É§|­½µ¥Íå½¹Ô€ ”¤ğ½±…‰•°øñ¥¹ÁÕĞ¹…µ”ô‰™Õ¹‘¹ÑÉå•”ˆÑåÁ”ô‰¹Õµ‰•ÈˆÍÑ•Àô‰…¹äˆµ¥¸ôˆÀˆÙ…±Õ”ôˆ‘í„¹™Õ¹‘¹ÑÉå•”€üü€œôˆÁ±…•¡½±‘•Èô‰-@Ñ…¸½Ñ½µ…Ñ¥¬ˆøğ½‘¥Øø(€€€€€€€€ñ‘¥Ø±…ÍÌô‰™¥•±™Õ¹µ™•”µ™¥•±ˆÍÑå±”ôˆ‘í„¹ÑåÁ”ôôôQLœüœœè‘¥ÍÁ±…äé¹½¹”ôˆøñ±…‰•°ûÅ¯Ç|­½µ¥Íå½¹Ô€ ”¤ğ½±…‰•°øñ¥¹ÁÕĞ¹…µ”ô‰™Õ¹‘á¥Ñ•”ˆÑåÁ”ô‰¹Õµ‰•ÈˆÍÑ•Àô‰…¹äˆµ¥¸ôˆÀˆÙ…±Õ”ôˆ‘í„¹™Õ¹‘á¥Ñ•”€üü€œôˆÁ±…•¡½±‘•Èô‰-@Ñ…¸½Ñ½µ…Ñ¥¬ˆøğ½‘¥Øø(€€€€€€€€ñ‘¥Ø±…ÍÌô‰™¥•±™Õ¹µ™•”µ™¥•±ˆÍÑå±”ôˆ‘í„¹ÑåÁ”ôôôQLœüœœè‘¥ÍÁ±…äé¹½¹”ôˆøñ±…‰•°ùA•É™½Éµ…¹ÌƒñÉ•Ñ¤€ ”¤ğ½±…‰•°øñ¥¹ÁÕĞ¹…µ”ô‰™Õ¹‘A•É™½Éµ…¹••”ˆÑåÁ”ô‰¹Õµ‰•ÈˆÍÑ•Àô‰…¹äˆµ¥¸ôˆÀˆÙ…±Õ”ôˆ‘í„¹™Õ¹‘A•É™½Éµ…¹••”€üü€œôˆÁ±…•¡½±‘•Èô‰Y…ÉÍ„-@Ñ…¸ˆøğ½‘¥Øø(€€€€€€€€ñ‘¥Ø±…ÍÌô‰™¥•±™Õ±°ˆøñ‘¥Ø±…ÍÌô‰™¥•±µ¡¥¹Ğˆù½¸çÙ¹•Ñ¥´ƒñÉ•Ñ¤™½¹Õ¸‰¥É¥´™¥å…ÓÅ¹„é…Ñ•¸å…¹ÏÅÈì¥¹…¹Í…°¡¤‰Ô‰•‘•±¤‰¥±¤…µ‡³ÄŸÙÍÑ•É¥ÈÙ”•Ñ¥É¥‘•¸¥­¥¹¤­•è“ó}µ•è¸ğ½‘¥Øøğ½‘¥Øø(€€€€€€ğ½‘¥Øøñ‘¥Ø±…ÍÌô‰‰ÕÑÑ½¸µÉ½Üˆø‘í•á¥ÍÑ¥¹œı€ñ‰ÕÑÑ½¸ÑåÁ”ô‰‰ÕÑÑ½¸ˆ±…ÍÌô‰‘…¹•Èµ‰Ñ¸ˆ¥ô‰‘•±•Ñ•ÍÍ•ĞˆùM¥°ğ½‰ÕÑÑ½¸ù€é€ñ‰ÕÑÑ½¸ÑåÁ”ô‰‰ÕÑÑ½¸ˆ±…ÍÌô‰Í•½¹‘…Éäµ‰Ñ¸ˆ¥ô‰…ÍÍ•Ñ…¹•±	ÕÑÑ½¸ˆ‘…Ñ„µµ½‘…°µ±½Í”ùY…é—œğ½‰ÕÑÑ½¸ùôñ‰ÕÑÑ½¸±…ÍÌô‰ÁÉ¥µ…Éäµ‰Ñ¸ˆ¥ô‰…ÍÍ•ÑM…Ù•	ÕÑÑ½¸ˆÑåÁ”ô‰ÍÕ‰µ¥Ğˆù-…å‘•Ğğ½‰ÕÑÑ½¸øğ½‘¥Øøğ½™½É´ù€¤ì((€€€½¹ÍĞ™½É´€ô€ œ…ÍÍ•Ñ½É´œ¤ì(€€€½¹ÍĞÑåÁ•M•±•Ğ€ô™½É´¹•±•µ•¹ÑÌ¹ÑåÁ”ì(€€€½¹ÍĞÍåµ‰½±%¹ÁÕĞ€ô™½É´¹•±•µ•¹ÑÌ¹Íåµ‰½°ì(€€€½¹ÍĞÍ½ÕÉ•%¹ÁÕĞ€ô™½É´¹•±•µ•¹ÑÌ¹Í½ÕÉ•Måµ‰½°ì(€€€½¹ÍĞ¹…µ•%¹ÁÕĞ€ô™½É´¹•±•µ•¹ÑÌ¹¹…µ”ì(€€€½¹ÍĞÁÉ¥•%¹ÁÕĞ€ô™½É´¹•±•µ•¹ÑÌ¹ÁÉ¥”ì(€€€½¹ÍĞÕÉÉ•¹å%¹ÁÕĞ€ô™½É´¹•±•µ•¹ÑÌ¹ÕÉÉ•¹äì(€€€½¹ÍĞÍÑ…ÑÕÍ9½‘”€ô€ œ…ÍÍ•Ñ1½½­ÕÁMÑ…ÑÕÌœ¤ì(€€€½¹ÍĞÉ•ÍÕ±ÑÍ9½‘”€ô€ œ…ÍÍ•ÑM•…É¡I•ÍÕ±ÑÌœ¤ì(€€€½¹ÍĞ±½½­ÕÁ	ÕÑÑ½¸€ô€ œ…ÍÍ•Ñ1½½­ÕÁ	Ñ¸œ¤ì(€€€½¹ÍĞÍ…Ù•	ÕÑÑ½¸€ô€ œ…ÍÍ•ÑM…Ù•	ÕÑÑ½¸œ¤ì(€€€±•Ğ±½½­ÕÁQ¥µ•È€ô¹Õ±°ì(€€€±•Ğ±½½­ÕÁ•¹•É…Ñ¥½¸€ô€Àì(€€€±•ĞÍ•±•Ñ•‘5…É­•Ñ…Ñ„€ô•á¥ÍÑ¥¹œ€üì(€€€€€Íåµ‰½°é„¹Íåµ‰½°°Í½ÕÉ•Måµ‰½°é„¹Í½ÕÉ•Måµ‰½°°¹…µ”é„¹¹…µ”°ÁÉ¥”é„¹ÁÉ¥”°(€€€€€ÁÉ•Ù±½Í”é„¹ÁÉ•Ù±½Í”°¡…¹•AĞé„¹¡…¹•AĞ°ÕÉÉ•¹äé„¹ÕÉÉ•¹ä(€€€ô€è¹Õ±°ì((€€€½¹ÍĞÍ•ÑMÑ…ÑÕÌ€ô€¡µ•ÍÍ…”°Ñ½¹”€ô€œœ¤€ôøì(€€€€€ÍÑ…ÑÕÍ9½‘”¹Ñ•áÑ½¹Ñ•¹Ğ€ôµ•ÍÍ…”ì(€€€€€ÍÑ…ÑÕÍ9½‘”¹±…ÍÍ9…µ”€ô±½½­ÕÀµÍÑ…ÑÕÌ€‘íÑ½¹•õ€¹ÑÉ¥´ ¤ì(€€€ôì(€€€½¹ÍĞ±•…ÉI•ÍÕ±ÑÌ€ô€ ¤€ôøì(€€€€€É•ÍÕ±ÑÍ9½‘”¹¡¥‘‘•¸€ôÑÉÕ”ì(€€€€€É•ÍÕ±ÑÍ9½‘”¹¥¹¹•É!Q50€ô€œœì(€€€ôì(€€€½¹ÍĞÍ¡½İI•ÍÕ±ÑÌ€ôÉ•ÍÕ±ÑÌ€ôøì(€€€€€É•ÍÕ±ÑÍ9½‘”¹¥¹¹•É!Q50€ôÉ•ÍÕ±ÑÌ¹µ…À ¡É•ÍÕ±Ğ±¥¹‘•à¤ôù€(€€€€€€€€ñ‰ÕÑÑ½¸ÑåÁ”ô‰‰ÕÑÑ½¸ˆ±…ÍÌô‰…ÍÍ•ĞµÍ•…É µÉ•ÍÕ±Ğˆ‘…Ñ„µÉ•ÍÕ±Ğµ¥¹‘•àôˆ‘í¥¹‘•áôˆø(€€€€€€€€€€ñÍÁ…¸±…ÍÌô‰…ÍÍ•ĞµÉ•ÍÕ±ĞµÍåµ‰½°ˆø‘í•ÍŒ¡É•ÍÕ±Ğ¹Íåµ‰½°¥ôğ½ÍÁ…¸ø(€€€€€€€€€€ñÍÁ…¸±…ÍÌô‰…ÍÍ•ĞµÉ•ÍÕ±Ğµµ…¥¸ˆøñÍÑÉ½¹œø‘í•ÍŒ¡É•ÍÕ±Ğ¹¹…µ•ññÉ•ÍÕ±Ğ¹Íåµ‰½°¥ôğ½ÍÑÉ½¹œøñÍµ…±°ø‘í•ÍŒ¡É•ÍÕ±Ğ¹•á¡…¹•ññQeA}5QmÉ•ÍÕ±Ğ¹ÑåÁ•tü¹±…‰•±ñğ=Ñ½µ…Ñ¥¬Ù•É¤œ¥ôğ½Íµ…±°øğ½ÍÁ…¸ø(€€€€€€€€€€ñÍÁ…¸±…ÍÌô‰…ÍÍ•ĞµÉ•ÍÕ±ĞµÁÉ¥”ˆø‘í9Õµ‰•È¡É•ÍÕ±Ğ¹ÁÉ¥”¤øÀıµ½¹•ä¡É•ÍÕ±Ğ¹ÁÉ¥”±É•ÍÕ±Ğ¹ÕÉÉ•¹åññÕÉÉ•¹å%¹ÁÕĞ¹Ù…±Õ”±™…±Í”±5…Ñ ¹…‰Ì¡9Õµ‰•È¡É•ÍÕ±Ğ¹ÁÉ¥”¤¤ğÄüĞèÈ¤èM—œôğ½ÍÁ…¸ø(€€€€€€€€ğ½‰ÕÑÑ½¸ù€¤¹©½¥¸ œœ¤ì(€€€€€É•ÍÕ±ÑÍ9½‘”¹¡¥‘‘•¸€ô€…É•ÍÕ±ÑÌ¹±•¹Ñ ì(€€€€€€ œ¹…ÍÍ•ĞµÍ•…É µÉ•ÍÕ±Ğœ°É•ÍÕ±ÑÍ9½‘”¤¹™½É… ¡‰ÕÑÑ½¸ôù‰ÕÑÑ½¸¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ±¥¬œ° ¤ôùì(€€€€€€€½¹ÍĞÉ•ÍÕ±ĞõÉ•ÍÕ±ÑÍm9Õµ‰•È¡‰ÕÑÑ½¸¹‘…Ñ…Í•Ğ¹É•ÍÕ±Ñ%¹‘•à¥tì(€€€€€€€¥˜¡É•ÍÕ±Ğ¥…ÁÁ±å1½½­ÕÁI•ÍÕ±Ğ¡É•ÍÕ±Ğ¤ì(€€€€€ô¤¤ì(€€€ôì((€€€…Íå¹Œ™Õ¹Ñ¥½¸…ÁÁ±å1½½­ÕÁI•ÍÕ±Ğ¡É•ÍÕ±Ğ¤ì(€€€€€±•…ÉI•ÍÕ±ÑÌ ¤ì(€€€€€Í•±•Ñ•‘5…É­•Ñ…Ñ„€ôì¸¸¹É•ÍÕ±Ñôì(€€€€€Íåµ‰½±%¹ÁÕĞ¹Ù…±Õ”€ôMÑÉ¥¹œ¡É•ÍÕ±Ğ¹Íåµ‰½°ñğÍåµ‰½±%¹ÁÕĞ¹Ù…±Õ”¤¹Ñ½UÁÁ•É…Í” ¤ì(€€€€€Í½ÕÉ•%¹ÁÕĞ¹Ù…±Õ”€ôÉ•ÍÕ±Ğ¹Í½ÕÉ•Måµ‰½°ñğ¥¹™•ÉM½ÕÉ•Måµ‰½°¡Íåµ‰½±%¹ÁÕĞ¹Ù…±Õ”±ÑåÁ•M•±•Ğ¹Ù…±Õ”¤ì(€€€€€¥˜€¡É•ÍÕ±Ğ¹¹…µ”¤¹…µ•%¹ÁÕĞ¹Ù…±Õ”€ôÉ•ÍÕ±Ğ¹¹…µ”ì(€€€€€¥˜€¡É•ÍÕ±Ğ¹ÕÉÉ•¹ä¤ÕÉÉ•¹å%¹ÁÕĞ¹Ù…±Õ”€ôÉ•ÍÕ±Ğ¹ÕÉÉ•¹äì(€€€€€¥˜€¡9Õµ‰•È¡É•ÍÕ±Ğ¹ÁÉ¥”¤øÀ¤ÁÉ¥•%¹ÁÕĞ¹Ù…±Õ”€ôMÑÉ¥¹œ¡9Õµ‰•È¡É•ÍÕ±Ğ¹ÁÉ¥”¤¤ì(€€€€€Í•ÑMÑ…ÑÕÌ¡€‘íÉ•ÍÕ±Ğ¹Íåµ‰½±ô‰Õ±Õ¹‘Ôƒ
+Ü…Ù”™¥å…Ğ½Ñ½µ…Ñ¥¬‘½±‘ÕÉÕ±‘Ô¹€°€ÍÕ•ÍÌœ¤ì((€€€€€ÑÉäì(€€€€€€€Í•ÑMÑ…ÑÕÌ¡€‘íÉ•ÍÕ±Ğ¹Íåµ‰½±ô‘¿}ÉÕ±…»Åå½Èƒ
+Ü™¥å…ĞÙ”Ñ•µ•ÑÓğ—µ§}¤…³Å»Åå½ËŠ™€°€±½…‘¥¹œœ¤ì(€€€€€€€½¹ÍĞÅÕ½Ñ”€ô…İ…¥Ğ±½½­ÕÁEÕ½Ñ•AÉ•Ù¥•Ü¡ì(€€€€€€€€€Íåµ‰½°éÉ•ÍÕ±Ğ¹Íåµ‰½°°(€€€€€€€€€Í½ÕÉ•Måµ‰½°éÍ½ÕÉ•%¹ÁÕĞ¹Ù…±Õ”°(€€€€€€€€€ÑåÁ”éÑåÁ•M•±•Ğ¹Ù…±Õ”°(€€€€€€€€€ÕÉÉ•¹äéÕÉÉ•¹å%¹ÁÕĞ¹Ù…±Õ”(€€€€€€€ô¤ì(€€€€€€€Í•±•Ñ•‘5…É­•Ñ…Ñ„€ôì¸¸¹Í•±•Ñ•‘5…É­•Ñ…Ñ„°¸¸¹ÅÕ½Ñ•ôì(€€€€€€€¥˜€¡ÅÕ½Ñ”¹¹…µ”€˜˜€ …¹…µ•%¹ÁÕĞ¹Ù…±Õ”ñğ¹…µ•%¹ÁÕĞ¹Ù…±Õ”ôôõÍåµ‰½±%¹ÁÕĞ¹Ù…±Õ”¤¤¹…µ•%¹ÁÕĞ¹Ù…±Õ”õÅÕ½Ñ”¹¹…µ”ì(€€€€€€€¥˜€¡ÅÕ½Ñ”¹ÕÉÉ•¹ä¤ÕÉÉ•¹å%¹ÁÕĞ¹Ù…±Õ”õÅÕ½Ñ”¹ÕÉÉ•¹äì(€€€€€€€¥˜€¡9Õµ‰•È¡ÅÕ½Ñ”¹ÁÉ¥”¤øÀ¤ÁÉ¥•%¹ÁÕĞ¹Ù…±Õ”õMÑÉ¥¹œ¡9Õµ‰•È¡ÅÕ½Ñ”¹ÁÉ¥”¤¤ì(€€€€€€€½¹ÍĞÕÑ½™˜õ…‘‘…åÌ¡¹•Ü…Ñ” ¤°´ÌØÔ¤ì(€€€€€€€½¹ÍĞÑÑ´ô¡ÉÉ…ä¹¥ÍÉÉ…ä¡ÅÕ½Ñ”¹‘¥Ù¥‘•¹‘Ì¤ıÅÕ½Ñ”¹‘¥Ù¥‘•¹‘Ìémt¤¹™¥±Ñ•È¡ôùÁ…ÉÍ•…Ñ”¡¹‘…Ñ”¤øõÕÑ½™˜€˜˜Á…ÉÍ•…Ñ”¡¹‘…Ñ”¤ğõ¹•Ü…Ñ” ¤¤¹É•‘Õ” ¡ÍÕ´±¤ôùÍÕ´­9Õµ‰•È¡¹…µ½Õ¹ÑñğÀ¤°À¤ì(€€€€€€€¥˜€¡ÑÑ´øÀ€˜˜™½É´¹•±•µ•¹ÑÌ¹…¹¹Õ…±¥Ù¥‘•¹‘A•ÉM¡…É”¤™½É´¹•±•µ•¹ÑÌ¹…¹¹Õ…±¥Ù¥‘•¹‘A•ÉM¡…É”¹Ù…±Õ”õMÑÉ¥¹œ¡9Õµ‰•È¡ÑÑ´¹Ñ½¥á• Ø¤¤¤ì(€€€€€€€¥˜€¡ÑåÁ•M•±•Ğ¹Ù…±Õ”ôôô	%MPœ€˜˜™½É´¹•±•µ•¹ÑÌ¹…ÕÑ½¥Ù¥‘•¹‘Q…àü¹Ù…±Õ”„ôôœÀœ¤™½É´¹•±•µ•¹ÑÌ¹‘¥Ù¥‘•¹‘Q…à¹Ù…±Õ”ôœÄÔœì(€€€€€€€¥˜€¡ÑåÁ•M•±•Ğ¹Ù…±Õ”ôôôQLœ¤ì(€€€€€€€€€½¹ÍĞ™••Ìõ…İ…¥Ğ™Õ¹‘••Í½É½‘”¡É•ÍÕ±Ğ¹Íåµ‰½°°ÅÕ½Ñ”¹¹…µ•ññÉ•ÍÕ±Ğ¹¹…µ•ñğœœ¤ì(€€€€€€€€€¥˜€¡™••Ì¤ì(€€€€€€€€€€€¥˜€¡™••Ì¹µ…¹…•µ•¹Ñ••¹¹Õ…°„õ¹Õ±°¤™½É´¹•±•µ•¹ÑÌ¹™Õ¹‘5…¹…•µ•¹Ñ••¹¹Õ…°¹Ù…±Õ”õ™••Ì¹µ…¹…•µ•¹Ñ••¹¹Õ…°ì(€€€€€€€€€€€¥˜€¡™••Ì¹µ…¹…•µ•¹Ñ••…¥±ä„õ¹Õ±°€˜˜™½É´¹•±•µ•¹ÑÌ¹™Õ¹‘5…¹…•µ•¹Ñ••…¥±ä¤™½É´¹•±•µ•¹ÑÌ¹™Õ¹‘5…¹…•µ•¹Ñ••…¥±ä¹Ù…±Õ”õ™••Ì¹µ…¹…•µ•¹Ñ••…¥±äì(€€€€€€€€€€€¥˜€¡™••Ì¹•áÁ•¹Í•I…Ñ¥¼„õ¹Õ±°¤™½É´¹•±•µ•¹ÑÌ¹™Õ¹‘áÁ•¹Í•I…Ñ¥¼¹Ù…±Õ”õ™••Ì¹•áÁ•¹Í•I…Ñ¥¼ì(€€€€€€€€€€€¥˜€¡™••Ì¹•¹ÑÉå•”„õ¹Õ±°¤™½É´¹•±•µ•¹ÑÌ¹™Õ¹‘¹ÑÉå•”¹Ù…±Õ”õ™••Ì¹•¹ÑÉå•”ì(€€€€€€€€€€€¥˜€¡™••Ì¹•á¥Ñ•”„õ¹Õ±°¤™½É´¹•±•µ•¹ÑÌ¹™Õ¹‘á¥Ñ•”¹Ù…±Õ”õ™••Ì¹•á¥Ñ•”ì(€€€€€€€€€€€¥˜€¡™••Ì¹Á•É™½Éµ…¹••”„õ¹Õ±°¤™½É´¹•±•µ•¹ÑÌ¹™Õ¹‘A•É™½Éµ…¹••”¹Ù…±Õ”õ™••Ì¹Á•É™½Éµ…¹••”ì(€€€€€€€€€€€Í•±•Ñ•‘5…É­•Ñ…Ñ„¹™Õ¹‘••Ìõ™••Ìì(€€€€€€€€€ô(€€€€€€€ô(€€€€€€€Í•ÑMÑ…ÑÕÌ¡€‘íÉ•ÍÕ±Ğ¹Íåµ‰½±ô‘¿}ÉÕ±…¹“Äƒ
+Ü™¥å…Ğ‘íÑÑ´øÀüœÙ”Í½¸€ÄÈ…å³Å¬Ñ•µ•ÑÓğœèœô‘íÑåÁ•M•±•Ğ¹Ù…±Õ”ôôôQLœüœÙ”™½¸¥‘•È‰¥±¥±•É¤œèœô½Ñ½µ…Ñ¥¬‘½±‘ÕÉÕ±‘Ô¹€°€ÍÕ•ÍÌœ¤ì(€€€€€ô…Ñ €¡•ÉÉ½È¤ì(€€€€€€€¥˜€¡9Õµ‰•È¡É•ÍÕ±Ğ¹ÁÉ¥”¤øÀ¤Í•ÑMÑ…ÑÕÌ¡€‘íÉ•ÍÕ±Ğ¹Íåµ‰½±ô‰Õ±Õ¹‘Ôƒ
+Ü™¥å…Ğ‘½±‘ÕÉÕ±‘ÔìÑ•µ•ÑÓğ—µ§}¤ƒ}Ô…¸…³Å¹…µ…“Ä¹€°€İ…É¹¥¹œœ¤ì(€€€€€€€•±Í”Í•ÑMÑ…ÑÕÌ¡€‘íÉ•ÍÕ±Ğ¹Íåµ‰½±ô‰Õ±Õ¹‘Ôì™¥å…Ğƒ}Ô…¸…³Å¹…µ…“Ä¸-…çÅÑÑ…¸Í½¹É„å•¹¥‘•¸‘•¹•¹••¬¹€°€İ…É¹¥¹œœ¤ì(€€€€€ô(€€€ô((€€€…Íå¹Œ™Õ¹Ñ¥½¸ÉÕ¹1½½­ÕÀ¡í™½É”€ô™…±Í•ô€ôíô¤ì(€€€€€½¹ÍĞÑåÁ”€ôÑåÁ•M•±•Ğ¹Ù…±Õ”ì(€€€€€½¹ÍĞÅÕ•Éä€ôMÑÉ¥¹œ¡Íåµ‰½±%¹ÁÕĞ¹Ù…±Õ•ñğœœ¤¹ÑÉ¥´ ¤ì(€€€€€±•…ÉQ¥µ•½ÕĞ¡±½½­ÕÁQ¥µ•È¤ì(€€€€€±•…ÉI•ÍÕ±ÑÌ ¤ì(€€€€€¥˜€ ……ÍÍ•ÑQåÁ•MÕÁÁ½ÉÑÍ1½½­ÕÀ¡ÑåÁ”¤¤ì(€€€€€€€Í•ÑMÑ…ÑÕÌ 	ÔÙ…É³Å¬ÓñËñ¹‘”¥Í¥´Ù”™¥å…Ğµ…¹Õ•°¥É¥±¥È¸œ°€µÕÑ•œ¤ì(€€€€€€€É•ÑÕÉ¸¹Õ±°ì(€€€€€ô(€€€€€¥˜€¡ÅÕ•Éä¹±•¹Ñ €ğ€¡ÑåÁ”ôôôQLœüÌèÈ¤¤ì(€€€€€€€Í•ÑMÑ…ÑÕÌ¡ÑåÁ”ôôôQLœüQL™½¹Õ¹Õ¸­½‘Õ¹Ô•¸…è€Ì­…É…­Ñ•Èå…ëÅ¸¸œèÉ…µ„§¥¸•¸…è€È­…É…­Ñ•Èå…ëÅ¸¸œ°€İ…É¹¥¹œœ¤ì(€€€€€€€É•ÑÕÉ¸¹Õ±°ì(€€€€€ô((€€€€€½¹ÍĞ•¹•É…Ñ¥½¸€ô€¬­±½½­ÕÁ•¹•É…Ñ¥½¸ì(€€€€€±½½­ÕÁ	ÕÑÑ½¸¹‘¥Í…‰±•€ôÑÉÕ”ì(€€€€€±½½­ÕÁ	ÕÑÑ½¸¹±…ÍÍ1¥ÍĞ¹…‘ ±½…‘¥¹œœ¤ì(€€€€€Í•ÑMÑ…ÑÕÌ A¥å…Í„­…å“Å¹‘„…É…»Åå½ËŠ˜œ°€±½…‘¥¹œœ¤ì(€€€€€ÑÉäì(€€€€€€€½¹ÍĞÉ•ÍÕ±ÑÌ€ô…İ…¥ĞÍ•…É¡ÍÍ•Ñ…¹‘¥‘…Ñ•Ì¡ÅÕ•Éä±ÑåÁ”¤ì(€€€€€€€¥˜€¡•¹•É…Ñ¥½¸€„ôô±½½­ÕÁ•¹•É…Ñ¥½¸¤É•ÑÕÉ¸¹Õ±°ì(€€€€€€€¥˜€ …É•ÍÕ±ÑÌ¹±•¹Ñ ¤ì(€€€€€€€€€Í•ÑMÑ…ÑÕÌ }±—}•¸¡¥ÍÍ”½™½¸‰Õ±Õ¹…µ…“Ä¸M•µ‰½³ğÙ•å„™½¸­½‘Õ¹Ô­½¹ÑÉ½°•‘¥¸¸œ°€•ÉÉ½Èœ¤ì(€€€€€€€€€É•ÑÕÉ¸¹Õ±°ì(€€€€€€€ô(€€€€€€€½¹ÍĞ¹½Éµ…±¥é•€ôÅÕ•Éä¹Ñ½UÁÁ•É…Í” ¤¹É•Á±…” ½p¹%L¼°œœ¤¹É•Á±…” ½qÌ¬½œ°œœ¤ì(€€€€€€€½¹ÍĞ•á…Ğ€ôÉ•ÍÕ±ÑÌ¹™¥¹¡É•ÍÕ±Ğ€ôøMÑÉ¥¹œ¡É•ÍÕ±Ğ¹Íåµ‰½±ñğœœ¤¹Ñ½UÁÁ•É…Í” ¤¹É•Á±…” ½p¹%L¼°œœ¤ôôõ¹½Éµ…±¥é•(€€€€€€€€€ñğMÑÉ¥¹œ¡É•ÍÕ±Ğ¹Í½ÕÉ•Måµ‰½±ñğœœ¤¹Ñ½UÁÁ•É…Í” ¤ôôõÅÕ•Éä¹Ñ½UÁÁ•É…Í” ¤¤ì(€€€€€€€¥˜€¡•á…Ğñğ€¡™½É”€˜˜É•ÍÕ±ÑÌ¹±•¹Ñ ôôôÄ¤ñğÉ•ÍÕ±ÑÌ¹±•¹Ñ ôôôÄ¤ì(€€€€€€€€€½¹ÍĞ¡½Í•¸€ô•á…ĞñğÉ•ÍÕ±ÑÍlÁtì(€€€€€€€€€…İ…¥Ğ…ÁÁ±å1½½­ÕÁI•ÍÕ±Ğ¡¡½Í•¸¤ì(€€€€€€€€€É•ÑÕÉ¸¡½Í•¸ì(€€€€€€€ô(€€€€€€€Í¡½İI•ÍÕ±ÑÌ¡É•ÍÕ±ÑÌ¤ì(€€€€€€€Í•ÑMÑ…ÑÕÌ¡€‘íÉ•ÍÕ±ÑÌ¹±•¹Ñ¡ô—}±—}µ”‰Õ±Õ¹‘Ôì‘¿}ÉÔ½±…»ÄÍ—¥¸¹€°€ÍÕ•ÍÌœ¤ì(€€€€€€€É•ÑÕÉ¸¹Õ±°ì(€€€€€ô…Ñ €¡•ÉÉ½È¤ì(€€€€€€€¥˜€¡•¹•É…Ñ¥½¸€ôôô±½½­ÕÁ•¹•É…Ñ¥½¸¤Í•ÑMÑ…ÑÕÌ¡•ÉÉ½È¹µ•ÍÍ…”ñğ€=Ñ½µ…Ñ¥¬…É…µ„å…ÃÅ±…µ…“Ä¸œ°€•ÉÉ½Èœ¤ì(€€€€€€€É•ÑÕÉ¸¹Õ±°ì(€€€€€ô™¥¹…±±äì(€€€€€€€¥˜€¡•¹•É…Ñ¥½¸€ôôô±½½­ÕÁ•¹•É…Ñ¥½¸¤ì(€€€€€€€€€±½½­ÕÁ	ÕÑÑ½¸¹‘¥Í…‰±•€ô™…±Í”ì(€€€€€€€€€±½½­ÕÁ	ÕÑÑ½¸¹±…ÍÍ1¥ÍĞ¹É•µ½Ù” ±½…‘¥¹œœ¤ì(€€€€€€€ô(€€€€€ô(€€€ô((€€€ÑåÁ•M•±•Ğ¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ¡…¹”œ° ¤ôùì(€€€€€½¹ÍĞµ•Ñ„€ôQeA}5QmÑåÁ•M•±•Ğ¹Ù…±Õ•tì(€€€€€¥˜€¡µ•Ñ„¤ÕÉÉ•¹å%¹ÁÕĞ¹Ù…±Õ”€ôµ•Ñ„¹ÕÉÉ•¹äì(€€€€€Í•±•Ñ•‘5…É­•Ñ…Ñ„€ô¹Õ±°ì(€€€€€Í½ÕÉ•%¹ÁÕĞ¹Ù…±Õ”€ô€œœì(€€€€€±•…ÉI•ÍÕ±ÑÌ ¤ì(€€€€€™½É´¹ÅÕ•ÉåM•±•Ñ½É±° œ¹™Õ¹µ™•”µ™¥•±œ¤¹™½É… ¡•°ôù•°¹ÍÑå±”¹‘¥ÍÁ±…äõÑåÁ•M•±•Ğ¹Ù…±Õ”ôôôQLœüœœè¹½¹”œ¤ì(€€€€€¥˜€¡ÑåÁ•M•±•Ğ¹Ù…±Õ”ôôô	%MPœ€˜˜™½É´¹•±•µ•¹ÑÌ¹…ÕÑ½¥Ù¥‘•¹‘Q…àü¹Ù…±Õ”„ôôœÀœ¤™½É´¹•±•µ•¹ÑÌ¹‘¥Ù¥‘•¹‘Q…à¹Ù…±Õ”ôœÄÔœì(€€€€€¥˜€¡…ÍÍ•ÑQåÁ•MÕÁÁ½ÉÑÍ1½½­ÕÀ¡ÑåÁ•M•±•Ğ¹Ù…±Õ”¤¤ì(€€€€€€€Í•ÑMÑ…ÑÕÌ¡ÑåÁ•M•±•Ğ¹Ù…±Õ”ôôôQLœü½¸­½‘Õ¹Ôå…ëÅ¸ì™¥å…ĞQOŠeÑ…¸°¥‘•È‰¥±¥±•É¤·ñµ¯ñ¹Í”-CŠeÑ…¸…³Å»ÅÈ¸œèM•µ‰½³ğå…ëÅ¹„½Ñ½µ…Ñ¥¬…É…µ„‰‡}±…È¸œ¤ì(€€€€€€€¥˜€¡Íåµ‰½±%¹ÁÕĞ¹Ù…±Õ”¹ÑÉ¥´ ¤¹±•¹Ñ €øô€¡ÑåÁ•M•±•Ğ¹Ù…±Õ”ôôôQLœüÌèÈ¤¤ÉÕ¹1½½­ÕÀ¡í™½É”éÑÉÕ•ô¤ì(€€€€€ô•±Í”Í•ÑMÑ…ÑÕÌ 	ÔÙ…É³Å¬ÓñËñ¹‘”¥Í¥´Ù”™¥å…Ğµ…¹Õ•°¥É¥±¥È¸œ°€µÕÑ•œ¤ì(€€€ô¤ì((€€€Íåµ‰½±%¹ÁÕĞ¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ¥¹ÁÕĞœ° ¤ôùì(€€€€€Í•±•Ñ•‘5…É­•Ñ…Ñ„€ô¹Õ±°ì(€€€€€Í½ÕÉ•%¹ÁÕĞ¹Ù…±Õ”€ô€œœì(€€€€€±•…ÉI•ÍÕ±ÑÌ ¤ì(€€€€€½¹ÍĞÕÉÍ½È€ôÍåµ‰½±%¹ÁÕĞ¹Í•±•Ñ¥½¹MÑ…ÉĞì(€€€€€Íåµ‰½±%¹ÁÕĞ¹Ù…±Õ”€ôÍåµ‰½±%¹ÁÕĞ¹Ù…±Õ”¹Ñ½UÁÁ•É…Í” ¤ì(€€€€€ÑÉäìÍåµ‰½±%¹ÁÕĞ¹Í•ÑM•±•Ñ¥½¹I…¹”¡ÕÉÍ½È±ÕÉÍ½È¤ìô…Ñ €¡|¤íô(€€€€€±•…ÉQ¥µ•½ÕĞ¡±½½­ÕÁQ¥µ•È¤ì(€€€€€½¹ÍĞµ¥¸€ôÑåÁ•M•±•Ğ¹Ù…±Õ”ôôôQLœüÌèÈì(€€€€€¥˜€¡Íåµ‰½±%¹ÁÕĞ¹Ù…±Õ”¹ÑÉ¥´ ¤¹±•¹Ñ €ğµ¥¸¤ì(€€€€€€€Í•ÑMÑ…ÑÕÌ¡ÑåÁ•M•±•Ğ¹Ù…±Õ”ôôôQLœüQL™½¸­½‘Õ¹Ôå…ëÅ¸¸œèM•µ‰½³ğå…ëÅ¸ì…É…µ„½Ñ½µ…Ñ¥¬‰‡}±…å……¬¸œ¤ì(€€€€€€€É•ÑÕÉ¸ì(€€€€€ô(€€€€€Í•ÑMÑ…ÑÕÌ e…éµ…çÄ‰¥Ñ¥É¥¹”½Ñ½µ…Ñ¥¬…É…¹……¯Š˜œ°€±½…‘¥¹œœ¤ì(€€€€€±½½­ÕÁQ¥µ•È€ôÍ•ÑQ¥µ•½ÕĞ  ¤ôùÉÕ¹1½½­ÕÀ ¤°ÔÔÀ¤ì(€€€ô¤ì(€€€±½½­ÕÁ	ÕÑÑ½¸¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ±¥¬œ° ¤ôùÉÕ¹1½½­ÕÀ¡í™½É”éÑÉÕ•ô¤¤ì((€€€™½É´¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ÍÕ‰µ¥Ğœ±…Íå¹Œ”ôùì(€€€€€”¹ÁÉ•Ù•¹Ñ•™…Õ±Ğ ¤ì(€€€€€Í…Ù•	ÕÑÑ½¸¹‘¥Í…‰±•€ôÑÉÕ”ì(€€€€€Í…Ù•	ÕÑÑ½¸¹Ñ•áÑ½¹Ñ•¹Ğ€ô€-…å‘•‘¥±¥å½ËŠ˜œì(€€€€€ÑÉäì(€€€€€€€¥˜€¡…ÍÍ•ÑQåÁ•MÕÁÁ½ÉÑÍ1½½­ÕÀ¡ÑåÁ•M•±•Ğ¹Ù…±Õ”¤€˜˜€ …Í½ÕÉ•%¹ÁÕĞ¹Ù…±Õ”ñğ€…¹…µ•%¹ÁÕĞ¹Ù…±Õ”ñğ€„¡9Õµ‰•È¡ÁÉ¥•%¹ÁÕĞ¹Ù…±Õ”¤øÀ¤¤¤ì(€€€€€€€€€…İ…¥ĞÉÕ¹1½½­ÕÀ¡í™½É”éÑÉÕ•ô¤ì(€€€€€€€ô(€€€€€€€½¹ÍĞ™€ô¹•Ü½Éµ…Ñ„¡™½É´¤ì(€€€€€€€½¹ÍĞÑåÁ”€ôMÑÉ¥¹œ¡™¹•Ğ ÑåÁ”œ¤¤ì(€€€€€€€½¹ÍĞÍåµ‰½°€ôMÑÉ¥¹œ¡™¹•Ğ Íåµ‰½°œ¤¤¹ÑÉ¥´ ¤¹Ñ½UÁÁ•É…Í” ¤ì(€€€€€€€¥˜€ …Íåµ‰½°¤Ñ¡É½Ü¹•ÜÉÉ½È M•µ‰½°Ù•å„™½¸­½‘Ôé½ÉÕ¹±Õ‘ÕÈ¸œ¤ì(€€€€€€€½¹ÍĞÕÉÉ•¹ÑAÉ¥”€ô9Õµ‰•È¡™¹•Ğ ÁÉ¥”œ¥ñğÀ¤ì(€€€€€€€½¹ÍĞ¹•áĞ€ôì(€€€€€€€€€¥è•á¥ÍÑ¥¹œü¹¥ñğÕ¥ …ÍÍ•Ğœ¤°(€€€€€€€€€ÑåÁ”°(€€€€€€€€€ÕÉÉ•¹äéMÑÉ¥¹œ¡™¹•Ğ ÕÉÉ•¹äœ¤¤°(€€€€€€€€€Íåµ‰½°°(€€€€€€€€€Í½ÕÉ•Måµ‰½°éMÑÉ¥¹œ¡™¹•Ğ Í½ÕÉ•Måµ‰½°œ¤¤¹ÑÉ¥´ ¤ñğ¥¹™•ÉM½ÕÉ•Måµ‰½°¡Íåµ‰½°±ÑåÁ”¤°(€€€€€€€€€¹…µ”éMÑÉ¥¹œ¡™¹•Ğ ¹…µ”œ¤¤¹ÑÉ¥´ ¤ñğÍåµ‰½°°(€€€€€€€€€ÅÕ…¹Ñ¥Ñäé9Õµ‰•È¡™¹•Ğ ÅÕ…¹Ñ¥Ñäœ¥ñğÀ¤°(€€€€€€€€€…Ù½ÍĞé9Õµ‰•È¡™¹•Ğ …Ù½ÍĞœ¥ñğÀ¤°(€€€€€€€€€ÁÉ¥”éÕÉÉ•¹ÑAÉ¥”°(€€€€€€€€€ÁÉ•Ù±½Í”é9Õµ‰•È¡Í•±•Ñ•‘5…É­•Ñ…Ñ„ü¹ÁÉ•Ù±½Í”ñğ•á¥ÍÑ¥¹œü¹ÁÉ•Ù±½Í”ñğÕÉÉ•¹ÑAÉ¥”¤°(€€€€€€€€€¡…¹•AĞé9Õµ‰•È¡Í•±•Ñ•‘5…É­•Ñ…Ñ„ü¹¡…¹•AĞñğ•á¥ÍÑ¥¹œü¹¡…¹•AĞñğ€À¤°(€€€€€€€€€Ñ…É•Ñ]•¥¡Ğé9Õµ‰•È¡™¹•Ğ Ñ…É•Ñ]•¥¡Ğœ¥ñğÀ¤°(€€€€€€€€€‘¥Ù¥‘•¹‘Q…àé9Õµ‰•È¡™¹•Ğ ‘¥Ù¥‘•¹‘Q…àœ¥ñğÀ¤°(€€€€€€€€€…ÕÑ½¥Ù¥‘•¹‘Q…àéMÑÉ¥¹œ¡™¹•Ğ …ÕÑ½¥Ù¥‘•¹‘Q…àœ¥ñğœÄœ¤ôôôœÄœ°(€€€€€€€€€…¹¹Õ…±¥Ù¥‘•¹‘A•ÉM¡…É”é9Õµ‰•È¡™¹•Ğ …¹¹Õ…±¥Ù¥‘•¹‘A•ÉM¡…É”œ¥ñğÀ¤°(€€€€€€€€€™Õ¹‘5…¹…•µ•¹Ñ••¹¹Õ…°é™¹•Ğ ™Õ¹‘5…¹…•µ•¹Ñ••¹¹Õ…°œ¤ôôôœœı¹Õ±°é9Õµ‰•È¡™¹•Ğ ™Õ¹‘5…¹…•µ•¹Ñ••¹¹Õ…°œ¤¤°(€€€€€€€€€™Õ¹‘5…¹…•µ•¹Ñ••…¥±äé™¹•Ğ ™Õ¹‘5…¹…•µ•¹Ñ••…¥±äœ¤ôôôœœü¡Í•±•Ñ•‘5…É­•Ñ…Ñ„ü¹™Õ¹‘••Ìü¹µ…¹…•µ•¹Ñ••…¥±ä€üü•á¥ÍÑ¥¹œü¹™Õ¹‘5…¹…•µ•¹Ñ••…¥±ä€üü¹Õ±°¤é9Õµ‰•È¡™¹•Ğ ™Õ¹‘5…¹…•µ•¹Ñ••…¥±äœ¤¤°(€€€€€€€€€™Õ¹‘áÁ•¹Í•I…Ñ¥¼é™¹•Ğ ™Õ¹‘áÁ•¹Í•I…Ñ¥¼œ¤ôôôœœı¹Õ±°é9Õµ‰•È¡™¹•Ğ ™Õ¹‘áÁ•¹Í•I…Ñ¥¼œ¤¤°(€€€€€€€€€™Õ¹‘¹ÑÉå•”é™¹•Ğ ™Õ¹‘¹ÑÉå•”œ¤ôôôœœı¹Õ±°é9Õµ‰•È¡™¹•Ğ ™Õ¹‘¹ÑÉå•”œ¤¤°(€€€€€€€€€™Õ¹‘á¥Ñ•”é™¹•Ğ ™Õ¹‘á¥Ñ•”œ¤ôôôœœı¹Õ±°é9Õµ‰•È¡™¹•Ğ ™Õ¹‘á¥Ñ•”œ¤¤°(€€€€€€€€€™Õ¹‘A•É™½Éµ…¹••”é™¹•Ğ ™Õ¹‘A•É™½Éµ…¹••”œ¤ôôôœœı¹Õ±°é9Õµ‰•È¡™¹•Ğ ™Õ¹‘A•É™½Éµ…¹••”œ¤¤°(€€€€€€€€€™Õ¹‘••M½ÕÉ•UÉ°éÍ•±•Ñ•‘5…É­•Ñ…Ñ„ü¹™Õ¹‘••Ìü¹Í½ÕÉ•UÉ°ñğ•á¥ÍÑ¥¹œü¹™Õ¹‘••M½ÕÉ•UÉ°ñğ€œœ°(€€€€€€€€€™Õ¹‘••UÁ‘…Ñ•‘ĞéÍ•±•Ñ•‘5…É­•Ñ…Ñ„ü¹™Õ¹‘••Ìü¹ÕÁ‘…Ñ•‘Ğñğ•á¥ÍÑ¥¹œü¹™Õ¹‘••UÁ‘…Ñ•‘Ğñğ¹Õ±°°(€€€€€€€€€¡¥ÍÑ½Éäé•á¥ÍÑ¥¹œü¹¡¥ÍÑ½Éäñğmt°(€€€€€€€€€¡¥ÍÑ½Éå…Ñ•Ìé•á¥ÍÑ¥¹œü¹¡¥ÍÑ½Éå…Ñ•Ìñğmt°(€€€€€€€€€±…ÍÑUÁ‘…Ñ•éÕÉÉ•¹ÑAÉ¥”øÀ€ü¹•Ü…Ñ” ¤¹Ñ½%M=MÑÉ¥¹œ ¤€è€¡•á¥ÍÑ¥¹œü¹±…ÍÑUÁ‘…Ñ•ñğ¹Õ±°¤°(€€€€€€€€€‘…Ñ…MÑ…ÑÕÌéÕÉÉ•¹ÑAÉ¥”øÀ€ü€…ÕÑ¼œ€è€¡•á¥ÍÑ¥¹œü¹‘…Ñ…MÑ…ÑÕÌñğ€Á•¹‘¥¹œœ¤°(€€€€€€€€€‘…Ñ…M½ÕÉ”éÍ•±•Ñ•‘5…É­•Ñ…Ñ„ü¹Í½ÕÉ”ñğ•á¥ÍÑ¥¹œü¹‘…Ñ…M½ÕÉ”ñğ¹Õ±°(€€€€€€€ôì(€€€€€€€¥˜€¡•á¥ÍÑ¥¹œ¤=‰©•Ğ¹…ÍÍ¥¸¡•á¥ÍÑ¥¹œ±¹•áĞ¤ì•±Í”ì(€€€€€€€€€ÍÑ…Ñ”¹…ÍÍ•ÑÌ¹ÁÕÍ ¡¹•áĞ¤ì(€€€€€€€€€¥˜€¡¹•áĞ¹ÅÕ…¹Ñ¥Ñä€ø€À¤ì½¹ÍĞÁÕÉ¡…Í•…Ñ”õMÑÉ¥¹œ¡™¹•Ğ ÁÕÉ¡…Í•…Ñ”œ¥ñğœœ¤ì¥˜ …ÁÕÉ¡…Í•…Ñ”¤Ñ¡É½Ü¹•ÜÉÉ½È ³Ç|Ñ…É¥¡¤é½ÉÕ¹±Õ‘ÕÈ¸œ¤ìÍÑ…Ñ”¹ÑÉ…¹Í…Ñ¥½¹Ì¹ÁÕÍ ¡í¥éÕ¥ Ñàœ¤±…ÍÍ•Ñ%é¹•áĞ¹¥±ÑåÁ”è‰Õäœ±‘…Ñ”éÁÕÉ¡…Í•…Ñ”±ÅÕ…¹Ñ¥Ñäé¹•áĞ¹ÅÕ…¹Ñ¥Ñä±ÁÉ¥”é¹•áĞ¹…Ù½ÍĞ±™•”èÀ±ÕÉÉ•¹äé¹•áĞ¹ÕÉÉ•¹åô¤ìÍå¹ÍÍ•Ñ1•‘•È¡¹•áĞ¤ìô(€€€€€€€ô(€€€€€€€ÍÑ…Ñ”¹‘•µ¼õ™…±Í”ì(€€€€€€€Í…Ù•MÑ…Ñ” ¤ì(€€€€€€€±½Í•5½‘…° ¤ì(€€€€€€€É•¹‘•ÉA…” ¤ì(€€€€€€€Í¡½İQ½…ÍĞ¡•á¥ÍÑ¥¹œüY…É³Å¬Ÿñ¹•±±•¹‘¤œèY…É³Å¬•­±•¹‘¤œ¤ì(€€€€€€€¥˜€¡ÍÑ…Ñ”¹Í•ÑÑ¥¹Ì¹…ÕÑ½I•™É•Í ñğ€„¡¹•áĞ¹ÁÉ¥”øÀ¤¤É•™É•Í¡±°¡íÍ¥±•¹ĞéÑÉÕ”±½¹±åÍÍ•Ñ%é¹•áĞ¹¥‘ô¤ì(€€€€€ô…Ñ €¡•ÉÉ½È¤ì(€€€€€€€Í•ÑMÑ…ÑÕÌ¡•ÉÉ½È¹µ•ÍÍ…”ñğ€Y…É³Å¬­…å‘•‘¥±•µ•‘¤¸œ°€•ÉÉ½Èœ¤ì(€€€€€ô™¥¹…±±äì(€€€€€€€Í…Ù•	ÕÑÑ½¸¹‘¥Í…‰±•€ô™…±Í”ì(€€€€€€€Í…Ù•	ÕÑÑ½¸¹Ñ•áÑ½¹Ñ•¹Ğ€ô€-…å‘•Ğœì(€€€€€ô(€€€ô¤ì(€€€€ œ‘•±•Ñ•ÍÍ•Ğœ¤ü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ±¥¬œ° ¤ôù½¹™¥Éµ•±•Ñ•ÍÍ•Ğ¡•á¥ÍÑ¥¹œ¹¥¤¤ì(€ô((€™Õ¹Ñ¥½¸½¹™¥Éµ•±•Ñ•ÍÍ•Ğ¡…ÍÍ•Ñ%¤ì(€€€½¹ÍĞ„€ô…ÍÍ•Ñ	å%¡…ÍÍ•Ñ%¤ì¥˜€ …„¤É•ÑÕÉ¸ì(€€€Í¡½İ5½‘…°¡€‘íµ½‘…±!•…‘•È Y…É³ÇÄÍ¥°œ¥ôñ‘¥Ø±…ÍÌô‰•µÁÑäµÑ•áĞˆÍÑå±”ô‰™½¹ĞµÍ¥é”èÄÅÁàíµ…É¥¸èÀˆø‘í•ÍŒ¡„¹Íåµ‰½°¥ôÙ”‰ÔÙ…É³Ç}„‰‡}³ÄÓñ´§}±•µ±•È½Ñ•µ•ÑÓñ±•ÈÍ¥±¥¹••¬¸	Ô§}±•´•É¤…³Å¹…µ…è¸ğ½‘¥Øøñ‘¥Ø±…ÍÌô‰‰ÕÑÑ½¸µÉ½Üˆøñ‰ÕÑÑ½¸±…ÍÌô‰Í•½¹‘…Éäµ‰Ñ¸ˆ‘…Ñ„µµ½‘…°µ±½Í”ùY…é—œğ½‰ÕÑÑ½¸øñ‰ÕÑÑ½¸±…ÍÌô‰‘…¹•Èµ‰Ñ¸ˆ¥ô‰½¹™¥Éµ•±•Ñ”ˆù-…³ÅÄ½±…É…¬Í¥°ğ½‰ÕÑÑ½¸øğ½‘¥Øù€¤ì(€€€€ œ½¹™¥Éµ•±•Ñ”œ¤¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ±¥¬œ° ¤ôùì(€€€€€ÍÑ…Ñ”¹…ÍÍ•ÑÌõÍÑ…Ñ”¹…ÍÍ•ÑÌ¹™¥±Ñ•È¡àôùà¹¥„ôõ…ÍÍ•Ñ%¤ì(€€€€€ÍÑ…Ñ”¹ÑÉ…¹Í…Ñ¥½¹ÌõÍÑ…Ñ”¹ÑÉ…¹Í…Ñ¥½¹Ì¹™¥±Ñ•È¡àôùà¹…ÍÍ•Ñ%„ôõ…ÍÍ•Ñ%¤ì(€€€€€ÍÑ…Ñ”¹‘¥Ù¥‘•¹‘Ù•¹ÑÌõÍÑ…Ñ”¹‘¥Ù¥‘•¹‘Ù•¹ÑÌ¹™¥±Ñ•È¡àôùà¹…ÍÍ•Ñ%„ôõ…ÍÍ•Ñ%¤ì(€€€€€Í…Ù•MÑ…Ñ” ¤ì±½Í•5½‘…° ¤ìÉ•¹‘•ÉA…” ¤ìÍ¡½İQ½…ÍĞ Y…É³Å¬Í¥±¥¹‘¤œ¤ì(€€€ô¤ì(€ô((€™Õ¹Ñ¥½¸Í¡½İQÉ…¹Í…Ñ¥½¹½É´¡…ÍÍ•Ñ%€ô¹Õ±°°ÁÕÉ¡…Í•-¥¹‘•™…Õ±Ğ€ô€¹½Éµ…°œ¤ì(€€€¥˜€ …ÍÑ…Ñ”¹…ÍÍ•ÑÌ¹±•¹Ñ ¤É•ÑÕÉ¸Í¡½İÍÍ•Ñ½É´ ¤ì(€€€Í¡½İ5½‘…°¡€‘íµ½‘…±!•…‘•È e•¹¤Á½ÉÑ›Ùä§}±•µ¤œ¥ôñ™½É´¥ô‰Ñá½É´ˆø(€€€€€€ñ‘¥Ø±…ÍÌô‰™¥•±ˆøñ±…‰•°ûÃ}±•´ÓñËğğ½±…‰•°øñ‘¥Ø±…ÍÌô‰Í•µ•¹Ñ•ˆ¥ô‰ÑáM•µ•¹ÑÌˆøñ‰ÕÑÑ½¸ÑåÁ”ô‰‰ÕÑÑ½¸ˆ±…ÍÌô‰…Ñ¥Ù”ˆ‘…Ñ„µÑàô‰‰Õäˆù³Ç|ğ½‰ÕÑÑ½¸øñ‰ÕÑÑ½¸ÑåÁ”ô‰‰ÕÑÑ½¸ˆ‘…Ñ„µÑàô‰Í•±°ˆùM…ÓÇ|ğ½‰ÕÑÑ½¸øñ‰ÕÑÑ½¸ÑåÁ”ô‰‰ÕÑÑ½¸ˆ‘…Ñ„µÑàô‰‘¥Ù¥‘•¹ˆùQ•µ•ÑÓğğ½‰ÕÑÑ½¸øğ½‘¥Øøñ¥¹ÁÕĞÑåÁ”ô‰¡¥‘‘•¸ˆ¹…µ”ô‰ÑåÁ”ˆÙ…±Õ”ô‰‰Õäˆøğ½‘¥Øø(€€€€€€ñ‘¥Ø±…ÍÌô‰™½É´µÉ¥ˆøñ‘¥Ø±…ÍÌô‰™¥•±™Õ±°ˆøñ±…‰•°ùY…É³Å¬ğ½±…‰•°øñÍ•±•Ğ¹…µ”ô‰…ÍÍ•Ñ%ˆø‘íÍÑ…Ñ”¹…ÍÍ•ÑÌ¹µ…À¡„ôù€ñ½ÁÑ¥½¸Ù…±Õ”ôˆ‘í„¹¥‘ôˆ€‘í„¹¥ôôõ…ÍÍ•Ñ%üÍ•±•Ñ•œèœôø‘í•ÍŒ¡„¹Íåµ‰½°¥ôƒ
+Ü€‘í•ÍŒ¡„¹¹…µ”¥ôğ½½ÁÑ¥½¸ù€¤¹©½¥¸ œœ¥ôğ½Í•±•Ğøğ½‘¥Øøñ‘¥Ø±…ÍÌô‰™¥•±ˆøñ±…‰•°ùQ…É¥ ğ½±…‰•°øñ¥¹ÁÕĞÑåÁ”ô‰‘…Ñ”ˆ¹…µ”ô‰‘…Ñ”ˆÙ…±Õ”ôˆ‘í¥Í½…Ñ” ¥ôˆÉ•ÅÕ¥É•øğ½‘¥Øøñ‘¥Ø±…ÍÌô‰™¥•±ˆøñ±…‰•°ù‘•Ğ€¼Á…äğ½±…‰•°øñ¥¹ÁÕĞÑåÁ”ô‰¹Õµ‰•ÈˆÍÑ•Àô‰…¹äˆµ¥¸ôˆÀˆ¹…µ”ô‰ÅÕ…¹Ñ¥ÑäˆÉ•ÅÕ¥É•øğ½‘¥Øøñ‘¥Ø±…ÍÌô‰™¥•±ˆøñ±…‰•°ù¥å…Ğ€¼Á…äğ½±…‰•°øñ¥¹ÁÕĞÑåÁ”ô‰¹Õµ‰•ÈˆÍÑ•Àô‰…¹äˆµ¥¸ôˆÀˆ¹…µ”ô‰ÁÉ¥”ˆÉ•ÅÕ¥É•øğ½‘¥Øøñ‘¥Ø±…ÍÌô‰™¥•±ˆøñ±…‰•°ù-½µ¥Íå½¸ğ½±…‰•°øñ¥¹ÁÕĞÑåÁ”ô‰¹Õµ‰•ÈˆÍÑ•Àô‰…¹äˆµ¥¸ôˆÀˆ¹…µ”ô‰™•”ˆÙ…±Õ”ôˆÀˆøğ½‘¥Øøñ‘¥Ø±…ÍÌô‰™¥•±ˆøñ±…‰•°ù³Ç|­…å¹‡Äğ½±…‰•°øñÍ•±•Ğ¹…µ”ô‰™Õ¹‘¥¹M½ÕÉ”ˆøñ½ÁÑ¥½¸Ù…±Õ”ô‰¹•İ}µ½¹•äˆùe•¹¤Á…É„€¼¹½Éµ…°‰…­¥å”ğ½½ÁÑ¥½¸øñ½ÁÑ¥½¸Ù…±Õ”ô‰‘¥Ù¥‘•¹ˆùQ•µ•ÑÓğQ0‰…­¥å•Í¤ğ½½ÁÑ¥½¸øğ½Í•±•Ğøñ‘¥Ø±…ÍÌô‰™¥•±µ¡¥¹ĞˆùQ•µ•ÑÓğ‰…­¥å•Í¤è€‘íµ½¹•ä¡‘¥Ù¥‘•¹‘…Í¡	…±…¹” ¤°QIdœ¥ôğ½‘¥Øøğ½‘¥Øøñ‘¥Ø±…ÍÌô‰™¥•±™Õ±°ˆøñ±…‰•°ù³Ç|ÓñËğğ½±…‰•°øñÍ•±•Ğ¹…µ”ô‰ÁÕÉ¡…Í•-¥¹ˆøñ½ÁÑ¥½¸Ù…±Õ”ô‰¹½Éµ…°ˆ€‘íÁÕÉ¡…Í•-¥¹‘•™…Õ±Ğôôô¹½Éµ…°œüÍ•±•Ñ•œèœôù9½Éµ…°Á¥å…Í„…³Å·Äğ½½ÁÑ¥½¸øñ½ÁÑ¥½¸Ù…±Õ”ô‰¥Á¼ˆ€‘íÁÕÉ¡…Í•-¥¹‘•™…Õ±Ğôôô¥Á¼œüÍ•±•Ñ•œèœôù!…±­„…Éé‘…¸‘‡ÅÓÅ±…¸±½Ğğ½½ÁÑ¥½¸øğ½Í•±•Ğøñ‘¥Ø±…ÍÌô‰™¥•±µ¡¥¹Ğˆù!…±­„…ÉëÄÍ—•ÉÍ•¸‰Ô±½Ñ±…ÈA¥å…Í„ƒŠH!…±­„Éé±…ÈƒŠH±“Å­±…ËÅ´…±…»Å¹‘„…åËÄ¥é±•¹¥È¸ğ½‘¥Øøğ½‘¥Øøğ½‘¥Øø(€€€€€€ñ‘¥Ø±…ÍÌô‰‰ÕÑÑ½¸µÉ½Üˆøñ‰ÕÑÑ½¸ÑåÁ”ô‰‰ÕÑÑ½¸ˆ±…ÍÌô‰Í•½¹‘…Éäµ‰Ñ¸ˆ‘…Ñ„µµ½‘…°µ±½Í”ùY…é—œğ½‰ÕÑÑ½¸øñ‰ÕÑÑ½¸±…ÍÌô‰ÁÉ¥µ…Éäµ‰Ñ¸ˆûÃ}±•µ¤­…å‘•Ğğ½‰ÕÑÑ½¸øğ½‘¥Øøğ½™½É´ù€¤ì(€€€€ œÑáM•µ•¹ÑÌ‰ÕÑÑ½¸œ¤¹™½É… ¡ˆôùˆ¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ±¥¬œ° ¤ôùì œÑáM•µ•¹ÑÌ‰ÕÑÑ½¸œ¤¹™½É… ¡àôùà¹±…ÍÍ1¥ÍĞ¹É•µ½Ù” …Ñ¥Ù”œ¤¤íˆ¹±…ÍÍ1¥ÍĞ¹…‘ …Ñ¥Ù”œ¤ì œÑá½É´œ¤¹•±•µ•¹ÑÌ¹ÑåÁ”¹Ù…±Õ”õˆ¹‘…Ñ…Í•Ğ¹Ñàíô¤¤ì(€€€€ œÑá½É´œ¤¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ÍÕ‰µ¥Ğœ±”ôùì(€€€€€”¹ÁÉ•Ù•¹Ñ•™…Õ±Ğ ¤ì½¹ÍĞ™õ¹•Ü½Éµ…Ñ„¡”¹ÕÉÉ•¹ÑQ…É•Ğ¤ì½¹ÍĞ„õ…ÍÍ•Ñ	å%¡™¹•Ğ …ÍÍ•Ñ%œ¤¤ì¥˜ …„¥É•ÑÕÉ¸ì(€€€€€½¹ÍĞÑåÁ”õ™¹•Ğ ÑåÁ”œ¤°ÅÑäõ9Õµ‰•È¡™¹•Ğ ÅÕ…¹Ñ¥Ñäœ¥ñğÀ¤°ÁÉ¥”õ9Õµ‰•È¡™¹•Ğ ÁÉ¥”œ¥ñğÀ¤°™•”õ9Õµ‰•È¡™¹•Ğ ™•”œ¥ñğÀ¤°Ñá…Ñ”õMÑÉ¥¹œ¡™¹•Ğ ‘…Ñ”œ¥ñğœœ¤ì(€€€€€¥˜ …Ñá…Ñ”¤É•ÑÕÉ¸Í¡½İQ½…ÍĞ ŸÃ}±•´Ñ…É¥¡¤é½ÉÕ¹±Õ‘ÕÈ¸œ¤ì(€€€€€¥˜ „¡ÅÑäøÀ¤ñğ€„¡ÁÉ¥”øôÀ¤¤É•ÑÕÉ¸Í¡½İQ½…ÍĞ ‘•ĞÙ”™¥å…ÓÄ­½¹ÑÉ½°•‘¥¸¸œ¤ì(€€€€€¥˜¡ÑåÁ”ôôô‘¥Ù¥‘•¹œ¤ì½¹ÍĞ•ÙĞõí¥éÕ¥ ‘¥Øœ¤±…ÍÍ•Ñ%é„¹¥±•á…Ñ”éMÑÉ¥¹œ¡™¹•Ğ ‘…Ñ”œ¤¤±Á…å…Ñ”éMÑÉ¥¹œ¡™¹•Ğ ‘…Ñ”œ¤¤±…µ½Õ¹ÑA•ÉM¡…É”éÅÑäıÁÉ¥”½ÅÑäéÁÉ¥”±ÕÉÉ•¹äé„¹ÕÉÉ•¹ä±ÍÑ…ÑÕÌè½¹™¥Éµ•œ±É••¥Ù•éÑÉÕ”±Í½ÕÉ”è5…¹Õ•°§}±•´ôìÍÑ…Ñ”¹‘¥Ù¥‘•¹‘Ù•¹ÑÌ¹ÁÕÍ ¡•ÙĞ¤ìÍÑ…Ñ”¹…Í¡1•‘•È¹ÁÕÍ ¡í¥éÕ¥ …Í œ¤±ÑåÁ”è‘¥Ù¥‘•¹‘}¥¹½µ”œ±•Ù•¹Ñ%é•ÙĞ¹¥±‘…Ñ”é•ÙĞ¹Á…å…Ñ”±…µ½Õ¹ÑQÉäé•Ù•¹Ñ9•Ğ¡•ÙĞ¤±¹½Ñ”é€‘í„¹Íåµ‰½±ô¹•ĞÑ•µ•ÑÓñô¤ìô(€€€€€•±Í”ì(€€€€€€€¥˜¡ÑåÁ”ôôôÍ•±°œ¥í½¹ÍĞ…Ù…¥±…‰±”õÅÕ…¹Ñ¥ÑåÑ…Ñ”¡„¹¥±Ñá…Ñ”¤í¥˜¡ÅÑäù…Ù…¥±…‰±”¬Å”´ä¥É•ÑÕÉ¸Í¡½İQ½…ÍĞ¡	ÔÑ…É¥¡Ñ”•¸™…é±„€‘í¹Õµ‰•ÉµĞ¡…Ù…¥±…‰±”°Ğ¥ô…‘•ĞÍ…Ñ…‰¥±¥ÉÍ¥¹¥è¹€¤íô(€€€€€€€½¹ÍĞ™Õ¹‘¥¹M½ÕÉ”õMÑÉ¥¹œ¡™¹•Ğ ™Õ¹‘¥¹M½ÕÉ”œ¥ñğ¹•İ}µ½¹•äœ¤ì(€€€€€€€½¹ÍĞÁÕÉ¡…Í•-¥¹õÑåÁ”ôôô‰ÕäœıMÑÉ¥¹œ¡™¹•Ğ ÁÕÉ¡…Í•-¥¹œ¥ñğ¹½Éµ…°œ¤éÕ¹‘•™¥¹•ì(€€€€€€€½¹ÍĞÍÁ•¹‘QÉäô¡ÅÑä©ÁÉ¥”­™•”¤©™áI…Ñ”¡„¹ÕÉÉ•¹ä¤ì(€€€€€€€¥˜¡ÑåÁ”ôôô‰Õäœ˜™™Õ¹‘¥¹M½ÕÉ”ôôô‘¥Ù¥‘•¹œ¥ì(€€€€€€€€€¥˜¡‘¥Ù¥‘•¹‘…Í¡	…±…¹” ¤¬Å”´ØñÍÁ•¹‘QÉä¥É•ÑÕÉ¸Í¡½İQ½…ÍĞ¡Q•µ•ÑÓğ‰…­¥å•Í¤å•Ñ•ÉÍ¥èè€‘íµ½¹•ä¡‘¥Ù¥‘•¹‘…Í¡	…±…¹” ¤°QIdœ¥õ€¤ì(€€€€€€€€€ÍÑ…Ñ”¹…Í¡1•‘•È¹ÁÕÍ ¡í¥éÕ¥ …Í œ¤±ÑåÁ”è‘¥Ù¥‘•¹‘}É•¥¹Ù•ÍÑµ•¹Ğœ±‘…Ñ”éÑá…Ñ”±…µ½Õ¹ÑQÉäèµÍÁ•¹‘QÉä±¹½Ñ”é€‘í„¹Íåµ‰½±ôÑ•µ•ÑÓğå•¹¥‘•¸å…ÓÅËÅ·Åô¤ì(€€€€€€€ô(€€€€€€€ÍÑ…Ñ”¹ÑÉ…¹Í…Ñ¥½¹Ì¹ÁÕÍ ¡í¥éÕ¥ Ñàœ¤±…ÍÍ•Ñ%é„¹¥±ÑåÁ”±‘…Ñ”éÑá…Ñ”±ÅÕ…¹Ñ¥ÑäéÅÑä±ÁÉ¥”±™•”±ÕÉÉ•¹äé„¹ÕÉÉ•¹ä±™Õ¹‘¥¹M½ÕÉ”éÑåÁ”ôôô‰Õäœı™Õ¹‘¥¹M½ÕÉ”éÕ¹‘•™¥¹•±ÁÕÉ¡…Í•-¥¹±¥Á½AÉ¥”éÁÕÉ¡…Í•-¥¹ôôô¥Á¼œıÁÉ¥”éÕ¹‘•™¥¹•‘ô¤ì(€€€€€€€Íå¹ÍÍ•Ñ1•‘•È¡„¤ì(€€€€€ô(€€€€€ÍÑ…Ñ”¹‘•µ¼õ™…±Í”íÍ…Ù•MÑ…Ñ” ¤í±½Í•5½‘…° ¤íÉ•¹‘•ÉA…” ¤íÍ¡½İQ½…ÍĞ ŸÃ}±•´­…å‘•‘¥±‘¤œ¤ì(€€€ô¤ì(€ô((€™Õ¹Ñ¥½¸Í¡½İ]…Ñ¡½É´¡İ…Ñ¡%õ¹Õ±°¥ì(€€€½¹ÍĞ•á¥ÍÑ¥¹œô¡ÍÑ…Ñ”¹İ…Ñ¡±¥ÍÑññmt¤¹™¥¹¡ÜôùÜ¹¥ôôõİ…Ñ¡%¥ññ¹Õ±°ì(€€€½¹ÍĞÜõ•á¥ÍÑ¥¹ññíÑåÁ”è	%MPœ±ÕÉÉ•¹äèQIdœ±Íåµ‰½°èœœ±¹…µ”èœœ±ÁÉ¥”èÀ±¡…¹•AĞèÀ±¹½Ñ”èœôì(€€€Í¡½İ5½‘…°¡€‘íµ½‘…±!•…‘•È¡•á¥ÍÑ¥¹œüQ…­¥‰¤“ñé•¹±”œèŸÁé±•µ”±¥ÍÑ•Í¥¹”•­±”œ¥ôñ™½É´¥ô‰İ…Ñ¡½É´ˆøñ‘¥Ø±…ÍÌô‰™½É´µÉ¥ˆøñ‘¥Ø±…ÍÌô‰™¥•±ˆøñ±…‰•°ùSñÈğ½±…‰•°øñÍ•±•Ğ¹…µ”ô‰ÑåÁ”ˆø‘íml	%MPœ°	%MPt±lULœ°	¡¥ÍÍ•Í¤t±lQœ°Qt±lQLœ°½¸t±l=1œ°±ÓÅ¸t±lM%1YHœ°ñ·ó|t±lUMQ=4œ°§}•Èut¹µ…À ¡m¬±±t¤ôù€ñ½ÁÑ¥½¸Ù…±Õ”ôˆ‘í­ôˆ€‘íÜ¹ÑåÁ”ôôõ¬üÍ•±•Ñ•œèœôø‘í±ôğ½½ÁÑ¥½¸ù€¤¹©½¥¸ œœ¥ôğ½Í•±•Ğøğ½‘¥Øøñ‘¥Ø±…ÍÌô‰™¥•±ˆøñ±…‰•°ùM•µ‰½°€¼™½¸­½‘Ôğ½±…‰•°øñ¥¹ÁÕĞ¹…µ”ô‰Íåµ‰½°ˆÙ…±Õ”ôˆ‘í•ÍŒ¡Ü¹Íåµ‰½°¥ôˆÉ•ÅÕ¥É•øğ½‘¥Øøñ‘¥Ø±…ÍÌô‰™¥•±™Õ±°ˆøñ±…‰•°ùğ½±…‰•°øñ¥¹ÁÕĞ¹…µ”ô‰¹…µ”ˆÙ…±Õ”ôˆ‘í•ÍŒ¡Ü¹¹…µ•ñğœœ¥ôˆøğ½‘¥Øøñ‘¥Ø±…ÍÌô‰™¥•±ˆøñ±…‰•°ùQ…­¥À™¥å…ÓÄğ½±…‰•°øñ¥¹ÁÕĞÑåÁ”ô‰¹Õµ‰•ÈˆÍÑ•Àô‰…¹äˆµ¥¸ôˆÀˆ¹…µ”ô‰ÁÉ¥”ˆÙ…±Õ”ôˆ‘í9Õµ‰•È¡Ü¹ÁÉ¥•ñğÀ¥ôˆøğ½‘¥Øøñ‘¥Ø±…ÍÌô‰™¥•±ˆøñ±…‰•°ùA…É„‰¥É¥µ¤ğ½±…‰•°øñÍ•±•Ğ¹…µ”ô‰ÕÉÉ•¹äˆø‘ílQIdœ°UMœ°UHœ°	@t¹µ…À¡Œôù€ñ½ÁÑ¥½¸€‘íÜ¹ÕÉÉ•¹äôôõŒüÍ•±•Ñ•œèœôø‘íôğ½½ÁÑ¥½¸ù€¤¹©½¥¸ œœ¥ôğ½Í•±•Ğøğ½‘¥Øøñ‘¥Ø±…ÍÌô‰™¥•±™Õ±°ˆøñ±…‰•°ù9½Ğ€¼¡•‘•˜ğ½±…‰•°øñ¥¹ÁÕĞ¹…µ”ô‰¹½Ñ”ˆÙ…±Õ”ôˆ‘í•ÍŒ¡Ü¹¹½Ñ•ñğœœ¥ôˆÁ±…•¡½±‘•Èô‹YÉ¸¸€ÄÔÀQ0…±ÓÅ»ÄÑ…­¥À•Ğˆøğ½‘¥Øøğ½‘¥Øøñ‘¥Ø±…ÍÌô‰‰ÕÑÑ½¸µÉ½Üˆø‘í•á¥ÍÑ¥¹œüœñ‰ÕÑÑ½¸ÑåÁ”ô‰‰ÕÑÑ½¸ˆ±…ÍÌô‰‘…¹•Èµ‰Ñ¸ˆ¥ô‰‘•±•Ñ•]…Ñ ˆùM¥°ğ½‰ÕÑÑ½¸øœèœôñ‰ÕÑÑ½¸ÑåÁ”ô‰‰ÕÑÑ½¸ˆ±…ÍÌô‰Í•½¹‘…Éäµ‰Ñ¸ˆ‘…Ñ„µµ½‘…°µ±½Í”ùY…é—œğ½‰ÕÑÑ½¸øñ‰ÕÑÑ½¸±…ÍÌô‰ÁÉ¥µ…Éäµ‰Ñ¸ˆù-…å‘•Ğğ½‰ÕÑÑ½¸øğ½‘¥Øøğ½™½É´ù€¤ì(€€€€ œİ…Ñ¡½É´œ¤¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ÍÕ‰µ¥Ğœ±”ôùí”¹ÁÉ•Ù•¹Ñ•™…Õ±Ğ ¤í½¹ÍĞ™õ¹•Ü½Éµ…Ñ„¡”¹ÕÉÉ•¹ÑQ…É•Ğ¤í½¹ÍĞ¹•áĞõì¸¸¸¡•á¥ÍÑ¥¹ññíô¤±¥é•á¥ÍÑ¥¹œü¹¥‘ññÕ¥ İ…Ñ œ¤±ÑåÁ”éMÑÉ¥¹œ¡™¹•Ğ ÑåÁ”œ¤¤±Íåµ‰½°éMÑÉ¥¹œ¡™¹•Ğ Íåµ‰½°œ¥ñğœœ¤¹Ñ½UÁÁ•É…Í” ¤¹ÑÉ¥´ ¤±¹…µ”éMÑÉ¥¹œ¡™¹•Ğ ¹…µ”œ¥ñğœœ¤±ÁÉ¥”é9Õµ‰•È¡™¹•Ğ ÁÉ¥”œ¥ñğÀ¤±ÕÉÉ•¹äéMÑÉ¥¹œ¡™¹•Ğ ÕÉÉ•¹äœ¥ñğQIdœ¤±¹½Ñ”éMÑÉ¥¹œ¡™¹•Ğ ¹½Ñ”œ¥ñğœœ¤±¡…¹•AĞé9Õµ‰•È¡•á¥ÍÑ¥¹œü¹¡…¹•AÑñğÀ¥ôí¥˜¡•á¥ÍÑ¥¹œ¥=‰©•Ğ¹…ÍÍ¥¸¡•á¥ÍÑ¥¹œ±¹•áĞ¤í•±Í”ÍÑ…Ñ”¹İ…Ñ¡±¥ÍĞ¹ÁÕÍ ¡¹•áĞ¤íÍ…Ù•MÑ…Ñ” ¤í±½Í•5½‘…° ¤íÉ•¹‘•ÉA…” ¤íÍ¡½İQ½…ÍĞ ŸÁé±•µ”±¥ÍÑ•Í¤Ÿñ¹•±±•¹‘¤œ¤íô¤ì(€€€€ œ‘•±•Ñ•]…Ñ œ¤ü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ±¥¬œ° ¤ôùíÍÑ…Ñ”¹İ…Ñ¡±¥ÍĞõÍÑ…Ñ”¹İ…Ñ¡±¥ÍĞ¹™¥±Ñ•È¡àôùà¹¥„ôõ•á¥ÍÑ¥¹œ¹¥¤íÍ…Ù•MÑ…Ñ” ¤í±½Í•5½‘…° ¤íÉ•¹‘•ÉA…” ¤íÍ¡½İQ½…ÍĞ Q…­¥ÁÑ•¸ƒŸÅ­…ËÅ±“Äœ¤íô¤ì(€ô((€™Õ¹Ñ¥½¸Í¡½İ¥Ù¥‘•¹‘½¹™¥Éµ…Ñ¥½¸¡•Ù•¹Ñ%¥ì(€€€½¹ÍĞ”õÍÑ…Ñ”¹‘¥Ù¥‘•¹‘Ù•¹ÑÌ¹™¥¹¡àôùà¹¥ôôõ•Ù•¹Ñ%¤í¥˜ …”¥É•ÑÕÉ¸ì(€€€½¹ÍĞ„õ…ÍÍ•Ñ	å%¡”¹…ÍÍ•Ñ%¤í¥˜ …„¥É•ÑÕÉ¸ì(€€€½¹ÍĞÅÑäõ•±¥¥‰±•EÕ…¹Ñ¥ÑåÑá…Ñ”¡”¹…ÍÍ•Ñ%±”¹•á…Ñ•ññ”¹Á…å…Ñ”¤±Ñ…àõ±…µÀ¡”¹Ñ…áI…Ñ”üı…ÕÑ½µ…Ñ¥¥Ù¥‘•¹‘Q…à¡„±”¹Á…å…Ñ•ññ”¹•á…Ñ”¤°À°ÄÀÀ¤ì(€€€½¹ÍĞÉ½ÍÌõÅÑä©9Õµ‰•È¡”¹…µ½Õ¹ÑA•ÉM¡…É•ñğÀ¤±¹•ÑÕÉÉ•¹äõÉ½ÍÌ¨ ÄµÑ…à¼ÄÀÀ¤±¹•ÑQÉäõ¹•ÑÕÉÉ•¹ä©™áI…Ñ”¡”¹ÕÉÉ•¹åññ„¹ÕÉÉ•¹ä¤ì(€€€Í¡½İ5½‘…°¡€‘íµ½‘…±!•…‘•È Q•µ•ÑÓğƒÙ‘•µ•Í¥¹¤­½¹ÑÉ½°•Ğœ¥ôñ‘¥Ø±…ÍÌô‰‘•Ñ…¥°µÍ¡••Ğˆøñ‘¥Ø±…ÍÌô‰‰¥œµÍåµ‰½°ˆø‘í•ÍŒ¡„¹Íåµ‰½°¥ôğ½‘¥Øøñ‘¥Ø±…ÍÌô‰‘•Ñ…¥°µÉ¥ˆøñ‘¥Ø±…ÍÌô‰‘•Ñ…¥°µÍÑ…Ğˆøñ‘¥Ø±…ÍÌô‰±…‰•°ˆù!…¬•‘¥±•¸…‘•Ğğ½‘¥Øøñ‘¥Ø±…ÍÌô‰Ù…±Õ”ˆø‘í¹Õµ‰•ÉµĞ¡ÅÑä°Ğ¥ôğ½‘¥Øøğ½‘¥Øøñ‘¥Ø±…ÍÌô‰‘•Ñ…¥°µÍÑ…Ğˆøñ‘¥Ø±…ÍÌô‰±…‰•°ˆùA…ä‰‡Å¹„‰ËñĞğ½‘¥Øøñ‘¥Ø±…ÍÌô‰Ù…±Õ”ˆø‘íµ½¹•ä¡”¹…µ½Õ¹ÑA•ÉM¡…É”±”¹ÕÉÉ•¹åññ„¹ÕÉÉ•¹ä±™…±Í”°Ğ¥ôğ½‘¥Øøğ½‘¥Øøñ‘¥Ø±…ÍÌô‰‘•Ñ…¥°µÍÑ…Ğˆøñ‘¥Ø±…ÍÌô‰±…‰•°ˆù	ËñĞÑ½Á±…´ğ½‘¥Øøñ‘¥Ø±…ÍÌô‰Ù…±Õ”ˆø‘íµ½¹•ä¡É½ÍÌ±”¹ÕÉÉ•¹åññ„¹ÕÉÉ•¹ä¥ôğ½‘¥Øøğ½‘¥Øøñ‘¥Ø±…ÍÌô‰‘•Ñ…¥°µÍÑ…Ğˆøñ‘¥Ø±…ÍÌô‰±…‰•°ˆùMÑ½Á…¨ğ½‘¥Øøñ‘¥Ø±…ÍÌô‰Ù…±Õ”ˆø”‘í¹Õµ‰•ÉµĞ¡Ñ…à°È¥ôğ½‘¥Øøğ½‘¥Øøñ‘¥Ø±…ÍÌô‰‘•Ñ…¥°µÍÑ…Ğˆøñ‘¥Ø±…ÍÌô‰±…‰•°ˆù9•ĞƒÙ‘•µ”ğ½‘¥Øøñ‘¥Ø±…ÍÌô‰Ù…±Õ”Á½Í¥Ñ¥Ù”ˆø‘íµ½¹•ä¡¹•ÑÕÉÉ•¹ä±”¹ÕÉÉ•¹åññ„¹ÕÉÉ•¹ä¥ôğ½‘¥Øøğ½‘¥Øøñ‘¥Ø±…ÍÌô‰‘•Ñ…¥°µÍÑ…Ğˆøñ‘¥Ø±…ÍÌô‰±…‰•°ˆùQ0¡•Í…‰„—••¬ğ½‘¥Øøñ‘¥Ø±…ÍÌô‰Ù…±Õ”Á½Í¥Ñ¥Ù”ˆø‘íµ½¹•ä¡¹•ÑQÉä°QIdœ¥ôğ½‘¥Øøğ½‘¥Øøğ½‘¥Øøñ‘¥Ø±…ÍÌô‰‘¥Í±…¥µ•Èˆù‘•Ğ°¡…¬­Õ±±…»Å´Ñ…É¥¡¥¹‘•­¤§}±•´—µ§}¥¹‘•¸½Ñ½µ…Ñ¥¬¡•Í…Á±…¹“Ä¸•Ë•¬‰…¹­„½…É…Ä­ÕÉÕ´ÑÕÑ…ËÄ™…É­³ÅåÍ„Ñ•µ•ÑÓğ­…å“Å»Ä“ñé•¹±•å•‰¥±¥ÉÍ¥¸¸ğ½‘¥Øøñ‘¥Ø±…ÍÌô‰‰ÕÑÑ½¸µÉ½Üˆøñ‰ÕÑÑ½¸±…ÍÌô‰Í•½¹‘…Éäµ‰Ñ¸ˆ¥ô‰‘¥Ù9½ÑI••¥Ù•ˆù±µ…“Å´ğ½‰ÕÑÑ½¸øñ‰ÕÑÑ½¸±…ÍÌô‰ÁÉ¥µ…Éäµ‰Ñ¸ˆ¥ô‰‘¥ÙI••¥Ù•ˆùQ•µ•ÑÓğ…±“Å´ğ½‰ÕÑÑ½¸øğ½‘¥Øøğ½‘¥Øù€¤ì(€€€€ œ‘¥ÙI••¥Ù•œ¤¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ±¥¬œ° ¤ôùí”¹É••¥Ù•õÑÉÕ”í”¹É••¥Ù•‘Ğõ¥Í½…Ñ” ¤í”¹½¹™¥Éµ•‘EÕ…¹Ñ¥ÑäõÅÑäí”¹½¹™¥Éµ•‘9•ÑQÉäõ¹•ÑQÉäí¥˜ …ÍÑ…Ñ”¹…Í¡1•‘•È¹Í½µ”¡àôùà¹•Ù•¹Ñ%ôôõ”¹¥˜™à¹ÑåÁ”ôôô‘¥Ù¥‘•¹‘}¥¹½µ”œ¤¥ÍÑ…Ñ”¹…Í¡1•‘•È¹ÁÕÍ ¡í¥éÕ¥ …Í œ¤±ÑåÁ”è‘¥Ù¥‘•¹‘}¥¹½µ”œ±•Ù•¹Ñ%é”¹¥±‘…Ñ”é”¹Á…å…Ñ•ññ¥Í½…Ñ” ¤±…µ½Õ¹ÑQÉäé¹•ÑQÉä±¹½Ñ”é€‘í„¹Íåµ‰½±ô¹•ĞÑ•µ•ÑÓñô¤íÍ…Ù•MÑ…Ñ” ¤í±½Í•5½‘…° ¤íÉ•¹‘•ÉA…” ¤íÍ¡½İQ½…ÍĞ¡€‘íµ½¹•ä¡¹•ÑQÉä°QIdœ¥ôÑ•µ•ÑÓğQ0‰…­¥å•Í¥¹”•­±•¹‘¥€¤íô¤ì(€€€€ œ‘¥Ù9½ÑI••¥Ù•œ¤¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ±¥¬œ° ¤ôùí”¹É•Ù¥•İ•‘9½ÑI••¥Ù•õÑÉÕ”í”¹É•Ù¥•İ•‘Ğõ¥Í½…Ñ” ¤íÍ…Ù•MÑ…Ñ” ¤í±½Í•5½‘…° ¤íÉ•¹‘•ÉA…” ¤íÍ¡½İQ½…ÍĞ ŸY‘•µ”…³Å¹µ…“Ä½±…É…¬§}…É•Ñ±•¹‘¤œ¤íô¤ì(€ô((€™Õ¹Ñ¥½¸Í¡½İ¥Ù¥‘•¹‘½É´¡…ÍÍ•Ñ%€ô¹Õ±°°‘…Ñ•AÉ•™¥±°€ô¹Õ±°¤ì(€€€¥˜€ …ÍÑ…Ñ”¹…ÍÍ•ÑÌ¹±•¹Ñ ¤É•ÑÕÉ¸Í¡½İÍÍ•Ñ½É´ ¤ì(€€€Í¡½İ5½‘…°¡€‘íµ½‘…±!•…‘•È Q•µ•ÑÓğ½±…çÄ•­±”œ¥ôñ™½É´¥ô‰‘¥Ù½É´ˆøñ‘¥Ø±…ÍÌô‰™½É´µÉ¥ˆø(€€€€€€ñ‘¥Ø±…ÍÌô‰™¥•±™Õ±°ˆøñ±…‰•°ùY…É³Å¬ğ½±…‰•°øñÍ•±•Ğ¹…µ”ô‰…ÍÍ•Ñ%ˆø‘íÍÑ…Ñ”¹…ÍÍ•ÑÌ¹µ…À¡„ôù€ñ½ÁÑ¥½¸Ù…±Õ”ôˆ‘í„¹¥‘ôˆ€‘í„¹¥ôôõ…ÍÍ•Ñ%üÍ•±•Ñ•œèœôø‘í•ÍŒ¡„¹Íåµ‰½°¥ôƒ
+Ü€‘í•ÍŒ¡„¹¹…µ”¥ôğ½½ÁÑ¥½¸ù€¤¹©½¥¸ œœ¥ôğ½Í•±•Ğøğ½‘¥Øø(€€€€€€ñ‘¥Ø±…ÍÌô‰™¥•±ˆøñ±…‰•°ù!…¬­Õ±±…»Å´Ñ…É¥¡¤ğ½±…‰•°øñ¥¹ÁÕĞÑåÁ”ô‰‘…Ñ”ˆ¹…µ”ô‰•á…Ñ”ˆÙ…±Õ”ôˆ‘í‘…Ñ•AÉ•™¥±±ññ¥Í½…Ñ” ¥ôˆÉ•ÅÕ¥É•øğ½‘¥Øøñ‘¥Ø±…ÍÌô‰™¥•±ˆøñ±…‰•°ûY‘•µ”Ñ…É¥¡¤ğ½±…‰•°øñ¥¹ÁÕĞÑåÁ”ô‰‘…Ñ”ˆ¹…µ”ô‰Á…å…Ñ”ˆÙ…±Õ”ôˆ‘í‘…Ñ•AÉ•™¥±±ññ¥Í½…Ñ”¡…‘‘…åÌ¡¹•Ü…Ñ” ¤°È¤¥ôˆÉ•ÅÕ¥É•øğ½‘¥Øø(€€€€€€ñ‘¥Ø±…ÍÌô‰™¥•±ˆøñ±…‰•°ùA…ä‰‡Å¹„‰ËñĞÑÕÑ…Èğ½±…‰•°øñ¥¹ÁÕĞÑåÁ”ô‰¹Õµ‰•ÈˆÍÑ•Àô‰…¹äˆµ¥¸ôˆÀˆ¹…µ”ô‰…µ½Õ¹ĞˆÉ•ÅÕ¥É•øğ½‘¥Øøñ‘¥Ø±…ÍÌô‰™¥•±ˆøñ±…‰•°ùÕÉÕ´ğ½±…‰•°øñÍ•±•Ğ¹…µ”ô‰ÍÑ…ÑÕÌˆøñ½ÁÑ¥½¸Ù…±Õ”ô‰½¹™¥Éµ•ˆùŸÅ­±…¹·Ç|ğ½½ÁÑ¥½¸øñ½ÁÑ¥½¸Ù…±Õ”ô‰•ÍÑ¥µ…Ñ•ˆùQ…¡µ¥¹¤ğ½½ÁÑ¥½¸øğ½Í•±•Ğøğ½‘¥Øø(€€€€€€ñ‘¥Ø±…ÍÌô‰™¥•±ˆøñ±…‰•°ùMÑ½Á…¨€ ”¤ğ½±…‰•°øñ¥¹ÁÕĞÑåÁ”ô‰¹Õµ‰•ÈˆÍÑ•Àôˆ¸Äˆµ¥¸ôˆÀˆµ…àôˆÄÀÀˆ¹…µ”ô‰Ñ…áI…Ñ”ˆÁ±…•¡½±‘•Èô‰Y…É³Å¬…å…ËÄˆøğ½‘¥Øøñ‘¥Ø±…ÍÌô‰™¥•±ˆøñ±…‰•°ù-…å¹…¬½¹½Ğğ½±…‰•°øñ¥¹ÁÕĞ¹…µ”ô‰Í½ÕÉ”ˆÙ…±Õ”ô‰5…¹Õ•°­…çÅĞˆøğ½‘¥Øø(€€€€€€ñ‘¥Ø±…ÍÌô‰™¥•±™Õ±°ˆøñ‘¥Ø±…ÍÌô‰Ñ½±”µÉ½Üˆ¥ô‰É••¥Ù•‘Q½±”ˆøñ‘¥Ø±…ÍÌô‰Ñ½±”µµ…¥¸ˆøñ‘¥Ø±…ÍÌô‰Ñ½±”µÑ¥Ñ±”ˆûY‘•µ”…³Å¹“Äğ½‘¥Øøñ‘¥Ø±…ÍÌô‰Ñ½±”µ¹½Ñ”ˆù—µ§|Ñ•µ•ÑÓğ½±…É…¬­…å‘•Ğğ½‘¥Øøğ½‘¥Øøñ¤±…ÍÌô‰Íİ¥Ñ ˆøğ½¤øñ¥¹ÁÕĞÑåÁ”ô‰¡¥‘‘•¸ˆ¹…µ”ô‰É••¥Ù•ˆÙ…±Õ”ôˆÀˆøğ½‘¥Øøğ½‘¥Øø(€€€€€€ğ½‘¥Øøñ‘¥Ø±…ÍÌô‰‰ÕÑÑ½¸µÉ½Üˆøñ‰ÕÑÑ½¸ÑåÁ”ô‰‰ÕÑÑ½¸ˆ±…ÍÌô‰Í•½¹‘…Éäµ‰Ñ¸ˆ‘…Ñ„µµ½‘…°µ±½Í”ùY…é—œğ½‰ÕÑÑ½¸øñ‰ÕÑÑ½¸±…ÍÌô‰ÁÉ¥µ…Éäµ‰Ñ¸ˆù-…å‘•Ğğ½‰ÕÑÑ½¸øğ½‘¥Øøğ½™½É´ù€¤ì(€€€€ œÉ••¥Ù•‘Q½±”œ¤¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ±¥¬œ° ¤ôùí½¹ÍĞÍÜô œ¹Íİ¥Ñ œ°œÉ••¥Ù•‘Q½±”œ¤íÍÜ¹±…ÍÍ1¥ÍĞ¹Ñ½±” ½¸œ¤ì œ‘¥Ù½É´œ¤¹•±•µ•¹ÑÌ¹É••¥Ù•¹Ù…±Õ”õÍÜ¹±…ÍÍ1¥ÍĞ¹½¹Ñ…¥¹Ì ½¸œ¤üœÄœèœÀœíô¤ì(€€€€ œ‘¥Ù½É´œ¤¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ÍÕ‰µ¥Ğœ±”ôùí”¹ÁÉ•Ù•¹Ñ•™…Õ±Ğ ¤í½¹ÍĞ™õ¹•Ü½Éµ…Ñ„¡”¹ÕÉÉ•¹ÑQ…É•Ğ¤í½¹ÍĞ„õ…ÍÍ•Ñ	å%¡™¹•Ğ …ÍÍ•Ñ%œ¤¤í¥˜ …„¥É•ÑÕÉ¸í½¹ÍĞ•ÙĞõí¥éÕ¥ ‘¥Øœ¤±…ÍÍ•Ñ%é„¹¥±•á…Ñ”éMÑÉ¥¹œ¡™¹•Ğ •á…Ñ”œ¤¤±Á…å…Ñ”éMÑÉ¥¹œ¡™¹•Ğ Á…å…Ñ”œ¤¤±…µ½Õ¹ÑA•ÉM¡…É”é9Õµ‰•È¡™¹•Ğ …µ½Õ¹Ğœ¥ñğÀ¤±ÕÉÉ•¹äé„¹ÕÉÉ•¹ä±ÍÑ…ÑÕÌéMÑÉ¥¹œ¡™¹•Ğ ÍÑ…ÑÕÌœ¤¤±É••¥Ù•é™¹•Ğ É••¥Ù•œ¤ôôôœÄœ±Ñ…áI…Ñ”é™¹•Ğ Ñ…áI…Ñ”œ¤ôôôœœıÕ¹‘•™¥¹•é9Õµ‰•È¡™¹•Ğ Ñ…áI…Ñ”œ¤¤±Í½ÕÉ”éMÑÉ¥¹œ¡™¹•Ğ Í½ÕÉ”œ¥ñğ5…¹Õ•°­…çÅĞœ¥ôíÍÑ…Ñ”¹‘¥Ù¥‘•¹‘Ù•¹ÑÌ¹ÁÕÍ ¡•ÙĞ¤í¥˜¡•ÙĞ¹É••¥Ù•¥íÍÑ…Ñ”¹…Í¡1•‘•È¹ÁÕÍ ¡í¥éÕ¥ …Í œ¤±ÑåÁ”è‘¥Ù¥‘•¹‘}¥¹½µ”œ±•Ù•¹Ñ%é•ÙĞ¹¥±‘…Ñ”é•ÙĞ¹Á…å…Ñ”±…µ½Õ¹ÑQÉäé•Ù•¹Ñ9•Ğ¡•ÙĞ¤±¹½Ñ”é€‘í„¹Íåµ‰½±ô¹•ĞÑ•µ•ÑÓñô¤íõÍÑ…Ñ”¹‘•µ¼õ™…±Í”íÍ…Ù•MÑ…Ñ” ¤í±½Í•5½‘…° ¤íÉ•¹‘•ÉA…” ¤íÍ¡½İQ½…ÍĞ Q•µ•ÑÓğ½±…çÄ•­±•¹‘¤œ¤íÍ¡•‘Õ±•Ù•¹Ñ9½Ñ¥™¥…Ñ¥½¹Ì ¤íô¤ì(€ô((€™Õ¹Ñ¥½¸Í¡½İÍÍ•Ñ•Ñ…¥°¡…ÍÍ•Ñ%¤ì(€€€½¹ÍĞ„õ…ÍÍ•Ñ	å%¡…ÍÍ•Ñ%¤í¥˜ …„¥É•ÑÕÉ¸í½¹ÍĞÙ…±Õ”õ…ÍÍ•ÑY…±Õ”¡„¤±½ÍĞõ…ÍÍ•Ñ½ÍĞ¡„¤±ÁÉ½™¥ĞõÙ…±Õ”µ½ÍĞ±…¹¹Õ…°õÍÑ…Ñ”¹‘¥Ù¥‘•¹‘Ù•¹ÑÌ¹™¥±Ñ•È¡”ôù”¹…ÍÍ•Ñ%ôôõ„¹¥˜™Á…ÉÍ•…Ñ”¡”¹Á…å…Ñ•ññ”¹•á…Ñ”¤øõ…‘‘…åÌ¡¹•Ü…Ñ” ¤°´Ä¤˜™Á…ÉÍ•…Ñ”¡”¹Á…å…Ñ•ññ”¹•á…Ñ”¤ğõ…‘‘…åÌ¡¹•Ü…Ñ” ¤°ÌØÔ¤¤¹É•‘Õ” ¡Ì±”¤ôùÌ­•Ù•¹Ñ9•Ğ¡”¤°À¥ññ9Õµ‰•È¡„¹ÅÕ…¹Ñ¥ÑåñğÀ¤©9Õµ‰•È¡„¹…¹¹Õ…±¥Ù¥‘•¹‘A•ÉM¡…É•ñğÀ¤¨ Äµ±…µÀ¡…ÕÑ½µ…Ñ¥¥Ù¥‘•¹‘Q…à¡„¤°À°ÄÀÀ¤¼ÄÀÀ¤©™áI…Ñ”¡„¹ÕÉÉ•¹ä¤í½¹ÍĞ¡¥ÍĞô¡„¹¡¥ÍÑ½Éåññmt¤¹µ…À¡9Õµ‰•È¤¹™¥±Ñ•È¡9Õµ‰•È¹¥Í¥¹¥Ñ”¤í½¹ÍĞÍÁ…É¬õÍÁ…É­±¥¹•MÙœ¡¡¥ÍĞ¤í½¹ÍĞÁ½ÌõÑÉ…¹Í…Ñ¥½¹A½Í¥Ñ¥½¸¡„¹¥¤í½¹ÍĞ™¥ÉÍÑ	ÕäõÍÑ…Ñ”¹ÑÉ…¹Í…Ñ¥½¹Ì¹™¥±Ñ•È¡ĞôùĞ¹…ÍÍ•Ñ%ôôõ„¹¥˜™Ğ¹ÑåÁ”ôôô‰Õäœ˜™Ğ¹‘…Ñ”¤¹Í½ÉĞ ¡à±ä¤ôùÁ…ÉÍ•…Ñ”¡à¹‘…Ñ”¤µÁ…ÉÍ•…Ñ”¡ä¹‘…Ñ”¤¥lÁtì(€€€Í¡½İ5½‘…°¡€‘íµ½‘…±!•…‘•È¡„¹¹…µ•ññ„¹Íåµ‰½°¥ôñ‘¥Ø±…ÍÌô‰‘•Ñ…¥°µÍ¡••Ğˆøñ‘¥Ø±…ÍÌô‰‰¥œµÍåµ‰½°ˆø‘í•ÍŒ¡„¹Íåµ‰½°¥ôğ½‘¥Øøñ‘¥Ø±…ÍÌô‰‘•Ñ…¥°µÁÉ¥”ˆø‘íµ½¹•ä¡„¹ÁÉ¥”±„¹ÕÉÉ•¹ä±™…±Í”±„¹ÁÉ¥”ğÄüĞèÈ¥ôğ½‘¥Øøñ‘¥Ø±…ÍÌô‰…ÍÍ•Ğµ¡…¹”€‘í9Õµ‰•È¡„¹¡…¹•AÑñğÀ¤øôÀüÁ½Í¥Ñ¥Ù”œè¹•…Ñ¥Ù”ôˆø‘íÁĞ¡„¹¡…¹•AĞ¥ô‰ÕŸñ¸ğ½‘¥Øø‘íÍÁ…É­ôñ‘¥Ø±…ÍÌô‰‘•Ñ…¥°µÉ¥ˆøñ‘¥Ø±…ÍÌô‰‘•Ñ…¥°µÍÑ…Ğˆøñ‘¥Ø±…ÍÌô‰±…‰•°ˆùA½ÉÑ›Ùä‘—}•É¤ğ½‘¥Øøñ‘¥Ø±…ÍÌô‰Ù…±Õ”ˆø‘íµ½¹•ä¡Ù…±Õ”°QIdœ¥ôğ½‘¥Øøğ½‘¥Øøñ‘¥Ø±…ÍÌô‰‘•Ñ…¥°µÍÑ…Ğˆøñ‘¥Ø±…ÍÌô‰±…‰•°ˆùŸÅ¬¯‰È€¼é…É…Èğ½‘¥Øøñ‘¥Ø±…ÍÌô‰Ù…±Õ”€‘íÁÉ½™¥ĞøôÀüÁ½Í¥Ñ¥Ù”œè¹•…Ñ¥Ù”ôˆø‘íµ½¹•ä¡ÁÉ½™¥Ğ°QIdœ¥ôƒ
+Ü€‘íÁĞ¡…ÍÍ•ÑAÉ½™¥ÑAĞ¡„¤¥ôğ½‘¥Øøğ½‘¥Øøñ‘¥Ø±…ÍÌô‰‘•Ñ…¥°µÍÑ…Ğˆøñ‘¥Ø±…ÍÌô‰±…‰•°ˆù=ÉÑ…±…µ„µ…±¥å•Ğğ½‘¥Øøñ‘¥Ø±…ÍÌô‰Ù…±Õ”ˆø‘íµ½¹•ä¡„¹…Ù½ÍĞ±„¹ÕÉÉ•¹ä±™…±Í”±„¹…Ù½ÍĞğÄüĞèÈ¥ôğ½‘¥Øøğ½‘¥Øøñ‘¥Ø±…ÍÌô‰‘•Ñ…¥°µÍÑ…Ğˆøñ‘¥Ø±…ÍÌô‰±…‰•°ˆù•Ë•­±—}•¸¯‰È€¼é…É…Èğ½‘¥Øøñ‘¥Ø±…ÍÌô‰Ù…±Õ”€‘í9Õµ‰•È¡Á½Ì¹É•…±¥é•‘AÉ½™¥ÑñğÀ¤øôÀüÁ½Í¥Ñ¥Ù”œè¹•…Ñ¥Ù”ôˆø‘íµ½¹•ä¡9Õµ‰•È¡Á½Ì¹É•…±¥é•‘AÉ½™¥ÑñğÀ¤©™áI…Ñ”¡„¹ÕÉÉ•¹ä¤°QIdœ¥ôğ½‘¥Øøğ½‘¥Øøñ‘¥Ø±…ÍÌô‰‘•Ñ…¥°µÍÑ…Ğˆøñ‘¥Ø±…ÍÌô‰±…‰•°ˆûÁ±¬…³Ç|Ñ…É¥¡¤ğ½‘¥Øøñ‘¥Ø±…ÍÌô‰Ù…±Õ”ˆø‘í™¥ÉÍÑ	Õäı‘…Ñ•Q•áĞ¡™¥ÉÍÑ	Õä¹‘…Ñ”¤èŸŠPôğ½‘¥Øøğ½‘¥Øøñ‘¥Ø±…ÍÌô‰‘•Ñ…¥°µÍÑ…Ğˆøñ‘¥Ø±…ÍÌô‰±…‰•°ˆøÄÈ…ä¹•ĞÑ•µ•ÑÓğğ½‘¥Øøñ‘¥Ø±…ÍÌô‰Ù…±Õ”ˆø‘íµ½¹•ä¡…¹¹Õ…°°QIdœ¥ôğ½‘¥Øøğ½‘¥Øø‘í„¹ÑåÁ”ôôôQLœı€ñ‘¥Ø±…ÍÌô‰‘•Ñ…¥°µÍÑ…Ğˆøñ‘¥Ø±…ÍÌô‰±…‰•°ˆùgÙ¹•Ñ¥´ƒñÉ•Ñ¤ğ½‘¥Øøñ‘¥Ø±…ÍÌô‰Ù…±Õ”ˆø‘í„¹™Õ¹‘5…¹…•µ•¹Ñ••¹¹Õ…°„õ¹Õ±°üœ”œ­¹Õµ‰•ÉµĞ¡„¹™Õ¹‘5…¹…•µ•¹Ñ••¹¹Õ…°°Ğ¤¬œ€¼çÅ°œèŸŠPôğ½‘¥Øøğ½‘¥Øøñ‘¥Ø±…ÍÌô‰‘•Ñ…¥°µÍÑ…Ğˆøñ‘¥Ø±…ÍÌô‰±…‰•°ˆù½¸Ñ½Á±…´¥‘•È½É…»Äğ½‘¥Øøñ‘¥Ø±…ÍÌô‰Ù…±Õ”ˆø‘í„¹™Õ¹‘áÁ•¹Í•I…Ñ¥¼„õ¹Õ±°üœ”œ­¹Õµ‰•ÉµĞ¡„¹™Õ¹‘áÁ•¹Í•I…Ñ¥¼°Ğ¤èŸŠPôğ½‘¥Øøğ½‘¥Øù€èœôğ½‘¥Øø‘í„¹ÑåÁ”ôôôQLœı€ñ‘¥Ø±…ÍÌô‰‘¥Í±…¥µ•Èˆù½¸ƒñÉ•Ñ±•É¤-@Ñ…¸·ñµ¯ñ¸½±‘×}Õ¹‘„½Ñ½µ…Ñ¥¬…³Å»ÅÈ¸gÙ¹•Ñ¥´ƒñÉ•Ñ¤™½¸™¥å…ÓÅ¹„é…Ñ•¸å…¹ÏÅ“ÇÄ§¥¸Á½ÉÑ›Ùä•Ñ¥É¥Í¥¹‘•¸…åËÅ„“óñ±µ•è¸ğ½‘¥Øù€èœôñ‘¥Ø±…ÍÌô‰‰ÕÑÑ½¸µÉ½Üˆøñ‰ÕÑÑ½¸±…ÍÌô‰Í•½¹‘…Éäµ‰Ñ¸ˆ¥ô‰‘•Ñ…¥±¥Ù¥‘•¹ˆùQ•µ•ÑÓğ•­±”ğ½‰ÕÑÑ½¸øñ‰ÕÑÑ½¸±…ÍÌô‰ÁÉ¥µ…Éäµ‰Ñ¸ˆ¥ô‰‘•Ñ…¥±‘¥Ğˆùñé•¹±”ğ½‰ÕÑÑ½¸øğ½‘¥Øøğ½‘¥Øù€¤ì(€€€€ œ‘•Ñ…¥±‘¥Ğœ¤¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ±¥¬œ° ¤ôùÍ¡½İÍÍ•Ñ½É´¡„¹¥¤¤ì œ‘•Ñ…¥±¥Ù¥‘•¹œ¤¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ±¥¬œ° ¤ôùÍ¡½İ¥Ù¥‘•¹‘½É´¡„¹¥¤¤ì(€ô((€™Õ¹Ñ¥½¸ÍÁ…É­±¥¹•MÙœ¡Ù…±Õ•Ì¤ì(€€€¥˜¡Ù…±Õ•Ì¹±•¹Ñ ğÈ¥É•ÑÕÉ¸€œœì(€€€½¹ÍĞÜôÌÈÀ± ôäÀ±Á…ôÔ±µ¥¸õ5…Ñ ¹µ¥¸ ¸¸¹Ù…±Õ•Ì¤±µ…àõ5…Ñ ¹µ…à ¸¸¹Ù…±Õ•Ì¤±É…¹”õµ…àµµ¥¹ñğÄì(€€€½¹ÍĞÁÑÌõÙ…±Õ•Ì¹µ…À ¡Ø±¤¤ôùmÁ…­¤¨¡Ü´È©Á…¤¼¡Ù…±Õ•Ì¹±•¹Ñ ´Ä¤± µÁ…´¡Øµµ¥¸¤½É…¹”¨¡ ´È©Á…¥t¤ì(€€€½¹ÍĞ±¥¹”õÁÑÌ¹µ…À ¡À±¤¤ôù€‘í¤ü0œè4ô‘íÁlÁt¹Ñ½¥á• Ä¥ô°‘íÁlÅt¹Ñ½¥á• Ä¥õ€¤¹©½¥¸ œ€œ¤ì(€€€½¹ÍĞ…É•„õ€‘í±¥¹•ô0‘íÁÑÌ¹…Ğ ´Ä¥lÁuô°‘í¡ô0‘íÁÑÍlÁulÁuô°‘í¡ôi€ì(€€€É•ÑÕÉ¸€ñÍÙœ±…ÍÌô‰ÍÁ…É­±¥¹”ˆÙ¥•İ	½àôˆÀ€À€‘íİô€‘í¡ôˆÁÉ•Í•ÉÙ•ÍÁ•ÑI…Ñ¥¼ô‰¹½¹”ˆøñ‘•™Ìøñ±¥¹•…ÉÉ…‘¥•¹Ğ¥ô‰ÍÁ…É­É…‘¥•¹ĞˆàÄôˆÀˆäÄôˆÀˆàÈôˆÀˆäÈôˆÄˆøñÍÑ½À½™™Í•ĞôˆÀˆÍÑ½Àµ½±½ÈôˆŒÈÕÕ‰ˆÍÑ½Àµ½Á…¥Ñäôˆ¸ÌÔˆ¼øñÍÑ½À½™™Í•ĞôˆÄˆÍÑ½Àµ½±½ÈôˆŒÈÕÕ‰ˆÍÑ½Àµ½Á…¥ÑäôˆÀˆ¼øğ½±¥¹•…ÉÉ…‘¥•¹Ğøğ½‘•™ÌøñÁ…Ñ ±…ÍÌô‰…É•„ˆôˆ‘í…É•…ôˆ¼øñÁ…Ñ ±…ÍÌô‰±¥¹”ˆôˆ‘í±¥¹•ôˆ¼øğ½ÍÙœù€ì(€ô((€™Õ¹Ñ¥½¸Í¡½İQ…É•Ñ‘¥Ñ½È ¤ì(€€€Í¡½İ5½‘…°¡€‘íµ½‘…±!•…‘•È !•‘•˜Á½ÉÑ›Ùä‡ÅÉ³Å­±…ËÄœ¥ôñ™½É´¥ô‰Ñ…É•Ñ½É´ˆø‘íÍÑ…Ñ”¹…ÍÍ•ÑÌ¹µ…À¡„ôù€ñ‘¥Ø±…ÍÌô‰™¥•±ˆøñ±…‰•°ø‘í•ÍŒ¡„¹Íåµ‰½°¥ô¡•‘•™¤€ ”¤ğ½±…‰•°øñ¥¹ÁÕĞÑåÁ”ô‰¹Õµ‰•ÈˆÍÑ•Àôˆ¸Äˆµ¥¸ôˆÀˆµ…àôˆÄÀÀˆ¹…µ”ôˆ‘í„¹¥‘ôˆÙ…±Õ”ôˆ‘í9Õµ‰•È¡„¹Ñ…É•Ñ]•¥¡ÑñğÀ¥ôˆøğ½‘¥Øù€¤¹©½¥¸ œœ¥ôñ‘¥Ø±…ÍÌô‰™¥•±µ¡¥¹ĞˆùQ½Á±…´¡•‘•™¥¸€”ÄÀÀ½±µ…ÏÄƒÙ¹•É¥±¥È¸UåÕ±…µ„Í…‘•”™…É¯ÄŸÙÍÑ•É¥Èì…³Å´µÍ…ÓÅ´•µÉ¤Ù•Éµ•è¸ğ½‘¥Øøñ‘¥Ø±…ÍÌô‰‰ÕÑÑ½¸µÉ½Üˆøñ‰ÕÑÑ½¸ÑåÁ”ô‰‰ÕÑÑ½¸ˆ±…ÍÌô‰Í•½¹‘…Éäµ‰Ñ¸ˆ‘…Ñ„µµ½‘…°µ±½Í”ùY…é—œğ½‰ÕÑÑ½¸øñ‰ÕÑÑ½¸±…ÍÌô‰ÁÉ¥µ…Éäµ‰Ñ¸ˆù-…å‘•Ğğ½‰ÕÑÑ½¸øğ½‘¥Øøğ½™½É´ù€¤ì(€€€€ œÑ…É•Ñ½É´œ¤¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ÍÕ‰µ¥Ğœ±”ôùí”¹ÁÉ•Ù•¹Ñ•™…Õ±Ğ ¤í½¹ÍĞ™õ¹•Ü½Éµ…Ñ„¡”¹ÕÉÉ•¹ÑQ…É•Ğ¤íÍÑ…Ñ”¹…ÍÍ•ÑÌ¹™½É… ¡„ôù„¹Ñ…É•Ñ]•¥¡Ğõ9Õµ‰•È¡™¹•Ğ¡„¹¥¥ñğÀ¤¤íÍ…Ù•MÑ…Ñ” ¤í±½Í•5½‘…° ¤íÉ•¹‘•ÉA…” ¤íÍ¡½İQ½…ÍĞ !•‘•™±•ÈŸñ¹•±±•¹‘¤œ¤íô¤ì(€ô((€™Õ¹Ñ¥½¸Í¡½İAÉ½©•Ñ¥½¹M•ÑÑ¥¹Ì ¤ì(€€€½¹ÍĞÌõÍÑ…Ñ”¹Í•ÑÑ¥¹Ìì(€€€Í¡½İ5½‘…°¡€‘íµ½‘…±!•…‘•È ŸYéŸñÉ³ñ¬ÁÉ½©•­Í¥å½¹Ôœ¥ôñ™½É´¥ô‰ÁÉ½©•Ñ¥½¹½É´ˆøñ‘¥Ø±…ÍÌô‰™½É´µÉ¥ˆøñ‘¥Ø±…ÍÌô‰™¥•±ˆøñ±…‰•°ùå³Å¬å‡}…´¥‘•É¤€£Š
+è¤ğ½±…‰•°øñ¥¹ÁÕĞÑåÁ”ô‰¹Õµ‰•Èˆµ¥¸ôˆÀˆÍÑ•ÀôˆÄÀÀˆ¹…µ”ô‰µ½¹Ñ¡±åáÁ•¹Í”ˆÙ…±Õ”ôˆ‘íÌ¹µ½¹Ñ¡±åáÁ•¹Í•ôˆøğ½‘¥Øøñ‘¥Ø±…ÍÌô‰™¥•±ˆøñ±…‰•°ùå³Å¬å•¹¤å…ÓÅËÅ´€£Š
+è¤ğ½±…‰•°øñ¥¹ÁÕĞÑåÁ”ô‰¹Õµ‰•Èˆµ¥¸ôˆÀˆÍÑ•ÀôˆÄÀÀˆ¹…µ”ô‰µ½¹Ñ¡±å½¹ÑÉ¥‰ÕÑ¥½¸ˆÙ…±Õ”ôˆ‘íÌ¹µ½¹Ñ¡±å½¹ÑÉ¥‰ÕÑ¥½¹ôˆøğ½‘¥Øøñ‘¥Ø±…ÍÌô‰™¥•±ˆøñ±…‰•°ùgÅ±³Å¬•Ñ¥É¤Ù…ÉÍ…çÅ·Ä€ ”¤ğ½±…‰•°øñ¥¹ÁÕĞÑåÁ”ô‰¹Õµ‰•ÈˆÍÑ•Àôˆ¸Äˆ¹…µ”ô‰•áÁ•Ñ•‘I•ÑÕÉ¸ˆÙ…±Õ”ôˆ‘íÌ¹•áÁ•Ñ•‘I•ÑÕÉ¹ôˆøğ½‘¥Øøñ‘¥Ø±…ÍÌô‰™¥•±ˆøñ±…‰•°ùgÅ±³Å¬¹•ĞÑ•µ•ÑÓğ¡•‘•™¤€£Š
+è¤ğ½±…‰•°øñ¥¹ÁÕĞÑåÁ”ô‰¹Õµ‰•Èˆµ¥¸ôˆÀˆÍÑ•ÀôˆÄÀÀÀˆ¹…µ”ô‰‘¥Ù¥‘•¹‘½…±¹¹Õ…°ˆÙ…±Õ”ôˆ‘íÌ¹‘¥Ù¥‘•¹‘½…±¹¹Õ…±ôˆøğ½‘¥Øøğ½‘¥Øøñ‘¥Ø±…ÍÌô‰‘¥Í±…¥µ•ÈˆùAÉ½©•­Í¥å½¸‰¥ÈÑ…¡µ¥¹‘¥ÈìÁ¥å…Í„•Ñ¥É¥Í¤°­ÕÈÙ”Ñ•µ•ÑÓğƒÙ‘•µ•±•É¤…É…¹Ñ¤‘—}¥±‘¥È¸ğ½‘¥Øøñ‘¥Ø±…ÍÌô‰‰ÕÑÑ½¸µÉ½Üˆøñ‰ÕÑÑ½¸ÑåÁ”ô‰‰ÕÑÑ½¸ˆ±…ÍÌô‰Í•½¹‘…Éäµ‰Ñ¸ˆ‘…Ñ„µµ½‘…°µ±½Í”ùY…é—œğ½‰ÕÑÑ½¸øñ‰ÕÑÑ½¸±…ÍÌô‰ÁÉ¥µ…Éäµ‰Ñ¸ˆù-…å‘•Ğğ½‰ÕÑÑ½¸øğ½‘¥Øøğ½™½É´ù€¤ì(€€€€ œÁÉ½©•Ñ¥½¹½É´œ¤¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ÍÕ‰µ¥Ğœ±”ôùí”¹ÁÉ•Ù•¹Ñ•™…Õ±Ğ ¤í½¹ÍĞ™õ¹•Ü½Éµ…Ñ„¡”¹ÕÉÉ•¹ÑQ…É•Ğ¤ílµ½¹Ñ¡±åáÁ•¹Í”œ°µ½¹Ñ¡±å½¹ÑÉ¥‰ÕÑ¥½¸œ°•áÁ•Ñ•‘I•ÑÕÉ¸œ°‘¥Ù¥‘•¹‘½…±¹¹Õ…°t¹™½É… ¡¬ôùÍÑ…Ñ”¹Í•ÑÑ¥¹Ím­tõ9Õµ‰•È¡™¹•Ğ¡¬¥ñğÀ¤¤íÍ…Ù•MÑ…Ñ” ¤í±½Í•5½‘…° ¤íÉ•¹‘•ÉA…” ¤íÍ¡½İQ½…ÍĞ AÉ½©•­Í¥å½¸…å…É±…ËÄŸñ¹•±±•¹‘¤œ¤íô¤ì(€ô((€™Õ¹Ñ¥½¸Í¡½İM•ÑÑ¥¹Ì ¤ì(€€€½¹ÍĞÌõÍÑ…Ñ”¹Í•ÑÑ¥¹Ìì(€€€Í¡½İ5½‘…°¡€‘íµ½‘…±!•…‘•È å…É±…Èœ¥ôñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµÉ½ÕÀˆøñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµÉ½ÕÀµÑ¥Ñ±”ˆùY•É¤Ù”å•¹¥±•µ”ğ½‘¥Øøñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµ±¥ÍĞˆø(€€€€€€ñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµÉ½Üˆ¥ô‰‘…Ñ…M•ÑÑ¥¹Ìˆøñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµ¥½¸ˆø‘í%=9L¹Í•ÉÙ•Éôğ½‘¥Øøñ‘¥Øøñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµ¹…µ”ˆù-§}¥Í•°Ù•É¤ÍÕ¹ÕÕÍÔğ½‘¥Øøñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµÙ…±Õ”ˆø‘íÌ¹‰…­•¹‘UÉ°ı•ÍŒ¡Ì¹‰…­•¹‘UÉ°¤è¿}ÉÕ‘…¸­…å¹…¬µ½‘Ôôğ½‘¥Øøğ½‘¥ØøñÍÁ…¸±…ÍÌô‰Í•ÑÑ¥¹œµ¡•ÙÉ½¸ˆûŠèğ½ÍÁ…¸øğ½‘¥Øø(€€€€€€ñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµÉ½Üˆ¥ô‰É•™É•Í¡9½Üˆøñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµ¥½¸ˆø‘í%=9L¹É•™É•Í¡ôğ½‘¥Øøñ‘¥Øøñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµ¹…µ”ˆûy¥µ‘¤å•¹¥±”ğ½‘¥Øøñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµÙ…±Õ”ˆø‘íÑ¥µ•¼¡ÍÑ…Ñ”¹µ…É­•Ğ¹±…ÍÑMå¹Œ¥ôğ½‘¥Øøğ½‘¥ØøñÍÁ…¸±…ÍÌô‰Í•ÑÑ¥¹œµ¡•ÙÉ½¸ˆûŠèğ½ÍÁ…¸øğ½‘¥Øø(€€€€€€ñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµÉ½Üˆ¥ô‰Í½ÕÉ•MÑ…ÑÕÌˆøñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµ¥½¸ˆø‘í%=9L¹¥¹™½ôğ½‘¥Øøñ‘¥Øøñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµ¹…µ”ˆùY•É¤­…å¹…­±…ËÄğ½‘¥Øøñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµÙ…±Õ”ˆùŸÅ­±…¹·Ç|Ù”Ñ…¡µ¥¹¤Ù•É¤…åËÅ·Äğ½‘¥Øøğ½‘¥ØøñÍÁ…¸±…ÍÌô‰Í•ÑÑ¥¹œµ¡•ÙÉ½¸ˆûŠèğ½ÍÁ…¸øğ½‘¥Øø(€€€€ğ½‘¥Øøğ½‘¥Øø(€€€€ñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµÉ½ÕÀˆøñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµÉ½ÕÀµÑ¥Ñ±”ˆù-§}¥Í•±±—}Ñ¥Éµ”ğ½‘¥Øøñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµ±¥ÍĞˆø(€€€€€€ñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµÉ½Üˆ¥ô‰ÁÉ¥Ù…åM•ÑÑ¥¹œˆøñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµ¥½¸ˆø‘í%=9L¹•å•ôğ½‘¥Øøñ‘¥Øøñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµ¹…µ”ˆù¥é±¥±¥¬µ½‘Ôğ½‘¥Øøñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµÙ…±Õ”ˆùQÕÑ…É±…ËÄ‰Õ±…»Å­±‡}ÓÅÈğ½‘¥Øøğ½‘¥Øøñ¤±…ÍÌô‰Íİ¥Ñ €‘íÌ¹ÁÉ¥Ù…äü½¸œèœôˆøğ½¤øğ½‘¥Øø(€€€€€€ñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµÉ½Üˆ¥ô‰¹½Ñ¥™¥…Ñ¥½¹M•ÑÑ¥¹œˆøñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµ¥½¸ˆø‘í%=9L¹‰•±±ôğ½‘¥Øøñ‘¥Øøñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµ¹…µ”ˆùQ•µ•ÑÓğ‰¥±‘¥É¥µ±•É¤ğ½‘¥Øøñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµÙ…±Õ”ˆù!…¬­Õ±±…»Å´Ù”ƒÙ‘•µ”Õå…ËÅ±…ËÄğ½‘¥Øøğ½‘¥Øøñ¤±…ÍÌô‰Íİ¥Ñ €‘íÌ¹¹½Ñ¥™¥…Ñ¥½¹Ìü½¸œèœôˆøğ½¤øğ½‘¥Øø(€€€€€€ñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµÉ½Üˆ¥ô‰İ¥‘•Ñ!•±Àˆøñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµ¥½¸ˆø‘í%=9L¹İ¥‘•Ñôğ½‘¥Øøñ‘¥Øøñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµ¹…µ”ˆù¹‘É½¥İ¥‘•Ğ±…ËÄğ½‘¥Øøñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµÙ…±Õ”ˆùA½ÉÑ›ÙäƒÙé•Ñ¤Ù”ÏÅÉ…‘…­¤Ñ•µ•ÑÓğğ½‘¥Øøğ½‘¥ØøñÍÁ…¸±…ÍÌô‰Í•ÑÑ¥¹œµ¡•ÙÉ½¸ˆûŠèğ½ÍÁ…¸øğ½‘¥Øø(€€€€€€ñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµÉ½Üˆ¥ô‰ÁÉ½©•Ñ¥½¹M•ÑÑ¥¹Ìˆøñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµ¥½¸ˆø‘í%=9L¹Ñ…É•Ñôğ½‘¥Øøñ‘¥Øøñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµ¹…µ”ˆù•±¥È¡•‘•™¤ğ½‘¥Øøñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµÙ…±Õ”ˆø‘íµ½¹•ä¡Ì¹‘¥Ù¥‘•¹‘½…±¹¹Õ…°°QIdœ¥ô€¼çÅ°ğ½‘¥Øøğ½‘¥ØøñÍÁ…¸±…ÍÌô‰Í•ÑÑ¥¹œµ¡•ÙÉ½¸ˆûŠèğ½ÍÁ…¸øğ½‘¥Øø(€€€€ğ½‘¥Øøğ½‘¥Øø(€€€€ñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµÉ½ÕÀˆøñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµÉ½ÕÀµÑ¥Ñ±”ˆùe•‘•¬Ù”Ñ‡Åµ„ğ½‘¥Øøñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµ±¥ÍĞˆø(€€€€€€ñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµÉ½Üˆ¥ô‰•áÁ½ÉÑ…Ñ„ˆøñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµ¥½¸ˆø‘í%=9L¹‘½İ¹±½…‘ôğ½‘¥Øøñ‘¥Øøñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµ¹…µ”ˆùe•‘—}¤“Ç}„…­Ñ…Èğ½‘¥Øøñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµÙ…±Õ”ˆûy¥™É•±•¹µ•µ§|)M=8‘½Íå…ÏÄğ½‘¥Øøğ½‘¥ØøñÍÁ…¸±…ÍÌô‰Í•ÑÑ¥¹œµ¡•ÙÉ½¸ˆûŠèğ½ÍÁ…¸øğ½‘¥Øø(€€€€€€ñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµÉ½Üˆ¥ô‰•áÁ½ÉÑ…±•¹‘…Èˆøñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµ¥½¸ˆø‘í%=9L¹…±•¹‘…Éôğ½‘¥Øøñ‘¥Øøñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµ¹…µ”ˆùQ•µ•ÑÓğÑ…­Ù¥µ¥¹¤…­Ñ…Èğ½‘¥Øøñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµÙ…±Õ”ˆù½½±”½ÁÁ±”½=ÕÑ±½½¬§¥¸€¹¥Ìğ½‘¥Øøğ½‘¥ØøñÍÁ…¸±…ÍÌô‰Í•ÑÑ¥¹œµ¡•ÙÉ½¸ˆûŠèğ½ÍÁ…¸øğ½‘¥Øø(€€€€€€ñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµÉ½Üˆ¥ô‰¥µÁ½ÉÑ…Ñ„ˆøñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµ¥½¸ˆø‘í%=9L¹ÕÁ±½…‘ôğ½‘¥Øøñ‘¥Øøñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµ¹…µ”ˆùe•‘•­Ñ•¸•É¤çñ­±”ğ½‘¥Øøñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµÙ…±Õ”ˆù¥¹…¹Í…°¡¤)M=8å•‘—}¤ğ½‘¥Øøğ½‘¥ØøñÍÁ…¸±…ÍÌô‰Í•ÑÑ¥¹œµ¡•ÙÉ½¸ˆûŠèğ½ÍÁ…¸øğ½‘¥Øø(€€€€€€ñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµÉ½Üˆ¥ô‰É•Í•Ñ…Ñ„ˆøñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµ¥½¸ˆÍÑå±”ô‰½±½ÈéÙ…È ´µ¹•…Ñ¥Ù”¤í‰…­É½Õ¹éÉ‰„ ÈÔÔ°ÄÀÈ°ÄÈÜ°¸Àà¤ˆø‘í%=9L¹ÑÉ…Í¡ôğ½‘¥Øøñ‘¥Øøñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµ¹…µ”ˆÍÑå±”ô‰½±½ÈéÙ…È ´µ¹•…Ñ¥Ù”¤ˆùSñ´Ù•É¥±•É¤Í¥°ğ½‘¥Øøñ‘¥Ø±…ÍÌô‰Í•ÑÑ¥¹œµÙ…±Õ”ˆù¥¡…é‘…­¤å•É•°Á½ÉÑ›ÙçğÏÅ›ÅÉ±„ğ½‘¥Øøğ½‘¥ØøñÍÁ…¸±…ÍÌô‰Í•ÑÑ¥¹œµ¡•ÙÉ½¸ˆûŠèğ½ÍÁ…¸øğ½‘¥Øø(€€€€ğ½‘¥Øøğ½‘¥Øøñ‘¥Ø±…ÍÌô‰‘¥Í±…¥µ•Èˆù¥¹…¹Í…°¡¤Ø‘íAA}YIM%=9ô¸e…ÓÅËÅ´Ñ…ÙÍ¥å•Í¤‘—}¥±‘¥È¸¥å…ĞÙ”Ñ•µ•ÑÓğ­…çÅÑ±…ËÅ»Ä§}±•´å…Áµ…‘…¸ƒÙ¹”…É…Ä­ÕÉÕ´½-@Ù•É¥Í¥å±”‘¿}ÉÕ±„¸ğ½‘¥Øù€±í±…ÍÍ9…µ”èÍ•ÑÑ¥¹Ìµµ½‘…°ô¤ì(€€€€ œ‘…Ñ…M•ÑÑ¥¹Ìœ¤¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ±¥¬œ±Í¡½İ…Ñ…M•ÑÑ¥¹Ì¤ì(€€€€ œÉ•™É•Í¡9½Üœ¤¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ±¥¬œ° ¤ôùí±½Í•5½‘…° ¤íÉ•™É•Í¡±°¡í¥¹±Õ‘•½¹Ñ•¹ĞéÑÉÕ•ô¤íô¤ì(€€€€ œÍ½ÕÉ•MÑ…ÑÕÌœ¤¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ±¥¬œ±Í¡½İM½ÕÉ•MÑ…ÑÕÌ¤ì(€€€€ œÁÉ¥Ù…åM•ÑÑ¥¹œœ¤¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ±¥¬œ° ¤ôùíÍÑ…Ñ”¹Í•ÑÑ¥¹Ì¹ÁÉ¥Ù…äô…ÍÑ…Ñ”¹Í•ÑÑ¥¹Ì¹ÁÉ¥Ù…äíÍ…Ù•MÑ…Ñ” ¤íÍ¡½İM•ÑÑ¥¹Ì ¤íÉ•¹‘•ÉA…” ¤íô¤ì(€€€€ œ¹½Ñ¥™¥…Ñ¥½¹M•ÑÑ¥¹œœ¤¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ±¥¬œ° ¤ôùíÍÑ…Ñ”¹Í•ÑÑ¥¹Ì¹¹½Ñ¥™¥…Ñ¥½¹Ìô…ÍÑ…Ñ”¹Í•ÑÑ¥¹Ì¹¹½Ñ¥™¥…Ñ¥½¹ÌíÍ…Ù•MÑ…Ñ” ¤íÍ¡½İM•ÑÑ¥¹Ì ¤íÍ¡•‘Õ±•Ù•¹Ñ9½Ñ¥™¥…Ñ¥½¹Ì ¤íô¤ì(€€€€ œİ¥‘•Ñ!•±Àœ¤¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ±¥¬œ±Í¡½İ]¥‘•Ñ!•±À¤ì(€€€€ œÁÉ½©•Ñ¥½¹M•ÑÑ¥¹Ìœ¤¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ±¥¬œ±Í¡½İAÉ½©•Ñ¥½¹M•ÑÑ¥¹Ì¤ì(€€€€ œ•áÁ½ÉÑ…Ñ„œ¤¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ±¥¬œ±•áÁ½ÉÑ…Ñ„¤ì(€€€€ œ•áÁ½ÉÑ…±•¹‘…Èœ¤¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ±¥¬œ±•áÁ½ÉÑ…±•¹‘…È¤ì(€€€€ œ¥µÁ½ÉÑ…Ñ„œ¤¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ±¥¬œ° ¤ôø œ¥µÁ½ÉÑ%¹ÁÕĞœ¤¹±¥¬ ¤¤ì(€€€€ œÉ•Í•Ñ…Ñ„œ¤¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ±¥¬œ±½¹™¥ÉµI•Í•Ğ¤ì(€ô((€™Õ¹Ñ¥½¸Í¡½İ…Ñ…M•ÑÑ¥¹Ì ¤ì(€€€½¹ÍĞÌõÍÑ…Ñ”¹Í•ÑÑ¥¹Ìì(€€€Í¡½İ5½‘…°¡€‘íµ½‘…±!•…‘•È -§}¥Í•°Ù•É¤ÍÕ¹ÕÕÍÔœ¥ôñ™½É´¥ô‰‘…Ñ…½É´ˆøñ‘¥Ø±…ÍÌô‰™¥•±ˆøñ±…‰•°ùA$…‘É•Í¤ğ½±…‰•°øñ¥¹ÁÕĞ¹…µ”ô‰‰…­•¹‘UÉ°ˆÙ…±Õ”ôˆ‘í•ÍŒ¡Ì¹‰…­•¹‘UÉ°¥ôˆÁ±…•¡½±‘•Èô‰¡ÑÑÁÌè¼½…±…¹…‘¥¹¥è¹½´½™¥¹…¹Í…±•ˆ½…Á¤¹Á¡Àˆøğ½‘¥Øøñ‘¥Ø±…ÍÌô‰™¥•±ˆøñ±…‰•°ùA$•É§}¥´…¹…¡Ñ…ËÄğ½±…‰•°øñ¥¹ÁÕĞ¹…µ”ô‰‰…­•¹‘Q½­•¸ˆÙ…±Õ”ôˆ‘í•ÍŒ¡Ì¹‰…­•¹‘Q½­•¸¥ôˆÁ±…•¡½±‘•Èô‰-§}¥Í•°…¹…¡Ñ…Èˆøğ½‘¥Øøñ‘¥Ø±…ÍÌô‰™¥•±ˆøñ±…‰•°ù=Ñ½µ…Ñ¥¬å•¹¥±•µ”…É…³ÇÄğ½±…‰•°øñÍ•±•Ğ¹…µ”ô‰É•™É•Í¡5¥¹ÕÑ•Ìˆø‘ímlÄÔ°œÄÔ‘…­¥­„t±lÌÀ°œÌÀ‘…­¥­„t±lØÀ°œÄÍ……Ğt±lÄàÀ°œÌÍ……Ğt±lÌØÀ°œØÍ……Ğut¹µ…À ¡mØ±±t¤ôù€ñ½ÁÑ¥½¸Ù…±Õ”ôˆ‘íÙôˆ€‘í9Õµ‰•È¡Ì¹É•™É•Í¡5¥¹ÕÑ•Íñğ ¡Ì¹É•™É•Í¡!½ÕÉÍñğØ¤¨ØÀ¤¤ôôõØüÍ•±•Ñ•œèœôø‘í±ôğ½½ÁÑ¥½¸ù€¤¹©½¥¸ œœ¥ôğ½Í•±•Ğøğ½‘¥Øøñ‘¥Ø±…ÍÌô‰Ñ½±”µÉ½Üˆ¥ô‰…ÕÑ½I•™É•Í¡Q½±”ˆøñ‘¥Ø±…ÍÌô‰Ñ½±”µµ…¥¸ˆøñ‘¥Ø±…ÍÌô‰Ñ½±”µÑ¥Ñ±”ˆùUåÕ±…µ„‡ŸÅ³Å¹„å•¹¥±”ğ½‘¥Øøñ‘¥Ø±…ÍÌô‰Ñ½±”µ¹½Ñ”ˆùM½¸å•¹¥±•µ”ÏñÉ•Í¤‘½±‘ÕåÍ„½Ñ½µ…Ñ¥¬ƒ…³ÇÅÈğ½‘¥Øøğ½‘¥Øøñ¤±…ÍÌô‰Íİ¥Ñ €‘íÌ¹…ÕÑ½I•™É•Í ü½¸œèœôˆøğ½¤øñ¥¹ÁÕĞÑåÁ”ô‰¡¥‘‘•¸ˆ¹…µ”ô‰…ÕÑ½I•™É•Í ˆÙ…±Õ”ôˆ‘íÌ¹…ÕÑ½I•™É•Í üœÄœèœÀôˆøğ½‘¥Øøñ‘¥Ø±…ÍÌô‰‘¥Í±…¥µ•ÈˆùA,ì	%MP½	½Q…É…µ…ÏÅ»Ä°™¥å…Ñ±…ËÄÙ”QL™½¸­½‘±…ËÅ»Ä­•¹‘¤¹‘É½¥Ù•É¤­…Ñµ…»Å¹‘…¸½Ñ½µ…Ñ¥¬Í½ÉÕ±…È¸-§}¥Í•°A!@ÍÕ¹ÕÕÍÔå…±»Åé„ƒÙ¹‰•±±•¬°-@Ù”•¬‘…å…»Å­³Å³Å¬§¥¸¥ÍÑ—}”‰‡}³Å“ÅÈ¸ğ½‘¥Øøñ‘¥Ø±…ÍÌô‰‰ÕÑÑ½¸µÉ½Üˆøñ‰ÕÑÑ½¸ÑåÁ”ô‰‰ÕÑÑ½¸ˆ±…ÍÌô‰Í•½¹‘…Éäµ‰Ñ¸ˆ‘…Ñ„µµ½‘…°µ±½Í”ùY…é—œğ½‰ÕÑÑ½¸øñ‰ÕÑÑ½¸±…ÍÌô‰ÁÉ¥µ…Éäµ‰Ñ¸ˆù-…å‘•ĞÙ”Ñ•ÍĞ•Ğğ½‰ÕÑÑ½¸øğ½‘¥Øøğ½™½É´ù€¤ì(€€€€ œ…ÕÑ½I•™É•Í¡Q½±”œ¤¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ±¥¬œ° ¤ôùí½¹ÍĞÍÜô œ¹Íİ¥Ñ œ°œ…ÕÑ½I•™É•Í¡Q½±”œ¤íÍÜ¹±…ÍÍ1¥ÍĞ¹Ñ½±” ½¸œ¤ì œ‘…Ñ…½É´œ¤¹•±•µ•¹ÑÌ¹…ÕÑ½I•™É•Í ¹Ù…±Õ”õÍÜ¹±…ÍÍ1¥ÍĞ¹½¹Ñ…¥¹Ì ½¸œ¤üœÄœèœÀœíô¤ì(€€€€ œ‘…Ñ…½É´œ¤¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ÍÕ‰µ¥Ğœ±…Íå¹Œ”ôùí”¹ÁÉ•Ù•¹Ñ•™…Õ±Ğ ¤í½¹ÍĞ™õ¹•Ü½Éµ…Ñ„¡”¹ÕÉÉ•¹ÑQ…É•Ğ¤íÌ¹‰…­•¹‘UÉ°õMÑÉ¥¹œ¡™¹•Ğ ‰…­•¹‘UÉ°œ¤¤¹ÑÉ¥´ ¤¹É•Á±…” ½p¼¼°œœ¤íÌ¹‰…­•¹‘Q½­•¸õMÑÉ¥¹œ¡™¹•Ğ ‰…­•¹‘Q½­•¸œ¤¤¹ÑÉ¥´ ¤íÌ¹É•™É•Í¡5¥¹ÕÑ•Ìõ5…Ñ ¹µ…à ÄÔ±9Õµ‰•È¡™¹•Ğ É•™É•Í¡5¥¹ÕÑ•Ìœ¥ñğÄÔ¤¤íÌ¹É•™É•Í¡!½ÕÉÌõ5…Ñ ¹µ…à Ä±5…Ñ ¹É½Õ¹¡Ì¹É•™É•Í¡5¥¹ÕÑ•Ì¼ØÀ¤¤íÌ¹…ÕÑ½I•™É•Í õ™¹•Ğ …ÕÑ½I•™É•Í œ¤ôôôœÄœíÍ…Ù•MÑ…Ñ” ¤í±½Í•5½‘…° ¤í…İ…¥ĞÉ•™É•Í¡±° ¤íô¤ì(€ô((€™Õ¹Ñ¥½¸Í¡½İM½ÕÉ•MÑ…ÑÕÌ ¤ì(€€€Í¡½İ5½‘…°¡€‘íµ½‘…±!•…‘•È Y•É¤­…å¹…­±…ËÄœ¥ôñ‘¥Ø±…ÍÌô‰Í½ÕÉ”µÉ½Üˆøñ‘¥Øøñ‘¥Ø±…ÍÌô‰Í½ÕÉ”µ¹…µ”ˆù	%MP€¼	€¼Q€¼“ÙÙ¥èğ½‘¥Øøñ‘¥Ø±…ÍÌô‰Í½ÕÉ”µ¹½Ñ”ˆù•¥­µ•±¤™¥å…ĞÙ”—µ§|½±…äÙ•É¥Í¤ìÍ½¸‰‡}…ËÅ³Ä‘—}•È¥¡…é‘„ÑÕÑÕ±ÕÈ¸ğ½‘¥Øøğ½‘¥ØøñÍÁ…¸±…ÍÌô‰Í½ÕÉ”µÍÑ…Ñ”€‘íÍÑ…Ñ”¹µ…É­•Ğ¹±…ÍÑÉÉ½Èüİ…É¹¥¹œœèœôˆøñ¤øğ½¤ø‘íÍÑ…Ñ”¹µ…É­•Ğ¹±…ÍÑÉÉ½ÈüM½¸‘—}•Èœè!…ëÅÈôğ½ÍÁ…¸øğ½‘¥Øøñ‘¥Ø±…ÍÌô‰Í½ÕÉ”µÉ½Üˆøñ‘¥Øøñ‘¥Ø±…ÍÌô‰Í½ÕÉ”µ¹…µ”ˆùQLå…ÓÅËÅ´™½¹±…ËÄğ½‘¥Øøñ‘¥Ø±…ÍÌô‰Í½ÕÉ”µ¹½Ñ”ˆù-§}¥Í•°A!@×œ¹½­Ñ…ÏÄƒñé•É¥¹‘•¸QL—µ§|™¥å…ĞÍ½ÉÕÍÔ¸ğ½‘¥Øøğ½‘¥ØøñÍÁ…¸±…ÍÌô‰Í½ÕÉ”µÍÑ…Ñ”€‘íÍÑ…Ñ”¹Í•ÑÑ¥¹Ì¹‰…­•¹‘UÉ°üœœèİ…É¹¥¹œôˆøñ¤øğ½¤ø‘íÍÑ…Ñ”¹Í•ÑÑ¥¹Ì¹‰…­•¹‘UÉ°ü!…ëÅÈœèMÕ¹ÕÔ•É•­±¤ôğ½ÍÁ…¸øğ½‘¥Øøñ‘¥Ø±…ÍÌô‰Í½ÕÉ”µÉ½Üˆøñ‘¥Øøñ‘¥Ø±…ÍÌô‰Í½ÕÉ”µ¹…µ”ˆù-@Ñ•µ•ÑÓğ‰¥±‘¥É¥µ±•É¤ğ½‘¥Øøñ‘¥Ø±…ÍÌô‰Í½ÕÉ”µ¹½Ñ”ˆùŸÅ­±…¹·Ç|­…çÅÑ±…ÈÍÕ¹ÕÔ­…Ñµ…»Å¹‘„ƒÙ¹‰•±±—}”…³Å»ÅÈìÑ…¡µ¥¹±•È…åËÄ•Ñ¥­•Ñ±•¹¥È¸ğ½‘¥Øøğ½‘¥ØøñÍÁ…¸±…ÍÌô‰Í½ÕÉ”µÍÑ…Ñ”€‘íÍÑ…Ñ”¹Í•ÑÑ¥¹Ì¹‰…­•¹‘UÉ°üœœèİ…É¹¥¹œôˆøñ¤øğ½¤ø‘íÍÑ…Ñ”¹Í•ÑÑ¥¹Ì¹‰…­•¹‘UÉ°ü!…ëÅÈœèMÕ¹ÕÔ•É•­±¤ôğ½ÍÁ…¸øğ½‘¥Øøñ‘¥Ø±…ÍÌô‰‘¥Í±…¥µ•ÈˆûŠqŸÅ­±…¹·ÇŠt•Ñ¥­•Ñ¤­…å¹…­Ñ„•±•—}”çÙ¹•±¥¬Í½µÕĞ½±…ä‰Õ±Õ¹‘×}Õ¹‘„­Õ±±…»Å³ÅÈ¸—µ§|ƒÙ‘•µ”“ñé•¹¥¹‘•¸ƒñÉ•Ñ¥±•¸Ñ…É¥¡±•ÈÙ”ÑÕÑ…É±…È‘…¥µ„ƒŠqQ…¡µ¥¹§ŠtŸÙËñ»ñÈ¸ğ½‘¥Øù€¤ì(€ô((€™Õ¹Ñ¥½¸Í¡½İ]¥‘•Ñ!•±À ¤ì(€€€½¹ÍĞ´õÁ½ÉÑ™½±¥½5•ÑÉ¥Ì ¤±¹•áĞõÕÁ½µ¥¹Ù•¹ÑÌ Ä¥lÁtì(€€€Í¡½İ5½‘…°¡€‘íµ½‘…±!•…‘•È ¹‘É½¥…¹„•­É…¸İ¥‘•ÓŠe±…ËÄœ¥ôñ‘¥Ø±…ÍÌô‰…ÉˆÍÑå±”ô‰Á…‘‘¥¹œèÄÙÁàí‰…­É½Õ¹é±¥¹•…ÈµÉ…‘¥•¹Ğ ÄĞÕ‘•œ°ŒÄÈÌÈÍ°ŒÁ„ÈÀÈä¤ˆøñ‘¥Ø±…ÍÌô‰¡•É¼µ±…‰•°ˆù¥¹…¹Í…°¡¤ƒ
+ÜA½ÉÑ›Ùäğ½‘¥Øøñ‘¥Ø±…ÍÌô‰µ•ÑÉ¥ŒµÙ…±Õ”ˆÍÑå±”ô‰™½¹ĞµÍ¥é”èÈÑÁàˆø‘íµ½¹•ä¡´¹Ñ½Ñ…°°QIdœ¥ôğ½‘¥Øøñ‘¥Ø±…ÍÌô‰…ÍÍ•Ğµ¡…¹”€‘í´¹‘…¥±äøôÀüÁ½Í¥Ñ¥Ù”œè¹•…Ñ¥Ù”ôˆø‘íÁĞ¡´¹‘…¥±åAĞ¥ô‰ÕŸñ¸ğ½‘¥Øøñ‘¥Ø±…ÍÌô‰ÍÕµµ…ÉäµÍÑÉ¥ÀˆÍÑå±”ô‰µ…É¥¸µÑ½ÀèÄÍÁàˆøñ‘¥Ø±…ÍÌô‰ÍÕµµ…Éäµ¥Ñ•´ˆøñ‘¥Ø±…ÍÌô‰ÍÕµµ…Éäµ±…‰•°ˆùgÅ±³Å¬Ñ•µ•ÑÓğğ½‘¥Øøñ‘¥Ø±…ÍÌô‰ÍÕµµ…ÉäµÙ…±Õ”ˆø‘íµ½¹•ä¡´¹…¹¹Õ…±¥Ù¥‘•¹°QIdœ¥ôğ½‘¥Øøğ½‘¥Øøñ‘¥Ø±…ÍÌô‰ÍÕµµ…Éäµ¥Ñ•´ˆøñ‘¥Ø±…ÍÌô‰ÍÕµµ…Éäµ±…‰•°ˆùOÅÉ…‘…­¤ğ½‘¥Øøñ‘¥Ø±…ÍÌô‰ÍÕµµ…ÉäµÙ…±Õ”ˆø‘í¹•áĞı‘…Ñ•Q•áĞ¡¹•áĞ¹Á…å…Ñ•ññ¹•áĞ¹•á…Ñ”±í‘…äè¹Õµ•É¥Œœ±µ½¹Ñ èÍ¡½ÉĞô¤èŸŠPôğ½‘¥Øøğ½‘¥Øøñ‘¥Ø±…ÍÌô‰ÍÕµµ…Éäµ¥Ñ•´ˆøñ‘¥Ø±…ÍÌô‰ÍÕµµ…Éäµ±…‰•°ˆùñ¹•±±•µ”ğ½‘¥Øøñ‘¥Ø±…ÍÌô‰ÍÕµµ…ÉäµÙ…±Õ”ˆø‘íÍÑ…Ñ”¹µ…É­•Ğ¹±…ÍÑMå¹Œüñ¹•°œèe•É•°ôğ½‘¥Øøğ½‘¥Øøğ½‘¥Øøğ½‘¥Øøñ‘¥Ø±…ÍÌô‰‘¥Í±…¥µ•ÈˆùA,­ÕÉÕ±‘Õ­Ñ…¸Í½¹É„Ñ•±•™½¹Õ¸…¹„•­É…»Å¹„‰…ÏÅ³ÄÑÕĞƒŠH]¥‘•ÓŠe±…ÈƒŠH¥¹…¹Í…°¡¤ƒŠHƒŠqA½ÉÑ›ÙäƒYé•Ñ§ŠtÙ•å„ƒŠqOÅÉ…‘…­¤Q•µ•ÑÓóŠt¸]¥‘•Ğ°Í½¸‰‡}…ËÅ³Äå•¹¥±•µ•¹¥¸ŸñÙ•¹±¤ƒÙé•Ñ¥¹¤ŸÙÍÑ•É¥È¸ğ½‘¥Øù€¤ì(€ô((€™Õ¹Ñ¥½¸•áÁ½ÉÑ…Ñ„ ¤ì(€€€½¹ÍĞÁ…å±½…õ)M=8¹ÍÑÉ¥¹¥™ä¡ì¸¸¹ÍÑ…Ñ”±•áÁ½ÉÑ•‘Ğé¹•Ü…Ñ” ¤¹Ñ½%M=MÑÉ¥¹œ ¤±…ÁÁY•ÉÍ¥½¸éAA}YIM%=9ô±¹Õ±°°È¤í½¹ÍĞ™¥±•¹…µ”õ¥¹…¹Í…±µå•‘•¬´‘í¥Í½…Ñ” ¥ô¹©Í½¹€ì(€€€ÑÉäì¥˜¡İ¥¹‘½Ü¹¹‘É½¥ü¹‘½İ¹±½…‘¥±”¥íİ¥¹‘½Ü¹¹‘É½¥¹‘½İ¹±½…‘¥±”¡™¥±•¹…µ”±Á…å±½…°…ÁÁ±¥…Ñ¥½¸½©Í½¸œ¤íÍ¡½İQ½…ÍĞ e•‘•¬‘½Íå…ÏÄ¡…ëÅÉ±…¹“Äœ¤íÉ•ÑÕÉ¸íôô…Ñ ¡|¥íô(€€€½¹ÍĞ‰±½ˆõ¹•Ü	±½ˆ¡mÁ…å±½…‘t±íÑåÁ”è…ÁÁ±¥…Ñ¥½¸½©Í½¸ô¤±ÕÉ°õUI0¹É•…Ñ•=‰©•ÑUI0¡‰±½ˆ¤±„õ‘½Õµ•¹Ğ¹É•…Ñ•±•µ•¹Ğ „œ¤í„¹¡É•˜õÕÉ°í„¹‘½İ¹±½…õ™¥±•¹…µ”í„¹±¥¬ ¤íÍ•ÑQ¥µ•½ÕĞ  ¤ôùUI0¹É•Ù½­•=‰©•ÑUI0¡ÕÉ°¤°ÄÀÀÀ¤íÍ¡½İQ½…ÍĞ e•‘•¬¥¹‘¥É¥±‘¤œ¤ì(€ô((€™Õ¹Ñ¥½¸•áÁ½ÉÑ…±•¹‘…È ¤ì(€€€½¹ÍĞ™ÕÑÕÉ”€ôÍÑ…Ñ”¹‘¥Ù¥‘•¹‘Ù•¹ÑÌ(€€€€€€¹™¥±Ñ•È¡”€ôøÁ…ÉÍ•…Ñ”¡”¹Á…å…Ñ”ñğ”¹•á…Ñ”¤€øô…‘‘…åÌ¡¹•Ü…Ñ” ¤°€´Ä¤¤(€€€€€€¹Í½ÉĞ ¡„±ˆ¤€ôøÁ…ÉÍ•…Ñ”¡„¹Á…å…Ñ”ñğ„¹•á…Ñ”¤€´Á…ÉÍ•…Ñ”¡ˆ¹Á…å…Ñ”ñğˆ¹•á…Ñ”¤¤ì(€€€¥˜€ …™ÕÑÕÉ”¹±•¹Ñ ¤ìÍ¡½İQ½…ÍĞ ­Ñ…ËÅ±……¬å…­±‡}…¸Ñ•µ•ÑÓğ½±…çÄå½¬œ¤ìÉ•ÑÕÉ¸ìô(€€€½¹ÍĞ½µÁ…Ñ…Ñ”€ôÙ…±Õ”€ôøMÑÉ¥¹œ¡Ù…±Õ”ñğ€œœ¤¹Í±¥” À°ÄÀ¤¹É•Á±…•±° œ´œ°œœ¤ì(€€€½¹ÍĞ¹•áÑ…Ñ”€ôÙ…±Õ”€ôø½µÁ…Ñ…Ñ”¡¥Í½…Ñ”¡…‘‘…åÌ¡Á…ÉÍ•…Ñ”¡Ù…±Õ”¤°Ä¤¤¤ì(€€€½¹ÍĞ•Í…Á•%Ì€ôÙ…±Õ”€ôøMÑÉ¥¹œ¡Ù…±Õ”€üü€œœ¤¹É•Á±…•±° qpœ°qqqpœ¤¹É•Á±…•±° œìœ°qpìœ¤¹É•Á±…•±° œ°œ°qp°œ¤¹É•Á±…” ½qÈıq¸½œ°qq¸œ¤ì(€€€½¹ÍĞÍÑ…µÀ€ô¹•Ü…Ñ” ¤¹Ñ½%M=MÑÉ¥¹œ ¤¹É•Á±…” ½l´ét½œ°œœ¤¹É•Á±…” ½p¹q‘ìÍõh¼°hœ¤ì(€€€½¹ÍĞÍÑ…ÑÕÍ1…‰•°€ôÙ…±Õ”€ôø€¡í½¹™¥Éµ•èŸÅ­±…¹·Ç|œ±ÁÉ½Á½Í•èŸy¥É­•ĞÑ•­±¥™¤œ±•ÍÑ¥µ…Ñ•èQ…¡µ¥¹¤œ±¡¥ÍÑ½É¥…°è—µ§|õmÙ…±Õ•tñğ€-…çÅĞœ¤ì(€€€½¹ÍĞ±¥¹•Ì€ôl	%8éY19Hœ°YIM%=8èÈ¸Àœ°AI=%è´¼½¥¹…¹Í…±¼½Q•µ•ÑÑÔQ…­Ù¥µ¤¼½QHœ°1M1éI=I%8œ°5Q!=éAU	1%M œ°`µ]Hµ195é¥¹…¹Í…°¡¤Q•µ•ÑÓğQ…­Ù¥µ¤œ°`µ]HµQ%5i=9éÕÉ½Á”½%ÍÑ…¹‰Õ°tì(€€€™ÕÑÕÉ”¹™½É… ¡”€ôøì(€€€€€½¹ÍĞ„€ô…ÍÍ•Ñ	å%¡”¹…ÍÍ•Ñ%¤ì¥˜€ …„¤É•ÑÕÉ¸ì(€€€€€½¹ÍĞÁÉ•™¥à€ô”¹ÍÑ…ÑÕÌ€ôôô€•ÍÑ¥µ…Ñ•œ€ü€ŸŠ& €œ€è”¹ÍÑ…ÑÕÌ€ôôô€ÁÉ½Á½Í•œ€ü€Q•­±¥˜ƒ
+Ü€œ€è€œœì(€€€€€½¹ÍĞ‘•ÍÉ¥ÁÑ¥½¸€ô€‘íÍÑ…ÑÕÍ1…‰•°¡”¹ÍÑ…ÑÕÌ¥ôƒ
+Ü9•Ğå…­±‡Å¬€‘íµ½¹•ä¡•Ù•¹Ñ9•Ğ¡”¤°QIdœ¥ôƒ
+Ü€‘í”¹Í½ÕÉ”ñğ€¥¹…¹Í…°¡¤õ€ì(€€€€€½¹ÍĞ…ÁÁ•¹€ô€¡­¥¹±‘…Ñ”±ÍÕµµ…Éä¤€ôøì(€€€€€€€¥˜€ …‘…Ñ”¤É•ÑÕÉ¸ì(€€€€€€€±¥¹•Ì¹ÁÕÍ  	%8éYY9Pœ±U%è‘í•Í…Á•%Ì¡€‘í”¹¥‘ô´‘í­¥¹‘õ™¥¹…¹Í…±•ˆ¹±½…±€¥õ€±QMQ5@è‘íÍÑ…µÁõ€±QMQIPíY1UõQè‘í½µÁ…Ñ…Ñ”¡‘…Ñ”¥õ€±Q9íY1UõQè‘í¹•áÑ…Ñ”¡‘…Ñ”¥õ€±MU55Idè‘í•Í…Á•%Ì¡ÁÉ•™¥à€¬„¹Íåµ‰½°€¬€œƒ
+Ü€œ€¬ÍÕµµ…Éä¥õ€±MI%AQ%=8è‘í•Í…Á•%Ì¡‘•ÍÉ¥ÁÑ¥½¸¥õ€°Q=I%Lé¥¹…¹Í…±±Q•µ•ÑÓğœ°QI9M@éQI9MAI9Pœ°9éYY9Pœ¤ì(€€€€€ôì(€€€€€…ÁÁ•¹ •àœ±”¹•á…Ñ”°!…¬­Õ±±…»Å´Ÿñ»ğœ¤ì(€€€€€¥˜€¡”¹Á…å…Ñ”€˜˜€…Í…µ•…ä¡Á…ÉÍ•…Ñ”¡”¹Á…å…Ñ”¤±Á…ÉÍ•…Ñ”¡”¹•á…Ñ”¤¤¤…ÁÁ•¹ Á…äœ±”¹Á…å…Ñ”°ŸY‘•µ”Ÿñ»ğœ¤ì(€€€ô¤ì(€€€±¥¹•Ì¹ÁÕÍ  9éY19Hœ¤ì(€€€½¹ÍĞ½¹Ñ•¹Ğ€ô±¥¹•Ì¹©½¥¸ qÉq¸œ¤€¬€qÉq¸œì(€€€½¹ÍĞ™¥±•¹…µ”€ô¥¹…¹Í…±µÑ•µ•ÑÑÔµÑ…­Ù¥µ¤´‘í¥Í½…Ñ” ¥ô¹¥Í€ì(€€€ÑÉäì¥˜¡İ¥¹‘½Ü¹¹‘É½¥ü¹‘½İ¹±½…‘¥±”¥íİ¥¹‘½Ü¹¹‘É½¥¹‘½İ¹±½…‘¥±”¡™¥±•¹…µ”±½¹Ñ•¹Ğ°Ñ•áĞ½…±•¹‘…Èœ¤íÍ¡½İQ½…ÍĞ Q…­Ù¥´‘½Íå…ÏÄ¡…ëÅÉ±…¹“Äœ¤íÉ•ÑÕÉ¸íôô…Ñ ¡|¥íô(€€€½¹ÍĞ‰±½ˆõ¹•Ü	±½ˆ¡m½¹Ñ•¹Ñt±íÑåÁ”èÑ•áĞ½…±•¹‘…Èí¡…ÉÍ•ĞõÕÑ˜´àô¤±ÕÉ°õUI0¹É•…Ñ•=‰©•ÑUI0¡‰±½ˆ¤±„õ‘½Õµ•¹Ğ¹É•…Ñ•±•µ•¹Ğ „œ¤í„¹¡É•˜õÕÉ°í„¹‘½İ¹±½…õ™¥±•¹…µ”í„¹±¥¬ ¤íÍ•ÑQ¥µ•½ÕĞ  ¤ôùUI0¹É•Ù½­•=‰©•ÑUI0¡ÕÉ°¤°ÄÀÀÀ¤íÍ¡½İQ½…ÍĞ Q•µ•ÑÓğÑ…­Ù¥µ¤¥¹‘¥É¥±‘¤œ¤ì(€ô((€™Õ¹Ñ¥½¸¥µÁ½ÉÑ…Ñ„¡™¥±”¤ì(€€€½¹ÍĞÉ•…‘•Èõ¹•Ü¥±•I•…‘•È ¤íÉ•…‘•È¹½¹±½…ô ¤ôùíÑÉåí½¹ÍĞÁ…ÉÍ•õ)M=8¹Á…ÉÍ”¡É•…‘•È¹É•ÍÕ±Ğ¤íÍÑ…Ñ”õ¹½Éµ…±¥é•MÑ…Ñ”¡Á…ÉÍ•¤íÍÑ…Ñ”¹‘•µ¼õ™…±Í”íÍ…Ù•MÑ…Ñ” ¤í±½Í•5½‘…° ¤íÉ•¹‘•ÉA…” ¤íÍ¡½İQ½…ÍĞ e•‘•¬•É¤çñ­±•¹‘¤œ¤íõ…Ñ ¡”¥íÍ¡½İQ½…ÍĞ ½Íå„—•É±¤‰¥È¥¹…¹Í…°¡¤å•‘—}¤‘—}¥°œ°ÌØÀÀ¤íõôíÉ•…‘•È¹É•…‘ÍQ•áĞ¡™¥±”¤ì(€ô((€™Õ¹Ñ¥½¸½¹™¥ÉµI•Í•Ğ ¤ì(€€€Í¡½İ5½‘…°¡€‘íµ½‘…±!•…‘•È Sñ´Ù•É¥±•É¤Í¥°œ¥ôñ‘¥Ø±…ÍÌô‰•µÁÑäµÑ•áĞˆÍÑå±”ô‰™½¹ĞµÍ¥é”èÄÅÁàíµ…É¥¸èÀˆùA½ÉÑ›Ùä°§}±•µ±•È°Ñ•µ•ÑÓğÑ…­Ù¥µ¤Ù”…å…É±…È‰Ô¥¡…é‘…¸­…³ÅÄ½±…É…¬Í¥±¥¹••¬¸ƒY¹”å•‘•¬…±µ…¬µ…¹ÓÅ­³Å“ÅÈ¸ğ½‘¥Øøñ‘¥Ø±…ÍÌô‰‰ÕÑÑ½¸µÉ½Üˆøñ‰ÕÑÑ½¸±…ÍÌô‰Í•½¹‘…Éäµ‰Ñ¸ˆ‘…Ñ„µµ½‘…°µ±½Í”ùY…é—œğ½‰ÕÑÑ½¸øñ‰ÕÑÑ½¸±…ÍÌô‰‘…¹•Èµ‰Ñ¸ˆ¥ô‰É•Í•Ñ½¹™¥É´ˆùSñ·ñ»ğÍ¥°ğ½‰ÕÑÑ½¸øğ½‘¥Øù€¤ì(€€€€ œÉ•Í•Ñ½¹™¥É´œ¤¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ±¥¬œ° ¤ôùíÍÑ…Ñ”õ‰±…¹­MÑ…Ñ” ¤í±½…±MÑ½É…”¹É•µ½Ù•%Ñ•´¡MQ=I}-d¤í±½…±MÑ½É…”¹Í•Ñ%Ñ•´¡=9	=I%9}-d°œÄœ¤íÍ…Ù•MÑ…Ñ” ¤í±½Í•5½‘…° ¤íÉ•¹‘•ÉA…” ¤íÍ¡½İQ½…ÍĞ Sñ´Ù•É¥±•ÈÍ¥±¥¹‘¤œ¤íô¤ì(€ô((€™Õ¹Ñ¥½¸…ÍÍ•ÑQåÁ•MÕÁÁ½ÉÑÍ1½½­ÕÀ¡ÑåÁ”¤ì(€€€É•ÑÕÉ¸€…lUMQ=4œ°M œ°	=9t¹¥¹±Õ‘•Ì¡MÑÉ¥¹œ¡ÑåÁ•ñğœœ¤¹Ñ½UÁÁ•É…Í” ¤¤ì(€ô((€™Õ¹Ñ¥½¸¹½Éµ…±¥é•5…É­•ÑM•…É¡I•ÍÕ±Ğ¡¥Ñ•´°™…±±‰…­QåÁ”¤ì(€€€½¹ÍĞÍ½ÕÉ•Måµ‰½°õMÑÉ¥¹œ¡¥Ñ•´ü¹Í½ÕÉ•Måµ‰½±ññ¥Ñ•´ü¹Íåµ‰½±ñğœœ¤¹Ñ½UÁÁ•É…Í” ¤ì(€€€½¹ÍĞÑåÁ”õMÑÉ¥¹œ¡¥Ñ•´ü¹ÑåÁ•ññ™…±±‰…­QåÁ•ñğ	%MPœ¤¹Ñ½UÁÁ•É…Í” ¤ì(€€€½¹ÍĞ‘¥ÍÁ±…åMåµ‰½°õMÑÉ¥¹œ¡¥Ñ•´ü¹Íåµ‰½°ñğ€¡ÑåÁ”ôôô	%MPœıÍ½ÕÉ•Måµ‰½°¹É•Á±…” ½p¹%L¼°œœ¤éÍ½ÕÉ•Måµ‰½°¤¤¹Ñ½UÁÁ•É…Í” ¤ì(€€€É•ÑÕÉ¸ì(€€€€€Íåµ‰½°é‘¥ÍÁ±…åMåµ‰½°°(€€€€€Í½ÕÉ•Måµ‰½°éÍ½ÕÉ•Måµ‰½°ñğ¥¹™•ÉM½ÕÉ•Måµ‰½°¡‘¥ÍÁ±…åMåµ‰½°±ÑåÁ”¤°(€€€€€¹…µ”éMÑÉ¥¹œ¡¥Ñ•´ü¹¹…µ•ññ¥Ñ•´ü¹±½¹¹…µ•ññ¥Ñ•´ü¹Í¡½ÉÑ¹…µ•ññ‘¥ÍÁ±…åMåµ‰½°¤°(€€€€€ÑåÁ”°(€€€€€ÕÉÉ•¹äéMÑÉ¥¹œ¡¥Ñ•´ü¹ÕÉÉ•¹åññQeA}5QmÑåÁ•tü¹ÕÉÉ•¹åñğQIdœ¤°(€€€€€•á¡…¹”éMÑÉ¥¹œ¡¥Ñ•´ü¹•á¡…¹•ñğœœ¤°(€€€€€ÁÉ¥”é9Õµ‰•È¡¥Ñ•´ü¹ÁÉ¥•ññ¥Ñ•´ü¹É•Õ±…É5…É­•ÑAÉ¥•ñğÀ¤°(€€€€€ÁÉ•Ù±½Í”é9Õµ‰•È¡¥Ñ•´ü¹ÁÉ•Ù±½Í•ññ¥Ñ•´ü¹É•Õ±…É5…É­•ÑAÉ•Ù¥½ÕÍ±½Í•ñğÀ¤°(€€€€€¡…¹•AĞé9Õµ‰•È¡¥Ñ•´ü¹¡…¹•AÑññ¥Ñ•´ü¹É•Õ±…É5…É­•Ñ¡…¹•A•É•¹ÑñğÀ¤°(€€€€€Í½ÕÉ”éMÑÉ¥¹œ¡¥Ñ•´ü¹Í½ÕÉ•ñğ=Ñ½µ…Ñ¥¬Á¥å…Í„…É…µ…ÏÄœ¤(€€€ôì(€ô((€…Íå¹Œ™Õ¹Ñ¥½¸‘¥É•Ñe…¡½½M•…É ¡ÅÕ•Éä±ÑåÁ”¤ì(€€€¥˜¡ÑåÁ”ôôôQLœ¤ì(€€€€€½¹ÍĞ½‘”õMÑÉ¥¹œ¡ÅÕ•Éä¤¹É•Á±…” ½myµhÀ´åt½¤°œœ¤¹Ñ½UÁÁ•É…Í” ¤ì(€€€€€½¹ÍĞÅÕ½Ñ”õ…İ…¥ĞÑ•™…ÍEÕ½Ñ”¡½‘”¤ì(€€€€€É•ÑÕÉ¸m¹½Éµ…±¥é•5…É­•ÑM•…É¡I•ÍÕ±Ğ¡ì¸¸¹ÅÕ½Ñ”±Íåµ‰½°é½‘”±Í½ÕÉ•Måµ‰½°é½‘”±ÑåÁ”èQLô°QLœ¥tì(€€€ô(€€€¥˜¡ÑåÁ”ôôô=1œ¤ì(€€€€€½¹ÍĞÅÕ½Ñ”õ…İ…¥ĞÅÕ½Ñ•½ÉÍÍ•Ğ¡íÍåµ‰½°èI41Q%8œ±Í½ÕÉ•Måµ‰½°èI5}1Q%8œ±ÑåÁ”è=1œ±ÕÉÉ•¹äèQIdô¤ì(€€€€€É•ÑÕÉ¸m¹½Éµ…±¥é•5…É­•ÑM•…É¡I•ÍÕ±Ğ¡ì¸¸¹ÅÕ½Ñ”±Íåµ‰½°èI41Q%8œ±Í½ÕÉ•Måµ‰½°èI5}1Q%8œ±¹…µ”èÉ…´±ÓÅ¸œ±ÑåÁ”è=1ô°=1œ¥tì(€€€ô(€€€¥˜¡ÑåÁ”ôôôM%1YHœ¤ì(€€€€€½¹ÍĞÅÕ½Ñ”õ…İ…¥ĞÅÕ½Ñ•½ÉÍÍ•Ğ¡íÍåµ‰½°èI4q7sxœ±Í½ÕÉ•Måµ‰½°èI5}U5ULœ±ÑåÁ”èM%1YHœ±ÕÉÉ•¹äèQIdô¤ì(€€€€€É•ÑÕÉ¸m¹½Éµ…±¥é•5…É­•ÑM•…É¡I•ÍÕ±Ğ¡ì¸¸¹ÅÕ½Ñ”±Íåµ‰½°èI4q7sxœ±Í½ÕÉ•Måµ‰½°èI5}U5ULœ±¹…µ”èÉ…´ñ·ó|œ±ÑåÁ”èM%1YHô°M%1YHœ¥tì(€€€ô(€€€½¹ÍĞÕÉ°õ¡ÑÑÁÌè¼½ÅÕ•ÉäÄ¹™¥¹…¹”¹å…¡½¼¹½´½ØÄ½™¥¹…¹”½Í•…É ıÄô‘í•¹½‘•UI%½µÁ½¹•¹Ğ¡ÅÕ•Éä¥ô™ÅÕ½Ñ•Í½Õ¹ĞôÄÔ™¹•İÍ½Õ¹ĞôÀ™±¥ÍÑÍ½Õ¹ĞôÀ™•¹…‰±•ÕééåEÕ•ÉäõÑÉÕ•€ì(€€€½¹ÍĞ©Í½¸õ…İ…¥Ğ™•Ñ¡)Í½¸¡ÕÉ°±íô°ÄÔÀÀÀ¤ì(€€€½¹ÍĞÉ•ÍÕ±ÑÌô¡©Í½¸ü¹ÅÕ½Ñ•Íññmt¤¹™¥±Ñ•È¡¥Ñ•´ôùì(€€€€€½¹ÍĞÍåµ‰½°õMÑÉ¥¹œ¡¥Ñ•´¹Íåµ‰½±ñğœœ¤¹Ñ½UÁÁ•É…Í” ¤ì(€€€€€½¹ÍĞÅÕ½Ñ•QåÁ”õMÑÉ¥¹œ¡¥Ñ•´¹ÅÕ½Ñ•QåÁ•ñğœœ¤¹Ñ½UÁÁ•É…Í” ¤ì(€€€€€½¹ÍĞ•á¡…¹”õMÑÉ¥¹œ¡¥Ñ•´¹•á¡…¹•ññ¥Ñ•´¹•á¡¥ÍÁñğœœ¤¹Ñ½UÁÁ•É…Í” ¤ì(€€€€€½¹ÍĞÕÉÉ•¹äõMÑÉ¥¹œ¡¥Ñ•´¹ÕÉÉ•¹åñğœœ¤¹Ñ½UÁÁ•É…Í” ¤ì(€€€€€¥˜¡ÑåÁ”ôôô	%MPœ¥É•ÑÕÉ¸Íåµ‰½°¹•¹‘Í]¥Ñ  œ¹%Lœ¥ññ•á¡…¹”¹¥¹±Õ‘•Ì %MPœ¥ññ•á¡…¹”¹¥¹±Õ‘•Ì 	%MPœ¤ì(€€€€€¥˜¡ÑåÁ”ôôôQœ¥É•ÑÕÉ¸ÅÕ½Ñ•QåÁ”ôôôQœì(€€€€€¥˜¡ÑåÁ”ôôôULœ¥É•ÑÕÉ¸ÅÕ½Ñ•QåÁ”ôôôEU%Qdœ˜˜…Íåµ‰½°¹•¹‘Í]¥Ñ  œ¹%Lœ¤˜˜ …ÕÉÉ•¹åññÕÉÉ•¹äôôôUMœ¤ì(€€€€€¥˜¡ÑåÁ”ôôôIeAQ<œ¥É•ÑÕÉ¸ÅÕ½Ñ•QåÁ”¹¥¹±Õ‘•Ì IeAQ<œ¥ññÍåµ‰½°¹•¹‘Í]¥Ñ  œµUMœ¤ì(€€€€€¥˜¡ÑåÁ”ôôô`œ¥É•ÑÕÉ¸ÅÕ½Ñ•QåÁ”ôôôUII9dœì(€€€€€É•ÑÕÉ¸ÑÉÕ”ì(€€€ô¤¹Í±¥” À°ÄÀ¤¹µ…À¡¥Ñ•´ôù¹½Éµ…±¥é•5…É­•ÑM•…É¡I•ÍÕ±Ğ¡ì(€€€€€Íåµ‰½°éÑåÁ”ôôô	%MPœıMÑÉ¥¹œ¡¥Ñ•´¹Íåµ‰½±ñğœœ¤¹É•Á±…” ½p¹%L½¤°œœ¤é¥Ñ•´¹Íåµ‰½°°(€€€€€Í½ÕÉ•Måµ‰½°é¥Ñ•´¹Íåµ‰½°°(€€€€€¹…µ”é¥Ñ•´¹±½¹¹…µ•ññ¥Ñ•´¹Í¡½ÉÑ¹…µ•ññ¥Ñ•´¹Íåµ‰½°°(€€€€€ÑåÁ”°(€€€€€ÕÉÉ•¹äé¥Ñ•´¹ÕÉÉ•¹ä°(€€€€€•á¡…¹”é¥Ñ•´¹•á¡…¹•ññ¥Ñ•´¹•á¡¥ÍÀ°(€€€€€ÁÉ¥”é¥Ñ•´¹É•Õ±…É5…É­•ÑAÉ¥”°(€€€€€ÁÉ•Ù±½Í”é¥Ñ•´¹É•Õ±…É5…É­•ÑAÉ•Ù¥½ÕÍ±½Í”°(€€€€€¡…¹•AĞé¥Ñ•´¹É•Õ±…É5…É­•Ñ¡…¹•A•É•¹Ğ°(€€€€€Í½ÕÉ”èA¥å…Í„Í•µ‰½°…É…µ…ÏÄœ(€€€ô±ÑåÁ”¤¤ì(€€€¥˜¡É•ÍÕ±ÑÌ¹±•¹Ñ ¥É•ÑÕÉ¸É•ÍÕ±ÑÌì(€€€½¹ÍĞ‘¥ÍÁ±…äõMÑÉ¥¹œ¡ÅÕ•Éä¤¹ÑÉ¥´ ¤¹Ñ½UÁÁ•É…Í” ¤ì(€€€ÑÉäì(€€€€€½¹ÍĞÅÕ½Ñ”õ…İ…¥ĞÅÕ½Ñ•½ÉÍÍ•Ğ¡íÍåµ‰½°é‘¥ÍÁ±…ä±Í½ÕÉ•Måµ‰½°é¥¹™•ÉM½ÕÉ•Måµ‰½°¡‘¥ÍÁ±…ä±ÑåÁ”¤±ÑåÁ”±ÕÉÉ•¹äéQeA}5QmÑåÁ•tü¹ÕÉÉ•¹åñğQIdô¤ì(€€€€€É•ÑÕÉ¸m¹½Éµ…±¥é•5…É­•ÑM•…É¡I•ÍÕ±Ğ¡ì¸¸¹ÅÕ½Ñ”±Íåµ‰½°é‘¥ÍÁ±…ä±Í½ÕÉ•Måµ‰½°é¥¹™•ÉM½ÕÉ•Måµ‰½°¡‘¥ÍÁ±…ä±ÑåÁ”¤±ÑåÁ•ô±ÑåÁ”¥tì(€€€ô…Ñ €¡|¤ìÉ•ÑÕÉ¸mtìô(€ô((€…Íå¹Œ™Õ¹Ñ¥½¸Í•…É¡ÍÍ•Ñ…¹‘¥‘…Ñ•Ì¡ÅÕ•Éä±ÑåÁ”¤ì(€€€½¹ÍĞ¹½Éµ…±¥é•‘EÕ•ÉäõMÑÉ¥¹œ¡ÅÕ•Éåñğœœ¤¹ÑÉ¥´ ¤ì(€€€½¹ÍĞ¹½Éµ…±¥é•‘QåÁ”õMÑÉ¥¹œ¡ÑåÁ•ñğ	%MPœ¤¹Ñ½UÁÁ•É…Í” ¤ì(€€€¥˜¡İ¥¹‘½Ü¹¹‘É½¥ü¹É•ÅÕ•ÍÑ5…É­•Ñ…Ñ„¤ì(€€€€€ÑÉäì(€€€€€€€½¹ÍĞÉ•ÍÁ½¹Í”õ…İ…¥Ğ¹…Ñ¥Ù•5…É­•Ñ…±° Í•…É œ±íÅÕ•Éäé¹½Éµ…±¥é•‘EÕ•Éä±ÑåÁ”é¹½Éµ…±¥é•‘QåÁ•ô°ÈØÀÀÀ¤ì(€€€€€€€É•ÑÕÉ¸€¡É•ÍÁ½¹Í”ü¹‘…Ñ„ü¹É•ÍÕ±ÑÍññmt¤¹µ…À¡¥Ñ•´ôù¹½Éµ…±¥é•5…É­•ÑM•…É¡I•ÍÕ±Ğ¡¥Ñ•´±¹½Éµ…±¥é•‘QåÁ”¤¤ì(€€€€€ô…Ñ ¡•ÉÉ½È¤ì½¹Í½±”¹İ…É¸ 9…Ñ¥Ù”Í•…É ™…±±‰…¬œ±•ÉÉ½È¤ìô(€€€ô(€€€¥˜¡ÍÑ…Ñ”¹Í•ÑÑ¥¹Ì¹‰…­•¹‘UÉ°¤ì(€€€€€ÑÉäì(€€€€€€€½¹ÍĞÉ•ÍÁ½¹Í”õ…İ…¥Ğ‰…­•¹‘…±°¡í…Ñ¥½¸èÍ•…É œ±ÅÕ•Éäé¹½Éµ…±¥é•‘EÕ•Éä±ÑåÁ”é¹½Éµ…±¥é•‘QåÁ•ô¤ì(€€€€€€€¥˜¡É•ÍÁ½¹Í”ü¹½¬¥É•ÑÕÉ¸€¡É•ÍÁ½¹Í”¹‘…Ñ„ü¹É•ÍÕ±ÑÍññmt¤¹µ…À¡¥Ñ•´ôù¹½Éµ…±¥é•5…É­•ÑM•…É¡I•ÍÕ±Ğ¡¥Ñ•´±¹½Éµ…±¥é•‘QåÁ”¤¤ì(€€€€€ô…Ñ ¡•ÉÉ½È¤ì½¹Í½±”¹İ…É¸ 	…­•¹Í•…É ™…±±‰…¬œ±•ÉÉ½È¤ìô(€€€ô(€€€É•ÑÕÉ¸‘¥É•Ñe…¡½½M•…É ¡¹½Éµ…±¥é•‘EÕ•Éä±¹½Éµ…±¥é•‘QåÁ”¤ì(€ô((€…Íå¹Œ™Õ¹Ñ¥½¸±½½­ÕÁEÕ½Ñ•AÉ•Ù¥•Ü¡…¹‘¥‘…Ñ”¤ì(€€€É•ÑÕÉ¸ÅÕ½Ñ•½ÉÍÍ•Ğ¡ì(€€€€€Íåµ‰½°é…¹‘¥‘…Ñ”¹Íåµ‰½°°(€€€€€Í½ÕÉ•Måµ‰½°é…¹‘¥‘…Ñ”¹Í½ÕÉ•Måµ‰½±ññ¥¹™•ÉM½ÕÉ•Måµ‰½°¡…¹‘¥‘…Ñ”¹Íåµ‰½°±…¹‘¥‘…Ñ”¹ÑåÁ”¤°(€€€€€ÑåÁ”é…¹‘¥‘…Ñ”¹ÑåÁ”°(€€€€€ÕÉÉ•¹äé…¹‘¥‘…Ñ”¹ÕÉÉ•¹åññQeA}5Qm…¹‘¥‘…Ñ”¹ÑåÁ•tü¹ÕÉÉ•¹åñğQIdœ(€€€ô¤ì(€ô((€™Õ¹Ñ¥½¸¥¹™•ÉM½ÕÉ•Måµ‰½°¡Íåµ‰½°±ÑåÁ”¤ì(€€€½¹ÍĞÌõMÑÉ¥¹œ¡Íåµ‰½±ñğœœ¤¹ÑÉ¥´ ¤¹Ñ½UÁÁ•É…Í” ¤ì(€€€¥˜¡ÑåÁ”ôôô	%MPœ¤É•ÑÕÉ¸Ì¹•¹‘Í]¥Ñ  œ¹%Lœ¤ıÌé€‘íÍô¹%M€ì(€€€¥˜¡ÑåÁ”ôôô=1œ¤É•ÑÕÉ¸€I5}1Q%8œì(€€€¥˜¡ÑåÁ”ôôôM%1YHœ¤É•ÑÕÉ¸€I5}U5ULœì(€€€¥˜¡ÑåÁ”ôôô`œ¤ì(€€€€€¥˜¡ÌôôôUMQIdññÌôôôUM½QIdœ¥É•ÑÕÉ¸€QIdõ`œì(€€€€€¥˜¡ÌôôôUIQIdññÌôôôUH½QIdœ¥É•ÑÕÉ¸€UIQIdõ`œì(€€€€€É•ÑÕÉ¸Ì¹¥¹±Õ‘•Ì œõ`œ¤ıÌé€‘íÌ¹É•Á±…” œ¼œ°œœ¥ôõa€ì(€€€ô(€€€¥˜¡ÑåÁ”ôôôIeAQ<œ¤É•ÑÕÉ¸Ì¹¥¹±Õ‘•Ì œ´œ¤ıÌé€‘íÍôµUM€ì(€€€É•ÑÕÉ¸Ìì(€ô((€…Íå¹Œ™Õ¹Ñ¥½¸™•Ñ¡)Í½¸¡ÕÉ°°½ÁÑ¥½¹Ì€ôíô°Ñ¥µ•½ÕĞ€ô€ÄÈÀÀÀ¤ì(€€€½¹ÍĞ½¹ÑÉ½±±•Èõ¹•Ü‰½ÉÑ½¹ÑÉ½±±•È ¤í½¹ÍĞÑ¥µ•ÈõÍ•ÑQ¥µ•½ÕĞ  ¤ôù½¹ÑÉ½±±•È¹…‰½ÉĞ ¤±Ñ¥µ•½ÕĞ¤ì(€€€ÑÉäí½¹ÍĞÉ•Ìõ…İ…¥Ğ™•Ñ ¡ÕÉ°±ì¸¸¹½ÁÑ¥½¹Ì±Í¥¹…°é½¹ÑÉ½±±•È¹Í¥¹…°±…¡”è¹¼µÍÑ½É”ô¤í¥˜ …É•Ì¹½¬¥Ñ¡É½Ü¹•ÜÉÉ½È¡!QQ@€‘íÉ•Ì¹ÍÑ…ÑÕÍõ€¤íÉ•ÑÕÉ¸…İ…¥ĞÉ•Ì¹©Í½¸ ¤íô(€€€™¥¹…±±åí±•…ÉQ¥µ•½ÕĞ¡Ñ¥µ•È¤íô(€ô((€…Íå¹Œ™Õ¹Ñ¥½¸‰…­•¹‘…±°¡Á…É…µÌ°Ñ¥µ•½ÕĞ€ô€ÄÈÀÀÀ¤ì(€€€½¹ÍĞ‰…Í”õÍÑ…Ñ”¹Í•ÑÑ¥¹Ì¹‰…­•¹‘UÉ°í¥˜ …‰…Í”¥Ñ¡É½Ü¹•ÜÉÉ½È MÕ¹ÕÔÑ…»Åµ³Ä‘—}¥°œ¤ì(€€€½¹ÍĞÕÉ°õ¹•ÜUI0¡‰…Í”±İ¥¹‘½Ü¹±½…Ñ¥½¸¹¡É•˜¹ÍÑ…ÉÑÍ]¥Ñ  ¡ÑÑÀœ¤ıİ¥¹‘½Ü¹±½…Ñ¥½¸¹¡É•˜éÕ¹‘•™¥¹•¤ì(€€€=‰©•Ğ¹•¹ÑÉ¥•Ì¡Á…É…µÌ¤¹™½É…  ¡m¬±Ùt¤ôùÕÉ°¹Í•…É¡A…É…µÌ¹Í•Ğ¡¬±Ø¤¤ì(€€€½¹ÍĞ¡•…‘•ÉÌõÍÑ…Ñ”¹Í•ÑÑ¥¹Ì¹‰…­•¹‘Q½­•¸ıì`µÁ¤µQ½­•¸œéÍÑ…Ñ”¹Í•ÑÑ¥¹Ì¹‰…­•¹‘Q½­•¹ôéíôì(€€€É•ÑÕÉ¸™•Ñ¡)Í½¸¡ÕÉ°¹Ñ½MÑÉ¥¹œ ¤±í¡•…‘•ÉÍô±Ñ¥µ•½ÕĞ¤ì(€ô((€…Íå¹Œ™Õ¹Ñ¥½¸å…¡½½EÕ½Ñ”¡Íåµ‰½°¤ì(€€€½¹ÍĞÕÉ°õ¡ÑÑÁÌè¼½ÅÕ•ÉäÄ¹™¥¹…¹”¹å…¡½¼¹½´½Øà½™¥¹…¹”½¡…ÉĞ¼‘í•¹½‘•UI%½µÁ½¹•¹Ğ¡Íåµ‰½°¥ôı¥¹Ñ•ÉÙ…°ôÅ™É…¹”ôÅµ¼™•Ù•¹ÑÌõ‘¥Ø”ÉÍÁ±¥ÑÌ™¥¹±Õ‘•‘©ÕÍÑ•‘±½Í”õÑÉÕ•€ì(€€€½¹ÍĞ©Í½¸õ…İ…¥Ğ™•Ñ¡)Í½¸¡ÕÉ°±íô°ÄÔÀÀÀ¤í½¹ÍĞÉ•ÍÕ±Ğõ©Í½¸ü¹¡…ÉĞü¹É•ÍÕ±Ğü¹lÁtí¥˜ …É•ÍÕ±Ğ¥Ñ¡É½Ü¹•ÜÉÉ½È¡©Í½¸ü¹¡…ÉĞü¹•ÉÉ½Èü¹‘•ÍÉ¥ÁÑ¥½¹ñğA¥å…Í„Ù•É¥Í¤‰Õ±Õ¹…µ…“Äœ¤ì(€€€½¹ÍĞ±½Í•Ìô¡É•ÍÕ±Ğ¹¥¹‘¥…Ñ½ÉÌü¹ÅÕ½Ñ”ü¹lÁtü¹±½Í•ññmt¤¹µ…À¡9Õµ‰•È¤¹™¥±Ñ•È¡9Õµ‰•È¹¥Í¥¹¥Ñ”¤í½¹ÍĞÑ¥µ•ÍÑ…µÁÌõÉ•ÍÕ±Ğ¹Ñ¥µ•ÍÑ…µÁññmtí½¹ÍĞµ•Ñ„õÉ•ÍÕ±Ğ¹µ•Ñ…ññíôí½¹ÍĞÁÉ¥”õ9Õµ‰•È¡µ•Ñ„¹É•Õ±…É5…É­•ÑAÉ¥•ññ±½Í•Ì¹…Ğ ´Ä¤¤í½¹ÍĞÁÉ•Øõ9Õµ‰•È¡µ•Ñ„¹¡…ÉÑAÉ•Ù¥½ÕÍ±½Í•ññµ•Ñ„¹ÁÉ•Ù¥½ÕÍ±½Í•ññ±½Í•Ì¹…Ğ ´È¥ññÁÉ¥”¤í½¹ÍĞ•Ù•¹ÑÌõ=‰©•Ğ¹Ù…±Õ•Ì¡É•ÍÕ±Ğ¹•Ù•¹ÑÌü¹‘¥Ù¥‘•¹‘Íññíô¤¹µ…À¡”ôø¡í‘…Ñ”é¥Í½…Ñ”¡¹•Ü…Ñ”¡9Õµ‰•È¡”¹‘…Ñ”¤¨ÄÀÀÀ¤¤±…µ½Õ¹Ğé9Õµ‰•È¡”¹…µ½Õ¹ÑñğÀ¥ô¤¤ì(€€€É•ÑÕÉ¸íÍåµ‰½°±¹…µ”éµ•Ñ„¹Í¡½ÉÑ9…µ•ññµ•Ñ„¹±½¹9…µ•ññÍåµ‰½°±ÁÉ¥”±ÁÉ•Ù±½Í”éÁÉ•Ø±¡…¹•AĞéÁÉ•Øü¡ÁÉ¥”µÁÉ•Ø¤½ÁÉ•Ø¨ÄÀÀèÀ±ÕÉÉ•¹äéµ•Ñ„¹ÕÉÉ•¹åññ¹Õ±°±•á¡…¹”éµ•Ñ„¹•á¡…¹•9…µ•ñğœœ±¡¥ÍÑ½Éäé±½Í•Ì±Ñ¥µ•ÍÑ…µÁÌ±‘¥Ù¥‘•¹‘Ìé•Ù•¹ÑÌ±Í½ÕÉ”èA¥å…Í„Ù•É¥Í¤ôì(€ô((€…Íå¹Œ™Õ¹Ñ¥½¸™Õ¹‘••Í½É½‘”¡½‘”°¹…µ”€ô€œœ¤ì(€€€¥˜€ …ÍÑ…Ñ”¹Í•ÑÑ¥¹Ì¹‰…­•¹‘UÉ°¤É•ÑÕÉ¸¹Õ±°ì(€€€ÑÉäì(€€€€€½¹ÍĞ‘…Ñ„€ô…İ…¥Ğ‰…­•¹‘…±°¡í…Ñ¥½¸è™Õ¹‘}™••Ìœ±½‘”±¹…µ•ô°ÄØÀÀÀ¤ì(€€€€€É•ÑÕÉ¸‘…Ñ„ü¹½¬€ü‘…Ñ„¹‘…Ñ„€è¹Õ±°ì(€€€ô…Ñ €¡•ÉÉ½È¤ì(€€€€€½¹Í½±”¹İ…É¸ -@™½¸¥‘•É¤…³Å¹…µ…“Äœ°•ÉÉ½È¤ì(€€€€€É•ÑÕÉ¸¹Õ±°ì(€€€ô(€ô((€…Íå¹Œ™Õ¹Ñ¥½¸Ñ•™…ÍEÕ½Ñ”¡½‘”¤ì(€€€¥˜¡ÍÑ…Ñ”¹Í•ÑÑ¥¹Ì¹‰…­•¹‘UÉ°¥í½¹ÍĞ‘…Ñ„õ…İ…¥Ğ‰…­•¹‘…±°¡í…Ñ¥½¸èÑ•™…Ìœ±½‘•ô°ÄàÀÀÀ¤í¥˜¡‘…Ñ„ü¹½¬˜™‘…Ñ„¹‘…Ñ„¥É•ÑÕÉ¸‘…Ñ„¹‘…Ñ„íÑ¡É½Ü¹•ÜÉÉ½È¡‘…Ñ„ü¹•ÉÉ½ÉñğQLÙ•É¥Í¤…³Å¹…µ…“Äœ¤íô(€€€½¹ÍĞÁ…å±½…õí™½¹-½‘ÔéMÑÉ¥¹œ¡½‘”¤¹Ñ½UÁÁ•É…Í” ¤±‘¥°èQHœ±Á•É¥å½èÅôì(€€€½¹ÍĞ©Í½¸õ…İ…¥Ğ™•Ñ¡)Í½¸ ¡ÑÑÁÌè¼½İİÜ¹Ñ•™…Ì¹½Ø¹ÑÈ½…Á¤½™Õ¹‘Ì½™½¹¥å…Ñ	¥±¥•Ñ¥Èœ±íµ•Ñ¡½èA=MPœ±¡•…‘•ÉÌéì½¹Ñ•¹ĞµQåÁ”œè…ÁÁ±¥…Ñ¥½¸½©Í½¸ô±‰½‘äé)M=8¹ÍÑÉ¥¹¥™ä¡Á…å±½…¥ô°ÄÔÀÀÀ¤ì(€€€½¹ÍĞÉ½İÌõ©Í½¸ü¹É•ÍÕ±Ñ1¥ÍÑññmtí¥˜ …É½İÌ¹±•¹Ñ ¥Ñ¡É½Ü¹•ÜÉÉ½È QL­…å“Ä‰Õ±Õ¹…µ…“Äœ¤ì(€€€½¹ÍĞÁÉ¥•ÌõÉ½İÌ¹µ…À¡Èôù9Õµ‰•È¡È¹™¥å…Ğ¤¤¹™¥±Ñ•È¡9Õµ‰•È¹¥Í¥¹¥Ñ”¤í½¹ÍĞÁÉ¥”õÁÉ¥•Ì¹…Ğ ´Ä¤±ÁÉ•ØõÁÉ¥•Ì¹…Ğ ´È¥ññÁÉ¥”±±…ÍĞõÉ½İÌ¹…Ğ ´Ä¥ññíôì(€€€É•ÑÕÉ¹íÍåµ‰½°é½‘”±¹…µ”é±…ÍĞ¹™½¹U¹Ù…¹ññ½‘”±ÁÉ¥”±ÁÉ•Ù±½Í”éÁÉ•Ø±¡…¹•AĞéÁÉ•Øü¡ÁÉ¥”µÁÉ•Ø¤½ÁÉ•Ø¨ÄÀÀèÀ±ÕÉÉ•¹äèQIdœ±¡¥ÍÑ½ÉäéÁÉ¥•Ì±‘¥Ù¥‘•¹‘Ìémt±Í½ÕÉ”èQLå•¹¤A$œ±ÕÁ‘…Ñ•‘Ğé¹•Ü…Ñ” ¤¹Ñ½%M=MÑÉ¥¹œ ¥ôì(€ô((€…Íå¹Œ™Õ¹Ñ¥½¸ÅÕ½Ñ•½ÉÍÍ•Ğ¡…ÍÍ•Ğ¤ì(€€€½¹ÍĞÍ½ÕÉ•Måµ‰½°õ…ÍÍ•Ğ¹Í½ÕÉ•Måµ‰½±ññ¥¹™•ÉM½ÕÉ•Måµ‰½°¡…ÍÍ•Ğ¹Íåµ‰½°±…ÍÍ•Ğ¹ÑåÁ”¤ì(€€€¥˜¡İ¥¹‘½Ü¹¹‘É½¥ü¹É•ÅÕ•ÍÑ5…É­•Ñ…Ñ„¥ì(€€€€€ÑÉäí½¹ÍĞÉ•ÍÁ½¹Í”õ…İ…¥Ğ¹…Ñ¥Ù•5…É­•Ñ…±° ÅÕ½Ñ”œ±íÍåµ‰½°éÍ½ÕÉ•Måµ‰½°±ÑåÁ”é…ÍÍ•Ğ¹ÑåÁ•ô°ÄÀÀÀÀ¤í¥˜¡É•ÍÁ½¹Í”ü¹‘…Ñ„¥É•ÑÕÉ¸É•ÍÁ½¹Í”¹‘…Ñ„íõ…Ñ ¡•ÉÉ½È¥í½¹Í½±”¹İ…É¸ 9…Ñ¥Ù”ÅÕ½Ñ”™…±±‰…¬œ±•ÉÉ½È¤íô(€€€ô(€€€¥˜¡ÍÑ…Ñ”¹Í•ÑÑ¥¹Ì¹‰…­•¹‘UÉ°¥ì(€€€€€ÑÉäí½¹ÍĞ‘…Ñ„õ…İ…¥Ğ‰…­•¹‘…±°¡í…Ñ¥½¸èÅÕ½Ñ”œ±Íåµ‰½°éÍ½ÕÉ•Måµ‰½°±ÑåÁ”é…ÍÍ•Ğ¹ÑåÁ•ô¤í¥˜¡‘…Ñ„ü¹½¬˜™‘…Ñ„¹‘…Ñ„¥É•ÑÕÉ¸‘…Ñ„¹‘…Ñ„íõ…Ñ ¡•ÉÉ½È¥í½¹Í½±”¹İ…É¸ 	…­•¹ÅÕ½Ñ”™…±±‰…¬œ±•ÉÉ½È¤íô(€€€ô(€€€¥˜¡…ÍÍ•Ğ¹ÑåÁ”ôôôQLœ¥É•ÑÕÉ¸Ñ•™…ÍEÕ½Ñ”¡…ÍÍ•Ğ¹Íåµ‰½°¤ì(€€€¥˜¡…ÍÍ•Ğ¹ÑåÁ”ôôôUMQ=4ññ…ÍÍ•Ğ¹ÑåÁ”ôôôM ññ…ÍÍ•Ğ¹ÑåÁ”ôôô	=9œ¥Ñ¡É½Ü¹•ÜÉÉ½È 5…¹Õ•°™¥å…Ñ³ÄÙ…É³Å¬œ¤ì(€€€½¹ÍĞÍ½ÕÉ”õÍ½ÕÉ•Måµ‰½°ì(€€€¥˜¡Í½ÕÉ”ôôôI5}1Q%8ññ…ÍÍ•Ğ¹ÑåÁ”ôôô=1œ¥ì(€€€€€½¹ÍĞm½±±ÑÉåátõ…İ…¥ĞAÉ½µ¥Í”¹…±°¡må…¡½½EÕ½Ñ” õœ¤±å…¡½½EÕ½Ñ” QIdõ`œ¥t¤í½¹ÍĞÁÉ¥”õ½±¹ÁÉ¥”©ÑÉåà¹ÁÉ¥”½QI=e}=U9±ÁÉ•Øõ½±¹ÁÉ•Ù±½Í”©ÑÉåà¹ÁÉ•Ù±½Í”½QI=e}=U9íÉ•ÑÕÉ¹íÁÉ¥”±ÁÉ•Ù±½Í”éÁÉ•Ø±¡…¹•AĞéÁÉ•Øü¡ÁÉ¥”µÁÉ•Ø¤½ÁÉ•Ø¨ÄÀÀèÀ±ÕÉÉ•¹äèQIdœ±¡¥ÍÑ½Éäé½±¹¡¥ÍÑ½Éä¹µ…À ¡Ø±¤¤ôùØ¨¡ÑÉåà¹¡¥ÍÑ½Éåm¥uññÑÉåà¹ÁÉ¥”¤½QI=e}=U9¤±‘¥Ù¥‘•¹‘Ìémt±Í½ÕÉ”è±ÓÅ¸½¹Ì€¬UM½QIdôì(€€€ô(€€€¥˜¡Í½ÕÉ”ôôôI5}U5ULññ…ÍÍ•Ğ¹ÑåÁ”ôôôM%1YHœ¥ì(€€€€€½¹ÍĞmÍ¥±Ù•È±ÑÉåátõ…İ…¥ĞAÉ½µ¥Í”¹…±°¡må…¡½½EÕ½Ñ” M$õœ¤±å…¡½½EÕ½Ñ” QIdõ`œ¥t¤í½¹ÍĞÁÉ¥”õÍ¥±Ù•È¹ÁÉ¥”©ÑÉåà¹ÁÉ¥”½QI=e}=U9±ÁÉ•ØõÍ¥±Ù•È¹ÁÉ•Ù±½Í”©ÑÉåà¹ÁÉ•Ù±½Í”½QI=e}=U9íÉ•ÑÕÉ¹íÁÉ¥”±ÁÉ•Ù±½Í”éÁÉ•Ø±¡…¹•AĞéÁÉ•Øü¡ÁÉ¥”µÁÉ•Ø¤½ÁÉ•Ø¨ÄÀÀèÀ±ÕÉÉ•¹äèQIdœ±¡¥ÍÑ½ÉäéÍ¥±Ù•È¹¡¥ÍÑ½Éä¹µ…À ¡Ø±¤¤ôùØ¨¡ÑÉåà¹¡¥ÍÑ½Éåm¥uññÑÉåà¹ÁÉ¥”¤½QI=e}=U9¤±‘¥Ù¥‘•¹‘Ìémt±Í½ÕÉ”èñ·ó|½¹Ì€¬UM½QIdôì(€€€ô(€€€É•ÑÕÉ¸å…¡½½EÕ½Ñ”¡Í½ÕÉ”¤ì(€ô((€…Íå¹Œ™Õ¹Ñ¥½¸‘¥Ù¥‘•¹‘••‘½ÉÍÍ•Ğ¡…ÍÍ•Ğ¤ì(€€€¥˜€ …l	%MPœ°ULœ°Qt¹¥¹±Õ‘•Ì¡…ÍÍ•Ğ¹ÑåÁ”¤¤É•ÑÕÉ¸mtì(€€€½¹ÍĞÍåµ‰½°€ô…ÍÍ•Ğ¹Í½ÕÉ•Måµ‰½°ñğ¥¹™•ÉM½ÕÉ•Måµ‰½°¡…ÍÍ•Ğ¹Íåµ‰½°°…ÍÍ•Ğ¹ÑåÁ”¤ì(€€€¥˜€¡İ¥¹‘½Ü¹¹‘É½¥ü¹É•ÅÕ•ÍÑ5…É­•Ñ…Ñ„¤ì(€€€€€ÑÉäì(€€€€€€€½¹ÍĞÉ•ÍÁ½¹Í”õ…İ…¥Ğ¹…Ñ¥Ù•5…É­•Ñ…±° ‘¥Ù¥‘•¹‘Ìœ±íÍåµ‰½±ô°ÈàÀÀÀ¤ì(€€€€€€€¥˜¡ÉÉ…ä¹¥ÍÉÉ…ä¡É•ÍÁ½¹Í”ü¹‘…Ñ„ü¹•Ù•¹ÑÌ¤¥É•ÑÕÉ¸É•ÍÁ½¹Í”¹‘…Ñ„¹•Ù•¹ÑÌì(€€€€€ô…Ñ ¡•ÉÉ½È¤ì½¹Í½±”¹İ…É¸ 9…Ñ¥Ù”‘¥Ù¥‘•¹™…±±‰…¬œ±•ÉÉ½È¤ìô(€€€ô(€€€¥˜€¡ÍÑ…Ñ”¹Í•ÑÑ¥¹Ì¹‰…­•¹‘UÉ°¤ì(€€€€€½¹ÍĞÉ•ÍÕ±Ğ€ô…İ…¥Ğ‰…­•¹‘…±°¡í…Ñ¥½¸è‘¥Ù¥‘•¹‘Ìœ°Íåµ‰½±ô¤ì(€€€€€¥˜€¡É•ÍÕ±Ğü¹½¬€˜˜ÉÉ…ä¹¥ÍÉÉ…ä¡É•ÍÕ±Ğ¹‘…Ñ„ü¹•Ù•¹ÑÌ¤¤É•ÑÕÉ¸É•ÍÕ±Ğ¹‘…Ñ„¹•Ù•¹ÑÌì(€€€€€É•ÑÕÉ¸mtì(€€€ô(€€€½¹ÍĞÁ•É¥½Ä€ô5…Ñ ¹™±½½È ¡…Ñ”¹¹½Ü ¤€´€à¨ÌØÔ©d¤€¼€ÄÀÀÀ¤ì(€€€½¹ÍĞÁ•É¥½È€ô5…Ñ ¹™±½½È ¡…Ñ”¹¹½Ü ¤€¬€ĞÀÀ©d¤€¼€ÄÀÀÀ¤ì(€€€½¹ÍĞÕÉ°€ô¡ÑÑÁÌè¼½ÅÕ•ÉäÄ¹™¥¹…¹”¹å…¡½¼¹½´½Øà½™¥¹…¹”½¡…ÉĞ¼‘í•¹½‘•UI%½µÁ½¹•¹Ğ¡Íåµ‰½°¥ôıÁ•É¥½Äô‘íÁ•É¥½Åô™Á•É¥½Èô‘íÁ•É¥½Éô™¥¹Ñ•ÉÙ…°ôÅ™•Ù•¹ÑÌõ‘¥Ø”ÉÍÁ±¥ÑÍ€ì(€€€½¹ÍĞ©Í½¸€ô…İ…¥Ğ™•Ñ¡)Í½¸¡ÕÉ°±íô°ÄÔÀÀÀ¤ì(€€€½¹ÍĞÉ•ÍÕ±Ğ€ô©Í½¸ü¹¡…ÉĞü¹É•ÍÕ±Ğü¹lÁtì(€€€¥˜€ …É•ÍÕ±Ğ¤É•ÑÕÉ¸mtì(€€€É•ÑÕÉ¸=‰©•Ğ¹Ù…±Õ•Ì¡É•ÍÕ±Ğ¹•Ù•¹ÑÌü¹‘¥Ù¥‘•¹‘Ìñğíô¤¹µ…À¡”€ôø€¡ì(€€€€€•á…Ñ”è¥Í½…Ñ”¡¹•Ü…Ñ”¡9Õµ‰•È¡”¹‘…Ñ”¤¨ÄÀÀÀ¤¤°(€€€€€Á…å…Ñ”è¹Õ±°°(€€€€€…µ½Õ¹ÑA•ÉM¡…É”è9Õµ‰•È¡”¹…µ½Õ¹ÑñğÀ¤°(€€€€€ÍÑ…ÑÕÌè9Õµ‰•È¡”¹‘…Ñ”¤¨ÄÀÀÀ€ø…Ñ”¹¹½Ü ¤€ü€½¹™¥Éµ•œ€è€¡¥ÍÑ½É¥…°œ°(€€€€€Í½ÕÉ”è€A¥å…Í„Ù•É¤…¯ÇÄœ(€€€ô¤¤ì(€ô((€…Íå¹Œ™Õ¹Ñ¥½¸½™™¥¥…±-…Á••¡…ÍÍ•Ğ¤ì(€€€¥˜€ …ÍÑ…Ñ”¹Í•ÑÑ¥¹Ì¹‰…­•¹‘UÉ°ñğ…ÍÍ•Ğ¹ÑåÁ”€„ôô€	%MPœ¤É•ÑÕÉ¸mtì(€€€½¹ÍĞÉ•ÍÕ±Ğ€ô…İ…¥Ğ‰…­•¹‘…±°¡í…Ñ¥½¸è­…Á}‘¥Ù¥‘•¹‘Ìœ°Íåµ‰½°é…ÍÍ•Ğ¹Íåµ‰½±ô¤ì(€€€É•ÑÕÉ¸É•ÍÕ±Ğü¹½¬€˜˜ÉÉ…ä¹¥ÍÉÉ…ä¡É•ÍÕ±Ğ¹‘…Ñ„ü¹•Ù•¹ÑÌ¤€üÉ•ÍÕ±Ğ¹‘…Ñ„¹•Ù•¹ÑÌ€èmtì(€ô((€™Õ¹Ñ¥½¸µ•É•áÑ•É¹…±¥Ù¥‘•¹‘Ù•¹ÑÌ¡…ÍÍ•Ğ°•Ù•¹ÑÌ¤ì(€€€¥˜€ …ÉÉ…ä¹¥ÍÉÉ…ä¡•Ù•¹ÑÌ¤¤É•ÑÕÉ¸ì(€€€™½È€¡½¹ÍĞ¥Ñ•´½˜•Ù•¹ÑÌ¤ì(€€€€€½¹ÍĞ•á…Ñ”€ô¥Ñ•´¹•á…Ñ”ñğ¥Ñ•´¹‘…Ñ”ì(€€€€€½¹ÍĞÁ…å…Ñ”€ô¥Ñ•´¹Á…å…Ñ”ñğ•á…Ñ”ì(€€€€€½¹ÍĞ…µ½Õ¹Ğ€ô9Õµ‰•È¡¥Ñ•´¹…µ½Õ¹ÑA•ÉM¡…É”€üü¥Ñ•´¹…µ½Õ¹Ğ€üü€À¤ì(€€€€€¥˜€ …•á…Ñ”ñğ…µ½Õ¹Ğ€ğ€À¤½¹Ñ¥¹Õ”ì(€€€€€½¹ÍĞ•á¥ÍÑ¥¹œ€ôÍÑ…Ñ”¹‘¥Ù¥‘•¹‘Ù•¹ÑÌ¹™¥¹¡”€ôø”¹…ÍÍ•Ñ%ôôõ…ÍÍ•Ğ¹¥€˜˜5…Ñ ¹…‰Ì¡Á…ÉÍ•…Ñ”¡”¹•á…Ñ”¤µÁ…ÉÍ•…Ñ”¡•á…Ñ”¤¤ğÌ©d€˜˜5…Ñ ¹…‰Ì¡9Õµ‰•È¡”¹…µ½Õ¹ÑA•ÉM¡…É•ñğÀ¤µ…µ½Õ¹Ğ¤ğ¸ÀÀÄ¤ì(€€€€€½¹ÍĞ¹½Éµ…±¥é•€ôì(€€€€€€€¥è•á¥ÍÑ¥¹œü¹¥ñğÕ¥ ‘¥Øœ¤°…ÍÍ•Ñ%é…ÍÍ•Ğ¹¥°•á…Ñ”é¥Í½…Ñ”¡Á…ÉÍ•…Ñ”¡•á…Ñ”¤¤°Á…å…Ñ”éÁ…å…Ñ”ı¥Í½…Ñ”¡Á…ÉÍ•…Ñ”¡Á…å…Ñ”¤¤é¹Õ±°°(€€€€€€€…µ½Õ¹ÑA•ÉM¡…É”é…µ½Õ¹Ğ°ÕÉÉ•¹äé¥Ñ•´¹ÕÉÉ•¹åññ…ÍÍ•Ğ¹ÕÉÉ•¹ä°ÍÑ…ÑÕÌé¥Ñ•´¹ÍÑ…ÑÕÍñğ¡¥ÍÑ½É¥…°œ°(€€€€€€€É••¥Ù•é™…±Í”°Í½ÕÉ”é¥Ñ•´¹Í½ÕÉ•ñğ=Ñ½µ…Ñ¥¬Ù•É¤œ°Í½ÕÉ•UÉ°é¥Ñ•´¹Í½ÕÉ•UÉ±ññÕ¹‘•™¥¹•(€€€€€ôì(€€€€€¥˜€¡•á¥ÍÑ¥¹œ¤=‰©•Ğ¹…ÍÍ¥¸¡•á¥ÍÑ¥¹œ°=I¹µ•É•áÑ•É¹…±¥Ù¥‘•¹¡•á¥ÍÑ¥¹œ°¹½Éµ…±¥é•¤¤ì(€€€€€•±Í”ÍÑ…Ñ”¹‘¥Ù¥‘•¹‘Ù•¹ÑÌ¹ÁÕÍ ¡¹½Éµ…±¥é•¤ì(€€€ô(€ô((€™Õ¹Ñ¥½¸µ•É•¥Ù¥‘•¹‘!¥ÍÑ½Éä¡…ÍÍ•Ğ°‘¥Ù¥‘•¹‘Ì¤ì(€€€¥˜ …ÉÉ…ä¹¥ÍÉÉ…ä¡‘¥Ù¥‘•¹‘Ì¥ñğ…‘¥Ù¥‘•¹‘Ì¹±•¹Ñ ¥É•ÑÕÉ¸ì(€€€½¹ÍĞÍ½ÉÑ•õ‘¥Ù¥‘•¹‘Ì¹™¥±Ñ•È¡ôù¹…µ½Õ¹ĞøÀ¤¹Í½ÉĞ ¡„±ˆ¤ôùÁ…ÉÍ•…Ñ”¡„¹‘…Ñ”¤µÁ…ÉÍ•…Ñ”¡ˆ¹‘…Ñ”¤¤ì(€€€Í½ÉÑ•¹™½É… ¡ôùí½¹ÍĞ•á¥ÍÑÌõÍÑ…Ñ”¹‘¥Ù¥‘•¹‘Ù•¹ÑÌ¹Í½µ”¡”ôù”¹…ÍÍ•Ñ%ôôõ…ÍÍ•Ğ¹¥˜™Í…µ•…ä¡Á…ÉÍ•…Ñ”¡”¹•á…Ñ”¤±Á…ÉÍ•…Ñ”¡¹‘…Ñ”¤¤˜™5…Ñ ¹…‰Ì¡9Õµ‰•È¡”¹…µ½Õ¹ÑA•ÉM¡…É”¤µ9Õµ‰•È¡¹…µ½Õ¹Ğ¤¤ğ¸ÀÀÀÄ¤í¥˜ …•á¥ÍÑÌ¥ÍÑ…Ñ”¹‘¥Ù¥‘•¹‘Ù•¹ÑÌ¹ÁÕÍ ¡í¥éÕ¥ ‘¥Øœ¤±…ÍÍ•Ñ%é…ÍÍ•Ğ¹¥±•á…Ñ”é¹‘…Ñ”±Á…å…Ñ”é¹‘…Ñ”±…µ½Õ¹ÑA•ÉM¡…É”é¹…µ½Õ¹Ğ±ÕÉÉ•¹äé…ÍÍ•Ğ¹ÕÉÉ•¹ä±ÍÑ…ÑÕÌè½¹™¥Éµ•œ±É••¥Ù•é™…±Í”±Í½ÕÉ”è—µ§|Á¥å…Í„½±…çÄô¤íô¤ì(€€€½¹ÍĞÉ••¹ĞõÍ½ÉÑ•¹™¥±Ñ•È¡ôùÁ…ÉÍ•…Ñ”¡¹‘…Ñ”¤ù…‘‘…åÌ¡¹•Ü…Ñ” ¤°´ÜÌÀ¤¤í¥˜¡É••¹Ğ¹±•¹Ñ ğÈ¥É•ÑÕÉ¸ì(€€€½¹ÍĞ¥¹Ñ•ÉÙ…±Ìõmtí™½È¡±•Ğ¤ôÄí¤ñÉ••¹Ğ¹±•¹Ñ í¤¬¬¥¥¹Ñ•ÉÙ…±Ì¹ÁÕÍ  ¡Á…ÉÍ•…Ñ”¡É••¹Ñm¥t¹‘…Ñ”¤µÁ…ÉÍ•…Ñ”¡É••¹Ñm¤´Åt¹‘…Ñ”¤¤½d¤í¥¹Ñ•ÉÙ…±Ì¹Í½ÉĞ ¡„±ˆ¤ôù„µˆ¤í½¹ÍĞµ•‘¥…¸õ¥¹Ñ•ÉÙ…±Ím5…Ñ ¹™±½½È¡¥¹Ñ•ÉÙ…±Ì¹±•¹Ñ ¼È¥uñğäÀí½¹ÍĞ¹½Éµ…±¥é•õµ•‘¥…¸ğÔÀüÌÀéµ•‘¥…¸ğÄĞÀüäÄéµ•‘¥…¸ğÈÜÀüÄàÈèÌØÔí½¹ÍĞ…µ½Õ¹ÑÌõÉ••¹Ğ¹Í±¥” ´Ğ¤¹µ…À¡ôù¹…µ½Õ¹Ğ¤¹Í½ÉĞ ¡„±ˆ¤ôù„µˆ¤í½¹ÍĞ…µ½Õ¹Ğõ…µ½Õ¹ÑÍm5…Ñ ¹™±½½È¡…µ½Õ¹ÑÌ¹±•¹Ñ ¼È¥uññÉ••¹Ğ¹…Ğ ´Ä¤¹…µ½Õ¹Ğí±•Ğ¹•áĞõÁ…ÉÍ•…Ñ”¡É••¹Ğ¹…Ğ ´Ä¤¹‘…Ñ”¤íİ¡¥±”¡¹•áĞñ…‘‘…åÌ¡¹•Ü…Ñ” ¤°´Ä¤¥¹•áĞõ…‘‘…åÌ¡¹•áĞ±¹½Éµ…±¥é•¤í½¹ÍĞ¡½É¥é½¸õ…‘‘…åÌ¡¹•Ü…Ñ” ¤°ÌÜÀ¤íİ¡¥±”¡¹•áĞğõ¡½É¥é½¸¥í½¹ÍĞ‘…Ñ”õ¥Í½…Ñ”¡¹•áĞ¤í½¹ÍĞ•á¥ÍÑÌõÍÑ…Ñ”¹‘¥Ù¥‘•¹‘Ù•¹ÑÌ¹Í½µ”¡”ôù”¹…ÍÍ•Ñ%ôôõ…ÍÍ•Ğ¹¥˜™5…Ñ ¹…‰Ì¡Á…ÉÍ•…Ñ”¡”¹•á…Ñ”¤µ¹•áĞ¤ğÄÀ©d¤í¥˜ …•á¥ÍÑÌ¥ÍÑ…Ñ”¹‘¥Ù¥‘•¹‘Ù•¹ÑÌ¹ÁÕÍ ¡í¥éÕ¥ ‘¥Øœ¤±…ÍÍ•Ñ%é…ÍÍ•Ğ¹¥±•á…Ñ”é‘…Ñ”±Á…å…Ñ”é¥Í½…Ñ”¡…‘‘…åÌ¡¹•áĞ±…ÍÍ•Ğ¹ÑåÁ”ôôôULññ…ÍÍ•Ğ¹ÑåÁ”ôôôQœüÄĞèÈ¤¤±…µ½Õ¹ÑA•ÉM¡…É”é…µ½Õ¹Ğ±ÕÉÉ•¹äé…ÍÍ•Ğ¹ÕÉÉ•¹ä±ÍÑ…ÑÕÌè•ÍÑ¥µ…Ñ•œ±É••¥Ù•é™…±Í”±Í½ÕÉ”è—µ§|ƒÙ‘•µ”“ñé•¹¤Ñ…¡µ¥¹¤ô¤í¹•áĞõ…‘‘…åÌ¡¹•áĞ±¹½Éµ…±¥é•¤íô(€ô((€…Íå¹Œ™Õ¹Ñ¥½¸•¹É¥¡ÍÍ•ÑÙ•¹ÑÌ¡…ÍÍ•Ğ¤ì(€€€ÑÉäì(€€€€€½¹ÍĞm™••°­…Á••‘t€ô…İ…¥ĞAÉ½µ¥Í”¹…±°¡l(€€€€€€€‘¥Ù¥‘•¹‘••‘½ÉÍÍ•Ğ¡…ÍÍ•Ğ¤¹…Ñ   ¤ôùmt¤°(€€€€€€€½™™¥¥…±-…Á••¡…ÍÍ•Ğ¤¹…Ñ   ¤ôùmt¤(€€€€€t¤ì(€€€€€µ•É•áÑ•É¹…±¥Ù¥‘•¹‘Ù•¹ÑÌ¡…ÍÍ•Ğ°™••¤ì(€€€€€µ•É•áÑ•É¹…±¥Ù¥‘•¹‘Ù•¹ÑÌ¡…ÍÍ•Ğ°­…Á••¤ì(€€€€€µ•É•¥Ù¥‘•¹‘!¥ÍÑ½Éä¡…ÍÍ•Ğ°™••¹µ…À¡”ôø¡í‘…Ñ”é”¹•á…Ñ•ññ”¹‘…Ñ”±…µ½Õ¹Ğé”¹…µ½Õ¹ÑA•ÉM¡…É”üı”¹…µ½Õ¹Ğ±ÍÑ…ÑÕÌé”¹ÍÑ…ÑÕÍô¤¤¤ì(€€€ô…Ñ ¡•ÉÉ½È¤ì½¹Í½±”¹İ…É¸ ¥Ù¥‘•¹•¹É¥¡µ•¹Ğœ°…ÍÍ•Ğ¹Íåµ‰½°°•ÉÉ½È¤ìô(€ô((€…Íå¹Œ™Õ¹Ñ¥½¸É•™É•Í¡=¹•ÍÍ•ÑAÉ¥”¡…ÍÍ•Ğ¤ì(€€€½¹ÍĞÄ€ô…İ…¥ĞÅÕ½Ñ•½ÉÍÍ•Ğ¡…ÍÍ•Ğ¤ì(€€€¥˜€ „¡9Õµ‰•È¹¥Í¥¹¥Ñ”¡9Õµ‰•È¡Ä¹ÁÉ¥”¤¤€˜˜9Õµ‰•È¡Ä¹ÁÉ¥”¤øÀ¤¤Ñ¡É½Ü¹•ÜÉÉ½È —•É±¤™¥å…Ğ…³Å¹…µ…“Äœ¤ì(€€€…ÍÍ•Ğ¹ÁÉ¥”õ9Õµ‰•È¡Ä¹ÁÉ¥”¤ì(€€€…ÍÍ•Ğ¹ÁÉ•Ù±½Í”õ9Õµ‰•È¡Ä¹ÁÉ•Ù±½Í•ññÄ¹ÁÉ¥”¤ì(€€€…ÍÍ•Ğ¹¡…¹•AĞõ9Õµ‰•È¡Ä¹¡…¹•AÑñğÀ¤ì(€€€…ÍÍ•Ğ¹¡¥ÍÑ½Éäô¡Ä¹¡¥ÍÑ½Éåññmt¤¹µ…À¡9Õµ‰•È¤¹™¥±Ñ•È¡9Õµ‰•È¹¥Í¥¹¥Ñ”¤¹Í±¥” ´ÄÈÀ¤ì(€€€…ÍÍ•Ğ¹¡¥ÍÑ½Éå…Ñ•ÌõÉÉ…ä¹¥ÍÉÉ…ä¡Ä¹Ñ¥µ•ÍÑ…µÁÌ¤ıÄ¹Ñ¥µ•ÍÑ…µÁÌ¹Í±¥” ´ÄÈÀ¤¹µ…À¡Ğôù¥Í½…Ñ”¡¹•Ü…Ñ”¡9Õµ‰•È¡Ğ¤¨ÄÀÀÀ¤¤¤è ¡…ÍÍ•Ğ¹¡¥ÍÑ½Éå…Ñ•Íññmt¤¹Í±¥” µ…ÍÍ•Ğ¹¡¥ÍÑ½Éä¹±•¹Ñ ¤¤ì(€€€…ÍÍ•Ğ¹±…ÍÑUÁ‘…Ñ•õ¹•Ü…Ñ” ¤¹Ñ½%M=MÑÉ¥¹œ ¤ì(€€€…ÍÍ•Ğ¹‘…Ñ…MÑ…ÑÕÌô…ÕÑ¼œì…ÍÍ•Ğ¹‘…Ñ…M½ÕÉ”õÄ¹Í½ÕÉ•ñğ=Ñ½µ…Ñ¥¬œì…ÍÍ•Ğ¹‘…Ñ…ÉÉ½Èõ¹Õ±°ì(€€€¥˜¡Ä¹ÕÉÉ•¹ä˜™…ÍÍ•Ğ¹ÑåÁ”„ôô=1œ˜™…ÍÍ•Ğ¹ÑåÁ”„ôôM%1YHœ¥…ÍÍ•Ğ¹ÕÉÉ•¹äõÄ¹ÕÉÉ•¹äì(€€€µ•É•¥Ù¥‘•¹‘!¥ÍÑ½Éä¡…ÍÍ•Ğ±Ä¹‘¥Ù¥‘•¹‘Ì¤ì(€€€É•ÑÕÉ¸ÑÉÕ”ì(€ô((€…Íå¹Œ™Õ¹Ñ¥½¸ÉÕ¹]¥Ñ¡½¹ÕÉÉ•¹ä¡¥Ñ•µÌ°İ½É­•È°±¥µ¥ĞôĞ¤ì(€€€±•Ğ¥¹‘•àôÀì(€€€½¹ÍĞÉÕ¹¹•ÉÌõÉÉ…ä¹™É½´¡í±•¹Ñ é5…Ñ ¹µ¥¸¡±¥µ¥Ğ±¥Ñ•µÌ¹±•¹Ñ ¥ô°…Íå¹Œ ¤ôùì(€€€€€İ¡¥±”¡¥¹‘•àñ¥Ñ•µÌ¹±•¹Ñ ¥ì(€€€€€€€½¹ÍĞÕÉÉ•¹Ğõ¥Ñ•µÍm¥¹‘•à¬­tì(€€€€€€€…İ…¥Ğİ½É­•È¡ÕÉÉ•¹Ğ¤ì(€€€€€ô(€€€ô¤ì(€€€…İ…¥ĞAÉ½µ¥Í”¹…±°¡ÉÕ¹¹•ÉÌ¤ì(€ô((€…Íå¹Œ™Õ¹Ñ¥½¸É•™É•Í¡±°¡íÍ¥±•¹Ğõ™…±Í”±½¹±åÍÍ•Ñ%õ¹Õ±°±¥¹±Õ‘•½¹Ñ•¹Ğõ™…±Í•ôõíô¤ì(€€€¥˜¡É•™É•Í¡½¹ÑÉ½±±•È¥í¥˜ …Í¥±•¹Ğ¥Í¡½İQ½…ÍĞ e•¹¥±•µ”é…Ñ•¸ƒ…³ÇÅå½Èœ¤íÉ•ÑÕÉ¸íô(€€€É•™É•Í¡½¹ÑÉ½±±•Èõí…¹•±±•é™…±Í•ôì(€€€½¹ÍĞ‰Ñ¸ô œÍå¹	Ñ¸œ¤ì‰Ñ¸ü¹±…ÍÍ1¥ÍĞ¹…‘ ±½…‘¥¹œœ¤ì(€€€¥˜ …Í¥±•¹Ğ¥Í¡½İQ½…ÍĞ ¥å…Ñ±…È£Åé³Å„Ÿñ¹•±±•¹¥å½ËŠ˜œ°ÄĞÀÀ¤ì(€€€½¹ÍĞ…ÍÍ•ÑÌõÍÑ…Ñ”¹…ÍÍ•ÑÌ¹™¥±Ñ•È¡„ôø…½¹±åÍÍ•Ñ%‘ññ„¹¥ôôõ½¹±åÍÍ•Ñ%¤°™…¥±•õmtì±•ĞÍÕ•ÍÌôÀì(€€€½¹ÍĞ½¹Ñ•¹ÑQ…Í¬€ô€ …½¹±åÍÍ•Ñ%€˜˜¥¹±Õ‘•½¹Ñ•¹Ğ¤€üÉ•™É•Í¡½¹Ñ•¹Ğ¡íÍ¥±•¹ĞéÑÉÕ•ô¤€èAÉ½µ¥Í”¹É•Í½±Ù” ¤ì(€€€…İ…¥ĞÉÕ¹]¥Ñ¡½¹ÕÉÉ•¹ä¡…ÍÍ•ÑÌ°…Íå¹Œ…ÍÍ•Ğôùì(€€€€€¥˜¡É•™É•Í¡½¹ÑÉ½±±•Èü¹…¹•±±•¥É•ÑÕÉ¸ì(€€€€€ÑÉåí…İ…¥ĞÉ•™É•Í¡=¹•ÍÍ•ÑAÉ¥”¡…ÍÍ•Ğ¤íÍÕ•ÍÌ¬¬íô(€€€€€…Ñ ¡•ÉÉ½È¥í…ÍÍ•Ğ¹‘…Ñ…MÑ…ÑÕÌõ…ÍÍ•Ğ¹ÁÉ¥”ü…¡•œè•ÉÉ½Èœí…ÍÍ•Ğ¹‘…Ñ…ÉÉ½Èõ•ÉÉ½È¹µ•ÍÍ…”í™…¥±•¹ÁÕÍ ¡€‘í…ÍÍ•Ğ¹Íåµ‰½±ôè€‘í•ÉÉ½È¹µ•ÍÍ…•õ€¤íô(€€€ô°Ğ¤ì(€€€¥˜ …½¹±åÍÍ•Ñ%€˜˜ÉÉ…ä¹¥ÍÉÉ…ä¡ÍÑ…Ñ”¹İ…Ñ¡±¥ÍĞ¤€˜˜ÍÑ…Ñ”¹İ…Ñ¡±¥ÍĞ¹±•¹Ñ ¥ì(€€€€€…İ…¥ĞÉÕ¹]¥Ñ¡½¹ÕÉÉ•¹ä¡ÍÑ…Ñ”¹İ…Ñ¡±¥ÍĞ°…Íå¹ŒÜôùì(€€€€€€€ÑÉåí½¹ÍĞÁÍ•Õ‘¼õì¸¸¹Ü±Í½ÕÉ•Måµ‰½°éÜ¹Í½ÕÉ•Måµ‰½±ññ¥¹™•ÉM½ÕÉ•Måµ‰½°¡Ü¹Íåµ‰½°±Ü¹ÑåÁ”¥ôí½¹ÍĞÄõ…İ…¥ĞÅÕ½Ñ•½ÉÍÍ•Ğ¡ÁÍ•Õ‘¼¤í¥˜¡9Õµ‰•È¡Ä¹ÁÉ¥”¤øÀ¥íÜ¹ÁÉ¥”õ9Õµ‰•È¡Ä¹ÁÉ¥”¤íÜ¹ÁÉ•Ù±½Í”õ9Õµ‰•È¡Ä¹ÁÉ•Ù±½Í•ññÄ¹ÁÉ¥”¤íÜ¹¡…¹•AĞõ9Õµ‰•È¡Ä¹¡…¹•AÑñğÀ¤íÜ¹ÕÉÉ•¹äõÄ¹ÕÉÉ•¹åññÜ¹ÕÉÉ•¹äíÜ¹Í½ÕÉ•Måµ‰½°õÁÍ•Õ‘¼¹Í½ÕÉ•Måµ‰½°íÜ¹±…ÍÑUÁ‘…Ñ•õ¹•Ü…Ñ” ¤¹Ñ½%M=MÑÉ¥¹œ ¤íÜ¹‘…Ñ…ÉÉ½Èõ¹Õ±°íõõ…Ñ ¡•ÉÉ½È¥íÜ¹‘…Ñ…ÉÉ½Èõ•ÉÉ½È¹µ•ÍÍ…”íô(€€€€€ô°Ğ¤ì(€€€ô(€€€¥˜¡ÍÕ•ÍÌ¥íÍÑ…Ñ”¹µ…É­•Ğ¹±…ÍÑMå¹Œõ¹•Ü…Ñ” ¤¹Ñ½%M=MÑÉ¥¹œ ¤íÍÑ…Ñ”¹µ…É­•Ğ¹±…ÍÑÉÉ½Èõ™…¥±•¹±•¹Ñ ı€‘í™…¥±•¹±•¹Ñ¡ôÙ…É³Å¬Í½¸‘—}•É±”ŸÙÍÑ•É¥±¥å½É€é¹Õ±°íô(€€€•±Í”¥˜¡™…¥±•¹±•¹Ñ ¥ÍÑ…Ñ”¹µ…É­•Ğ¹±…ÍÑÉÉ½Èõ™…¥±•‘lÁtì(€€€Í…Ù•MÑ…Ñ” ¤ìÉ•™É•Í¡½¹ÑÉ½±±•Èõ¹Õ±°ì‰Ñ¸ü¹±…ÍÍ1¥ÍĞ¹É•µ½Ù” ±½…‘¥¹œœ¤ìÉ•¹‘•ÉA…”¡™…±Í”¤ìÕÁ‘…Ñ•Må¹Q•áĞ ¤ìÍ¡•‘Õ±•Ù•¹Ñ9½Ñ¥™¥…Ñ¥½¹Ì ¤ìÍå¹9…Ñ¥Ù•]¥‘•Ğ ¤ì(€€€€¼¼Q•µ•ÑÓğ½-@¥‰¤‡ÅÈ§}±•È™¥å…Ğ•­É…»Å»Ä‰•­±•Ñµ•‘•¸…É­„Á±…¹‘„Ñ…µ…µ±…»ÅÈ¸(€€€¥˜ …½¹±åÍÍ•Ñ%€˜˜…ÍÍ•ÑÌ¹±•¹Ñ ¤Í•ÑQ¥µ•½ÕĞ  ¤ôùÉÕ¹]¥Ñ¡½¹ÕÉÉ•¹ä¡…ÍÍ•ÑÌ°•¹É¥¡ÍÍ•ÑÙ•¹ÑÌ°€È¤¹Ñ¡•¸  ¤ôùÍ…Ù•MÑ…Ñ” ¤¤¹…Ñ   ¤ôùíô¤°ÌÀÀ¤ì(€€€…İ…¥Ğ½¹Ñ•¹ÑQ…Í¬¹…Ñ   ¤ôùíô¤ì(€€€¥˜ …Í¥±•¹Ğ¥Í¡½İQ½…ÍĞ¡ÍÕ•ÍÌı€‘íÍÕ•ÍÍôÙ…É³Å¬Ÿñ¹•±±•¹‘¤‘í™…¥±•¹±•¹Ñ ı€°€‘í™…¥±•¹±•¹Ñ¡ôÍ½¸‘—}•É±”­…±“Å€èœõ€éY•É¤…³Å¹…µ…“ÄìÍ½¸­…çÅÑ±…È­½ÉÕ¹‘Õ€°ÌÀÀÀ¤ì(€ô((€™Õ¹Ñ¥½¸É•™É•Í¡%¹Ñ•ÉÙ…±5¥¹ÕÑ•Ì ¤ì(€€€É•ÑÕÉ¸5…Ñ ¹µ…à ÄÔ°9Õµ‰•È¡ÍÑ…Ñ”¹Í•ÑÑ¥¹Ì¹É•™É•Í¡5¥¹ÕÑ•Ìñğ€ ¡ÍÑ…Ñ”¹Í•ÑÑ¥¹Ì¹É•™É•Í¡!½ÕÉÍñğØ¤¨ØÀ¤ñğ€ÄÔ¤¤ì(€ô((€™Õ¹Ñ¥½¸Í¡½Õ±‘ÕÑ½I•™É•Í  ¤ì(€€€¥˜ …ÍÑ…Ñ”¹Í•ÑÑ¥¹Ì¹…ÕÑ½I•™É•Í¡ñğ…ÍÑ…Ñ”¹…ÍÍ•ÑÌ¹±•¹Ñ ¥É•ÑÕÉ¸™…±Í”ì(€€€½¹ÍĞ±…ÍĞõÍÑ…Ñ”¹µ…É­•Ğ¹±…ÍÑMå¹Œı¹•Ü…Ñ”¡ÍÑ…Ñ”¹µ…É­•Ğ¹±…ÍÑMå¹Œ¤¹•ÑQ¥µ” ¤èÀì(€€€É•ÑÕÉ¸…Ñ”¹¹½Ü ¤µ±…ÍĞùÉ•™É•Í¡%¹Ñ•ÉÙ…±5¥¹ÕÑ•Ì ¤¨ØÁ|ÀÀÀì(€ô((€™Õ¹Ñ¥½¸Í¡½Õ±‘ÕÑ½I•™É•Í¡½¹Ñ•¹Ğ ¤ì(€€€¥˜ …ÍÑ…Ñ”¹Í•ÑÑ¥¹Ì¹…ÕÑ½I•™É•Í ¥É•ÑÕÉ¸™…±Í”ì(€€€½¹ÍĞ±…ÍĞõÍÑ…Ñ”¹µ…É­•Ğ¹±…ÍÑ½¹Ñ•¹ÑMå¹Œı¹•Ü…Ñ”¡ÍÑ…Ñ”¹µ…É­•Ğ¹±…ÍÑ½¹Ñ•¹ÑMå¹Œ¤¹•ÑQ¥µ” ¤èÀì(€€€É•ÑÕÉ¸…Ñ”¹¹½Ü ¤µ±…ÍĞùÉ•™É•Í¡%¹Ñ•ÉÙ…±5¥¹ÕÑ•Ì ¤¨ØÁ|ÀÀÀì(€ô((€™Õ¹Ñ¥½¸ÑÉ¥•ÉÕÑ½I•™É•Í  ¤ì(€€€¥˜ …¹…Ù¥…Ñ½È¹½¹1¥¹”¥É•ÑÕÉ¸ì(€€€¥˜¡Í¡½Õ±‘ÕÑ½I•™É•Í  ¤¤É•™É•Í¡±°¡íÍ¥±•¹ĞéÑÉÕ”±¥¹±Õ‘•½¹Ñ•¹ĞéÍ¡½Õ±‘ÕÑ½I•™É•Í¡½¹Ñ•¹Ğ ¥ô¤ì(€€€•±Í”¥˜¡Í¡½Õ±‘ÕÑ½I•™É•Í¡½¹Ñ•¹Ğ ¤¤É•™É•Í¡½¹Ñ•¹Ğ¡íÍ¥±•¹ĞéÑÉÕ•ô¤ì(€ô((€™Õ¹Ñ¥½¸ÍÑ…ÉÑÕÑ½I•™É•Í¡1½½À ¤ì(€€€¥˜¡…ÕÑ½I•™É•Í¡Q¥µ•È¤±•…É%¹Ñ•ÉÙ…°¡…ÕÑ½I•™É•Í¡Q¥µ•È¤ì(€€€…ÕÑ½I•™É•Í¡Q¥µ•ÈõÍ•Ñ%¹Ñ•ÉÙ…°¡ÑÉ¥•ÉÕÑ½I•™É•Í °ØÁ|ÀÀÀ¤ì(€ô((€™Õ¹Ñ¥½¸Íå¹9…Ñ¥Ù•]¥‘•Ğ ¤ì(€€€ÑÉäì(€€€€€¥˜ …İ¥¹‘½Ü¹¹‘É½¥ü¹Í…Ù•]¥‘•ÑMÑ…Ñ”¥É•ÑÕÉ¸ì(€€€€€½¹ÍĞ´õÁ½ÉÑ™½±¥½5•ÑÉ¥Ì ¤±¹•áĞõÕÁ½µ¥¹Ù•¹ÑÌ Ä¥lÁt±Á…å±½…õíÑ½Ñ…°é´¹Ñ½Ñ…°±‘…¥±åAĞé´¹‘…¥±åAĞ±‘…¥±äé´¹‘…¥±ä±…¹¹Õ…±¥Ù¥‘•¹é´¹…¹¹Õ…±¥Ù¥‘•¹±¹•áÑMåµ‰½°é¹•áĞı…ÍÍ•Ñ	å%¡¹•áĞ¹…ÍÍ•Ñ%¤ü¹Íåµ‰½°èœœ±¹•áÑµ½Õ¹Ğé¹•áĞı•Ù•¹Ñ9•Ğ¡¹•áĞ¤èÀ±¹•áÑ…Ñ”é¹•áĞü¡¹•áĞ¹Á…å…Ñ•ññ¹•áĞ¹•á…Ñ”¤èœœ±±…ÍÑMå¹ŒéÍÑ…Ñ”¹µ…É­•Ğ¹±…ÍÑMå¹Œ±ÁÉ¥Ù…äéÍÑ…Ñ”¹Í•ÑÑ¥¹Ì¹ÁÉ¥Ù…ä±‰…­•¹‘UÉ°éÍÑ…Ñ”¹Í•ÑÑ¥¹Ì¹‰…­•¹‘UÉ°±‰…­•¹‘Q½­•¸éÍÑ…Ñ”¹Í•ÑÑ¥¹Ì¹‰…­•¹‘Q½­•¸±É•™É•Í¡!½ÕÉÌé9Õµ‰•È¡ÍÑ…Ñ”¹Í•ÑÑ¥¹Ì¹É•™É•Í¡!½ÕÉÍñğØ¤±É•™É•Í¡5¥¹ÕÑ•ÌéÉ•™É•Í¡%¹Ñ•ÉÙ…±5¥¹ÕÑ•Ì ¤±™àéì¸¸¹ÍÑ…Ñ”¹µ…É­•Ğ¹™áô±…ÍÍ•ÑÌéÍÑ…Ñ”¹…ÍÍ•ÑÌ¹µ…À¡„ôø¡í¥é„¹¥±Íåµ‰½°é„¹Íåµ‰½°±Í½ÕÉ•Måµ‰½°é„¹Í½ÕÉ•Måµ‰½°±ÑåÁ”é„¹ÑåÁ”±ÕÉÉ•¹äé„¹ÕÉÉ•¹ä±ÅÕ…¹Ñ¥Ñäé„¹ÅÕ…¹Ñ¥Ñä±ÁÉ¥”é„¹ÁÉ¥”±‰…Í•Y…±Õ”é…ÍÍ•ÑY…±Õ”¡„¥ô¤¥ôì(€€€€€İ¥¹‘½Ü¹¹‘É½¥¹Í…Ù•]¥‘•ÑMÑ…Ñ”¡)M=8¹ÍÑÉ¥¹¥™ä¡Á…å±½…¤¤ì(€€€ô…Ñ ¡•ÉÉ½È¥í½¹Í½±”¹İ…É¸ ]¥‘•Ğ‰É¥‘”•ÉÉ½Èœ±•ÉÉ½È¤íô(€ô((€™Õ¹Ñ¥½¸…ÁÁ±å9…Ñ¥Ù•	…­É½Õ¹‘AÉ¥•Ì ¤ì(€€€ÑÉäì(€€€€€¥˜€ …İ¥¹‘½Ü¹¹‘É½¥ü¹•Ñ	…­É½Õ¹‘AÉ¥•Ì¤É•ÑÕÉ¸ì(€€€€€½¹ÍĞÉ…Ü€ôİ¥¹‘½Ü¹¹‘É½¥¹•Ñ	…­É½Õ¹‘AÉ¥•Ì ¤ì(€€€€€¥˜€ …É…Ü¤É•ÑÕÉ¸ì(€€€€€½¹ÍĞ‘…Ñ„€ô)M=8¹Á…ÉÍ”¡É…Ü¤ì(€€€€€¥˜€ …‘…Ñ„ñğ€…ÉÉ…ä¹¥ÍÉÉ…ä¡‘…Ñ„¹…ÍÍ•ÑÌ¤¤É•ÑÕÉ¸ì(€€€€€‘…Ñ„¹…ÍÍ•ÑÌ¹™½É… ¡¥Ñ•´€ôøì(€€€€€€€½¹ÍĞ…ÍÍ•Ğ€ôÍÑ…Ñ”¹…ÍÍ•ÑÌ¹™¥¹¡„€ôø„¹¥ôôõ¥Ñ•´¹¥ñğ„¹Íåµ‰½°ôôõ¥Ñ•´¹Íåµ‰½°¤ì(€€€€€€€¥˜€ ……ÍÍ•Ğ¤É•ÑÕÉ¸ì(€€€€€€€¥˜€¡9Õµ‰•È¡¥Ñ•´¹ÁÉ¥”¤øÀ¤…ÍÍ•Ğ¹ÁÉ¥”õ9Õµ‰•È¡¥Ñ•´¹ÁÉ¥”¤ì(€€€€€€€¥˜€¡9Õµ‰•È¹¥Í¥¹¥Ñ”¡9Õµ‰•È¡¥Ñ•´¹¡…¹•AĞ¤¤¤…ÍÍ•Ğ¹¡…¹•AĞõ9Õµ‰•È¡¥Ñ•´¹¡…¹•AĞ¤ì(€€€€€€€¥˜€¡9Õµ‰•È¡¥Ñ•´¹ÁÉ•Ù±½Í”¤øÀ¤…ÍÍ•Ğ¹ÁÉ•Ù±½Í”õ9Õµ‰•È¡¥Ñ•´¹ÁÉ•Ù±½Í”¤ì(€€€€€€€…ÍÍ•Ğ¹±…ÍÑUÁ‘…Ñ•õ‘…Ñ„¹ÕÁ‘…Ñ•‘Ñññ…ÍÍ•Ğ¹±…ÍÑUÁ‘…Ñ•ì(€€€€€€€…ÍÍ•Ğ¹‘…Ñ…MÑ…ÑÕÌô‰…­É½Õ¹œì(€€€€€ô¤ì(€€€€€¥˜€¡‘…Ñ„¹™à€˜˜ÑåÁ•½˜‘…Ñ„¹™àôôô½‰©•Ğœ¤ÍÑ…Ñ”¹µ…É­•Ğ¹™àõì¸¸¹ÍÑ…Ñ”¹µ…É­•Ğ¹™à°¸¸¹‘…Ñ„¹™áôì(€€€€€¥˜€¡‘…Ñ„¹ÕÁ‘…Ñ•‘Ğ€˜˜€ …ÍÑ…Ñ”¹µ…É­•Ğ¹±…ÍÑMå¹Œñğ¹•Ü…Ñ”¡‘…Ñ„¹ÕÁ‘…Ñ•‘Ğ¤ù¹•Ü…Ñ”¡ÍÑ…Ñ”¹µ…É­•Ğ¹±…ÍÑMå¹Œ¤¤¤ÍÑ…Ñ”¹µ…É­•Ğ¹±…ÍÑMå¹Œõ‘…Ñ„¹ÕÁ‘…Ñ•‘Ğì(€€€€€±½…±MÑ½É…”¹Í•Ñ%Ñ•´¡MQ=I}-d°)M=8¹ÍÑÉ¥¹¥™ä¡ÍÑ…Ñ”¤¤ì(€€€ô…Ñ ¡•ÉÉ½È¤ì½¹Í½±”¹İ…É¸ 	…­É½Õ¹ÁÉ¥”¥µÁ½ÉĞœ°•ÉÉ½È¤ìô(€ô((€™Õ¹Ñ¥½¸Í¡•‘Õ±•Ù•¹Ñ9½Ñ¥™¥…Ñ¥½¹Ì ¤ì(€€€¥˜ …ÍÑ…Ñ”¹Í•ÑÑ¥¹Ì¹¹½Ñ¥™¥…Ñ¥½¹Ì¥É•ÑÕÉ¸ì(€€€ÑÉäì(€€€€€¥˜ …İ¥¹‘½Ü¹¹‘É½¥ü¹Í¡•‘Õ±•9½Ñ¥™¥…Ñ¥½¸¥É•ÑÕÉ¸ì(€€€€€ÕÁ½µ¥¹Ù•¹ÑÌ à±™…±Í”¤¹™½É… ¡”ôùí½¹ÍĞ„õ…ÍÍ•Ñ	å%¡”¹…ÍÍ•Ñ%¤±‘…Ñ”õÁ…ÉÍ•…Ñ”¡”¹Á…å…Ñ•ññ”¹•á…Ñ”¤±ÁÉ”õ¹•Ü…Ñ”¡‘…Ñ”¹•ÑÕ±±e•…È ¤±‘…Ñ”¹•Ñ5½¹Ñ  ¤±‘…Ñ”¹•Ñ…Ñ” ¤´Ä°ÄÀ°À°À¤¹•ÑQ¥µ” ¤±‘…äõ¹•Ü…Ñ”¡‘…Ñ”¹•ÑÕ±±e•…È ¤±‘…Ñ”¹•Ñ5½¹Ñ  ¤±‘…Ñ”¹•Ñ…Ñ” ¤°ÄÀ°À°À¤¹•ÑQ¥µ” ¤í¥˜¡ÁÉ”ù…Ñ”¹¹½Ü ¤¥İ¥¹‘½Ü¹¹‘É½¥¹Í¡•‘Õ±•9½Ñ¥™¥…Ñ¥½¸¡€‘í„ü¹Íåµ‰½±ñğ!¥ÍÍ”ôÑ•µ•ÑÓñÏğå…ËÅ¹€±€‘í‘…Ñ•Q•áĞ¡‘…Ñ”±í‘…äè¹Õµ•É¥Œœ±µ½¹Ñ è±½¹œô¥ôƒ
+Üå…­±‡Å¬€‘íµ½¹•ä¡•Ù•¹Ñ9•Ğ¡”¤°QIdœ¥õ€±ÁÉ”±‘¥ÙÁÉ•|‘í”¹¥‘õ€¤í¥˜¡‘…äù…Ñ”¹¹½Ü ¤¥İ¥¹‘½Ü¹¹‘É½¥¹Í¡•‘Õ±•9½Ñ¥™¥…Ñ¥½¸¡€‘í„ü¹Íåµ‰½±ñğ!¥ÍÍ”ôƒ
+ÜÑ•µ•ÑÓğ­…é…¹Ä½±…‰¥±¥É€±	ÕŸñ¸ƒÙ‘•µ”Ñ…É¥¡¤ƒ
+Üå…­±‡Å¬€‘íµ½¹•ä¡•Ù•¹Ñ9•Ğ¡”¤°QIdœ¥ô¸±“ÅåÍ…¸ÕåÕ±…µ…‘…¸½¹…å±„¹€±‘…ä±‘¥ÙÁ…å|‘í”¹¥‘õ€¤íô¤ì(€€€€€€¡ÍÑ…Ñ”¹¥Á½QÉ…­•‘ññmt¤¹™½É… ¡¤ôùíml‘•µ…¹‘MÑ…ÉĞœ°!…±­„…ÉèÑ…±•‰¤‰‡}³Åå½Èt±l‘•µ…¹‘¹œ°!…±­„…Éé‘„Í½¸Ÿñ¸t±l™¥ÉÍÑQÉ…‘•…Ñ”œ°	½ÉÍ…‘„¥±¬§}±•´Ÿñ»ğut¹™½É…  ¡m­•ä±Ñ¥Ñ±•t¤ôùí¥˜ …¥m­•åt¥É•ÑÕÉ¸í½¹ÍĞõÁ…ÉÍ•…Ñ”¡¥m­•åt¤±…Ğõ¹•Ü…Ñ”¡¹•ÑÕ±±e•…È ¤±¹•Ñ5½¹Ñ  ¤±¹•Ñ…Ñ” ¤°ä°À°À¤¹•ÑQ¥µ” ¤í¥˜¡…Ğù…Ñ”¹¹½Ü ¤¥İ¥¹‘½Ü¹¹‘É½¥¹Í¡•‘Õ±•9½Ñ¥™¥…Ñ¥½¸¡€‘í¤¹Íåµ‰½±ññ¤¹¹…µ•ôƒ
+Ü€‘íÑ¥Ñ±•õ€±€‘í‘…Ñ•Q•áĞ¡±í‘…äè¹Õµ•É¥Œœ±µ½¹Ñ è±½¹œô¥ôƒ
+Ü€‘í¤¹¹…µ•õ€±…Ğ±¥Á½|‘í¤¹¥‘õ|‘í­•åõ€¤íô¤íô¤ì(€€€ô…Ñ ¡•ÉÉ½È¥í½¹Í½±”¹İ…É¸ 9½Ñ¥™¥…Ñ¥½¸‰É¥‘”œ±•ÉÉ½È¤íô(€ô((€™Õ¹Ñ¥½¸Í¡½İ=¹‰½…É‘¥¹œ ¤ì(€€€¥˜¡±½…±MÑ½É…”¹•Ñ%Ñ•´¡=9	=I%9}-d¥ññÍÑ…Ñ”¹…ÍÍ•ÑÌ¹±•¹Ñ ¥É•ÑÕÉ¸ì(€€€Í¡½İ5½‘…°¡€ñ‘¥Ø±…ÍÌô‰µ½‘…°µÉ…‰‰•Èˆøğ½‘¥Øøñ‘¥Ø±…ÍÌô‰½¹‰½…É‘¥¹œˆøñ‘¥Ø±…ÍÌô‰½¹‰½…É‘¥¹œµ±½¼ˆøñÍÙœÙ¥•İ	½àôˆÀ€À€Ğà€ĞàˆøñÁ…Ñ ô‰4ÄÀ€ÌÑXÄÔ¸ÕŒÀ´È¸Ô€È´Ğ¸Ô€Ğ¸Ô´Ğ¸Õ ÌÅ°Ü€İØÄÙŒÀ€È¸È´Ä¸à€Ğ´Ğ€Ñ ÄÑŒ´È¸È€À´Ğ´Ä¸à´Ğ´Ñhˆ¼øñÁ…Ñ ô‰4Äà€ÌÀ¸Ô€ÈÌ€ÈÕ°Ğ€Ì€Ø´àˆ¼øñÁ…Ñ ô‰´ÌÀ€ÈÀ€Ì´Ä´Ä€Ìˆ¼øğ½ÍÙœøğ½‘¥Øøñ Èù¥¹…¹Í…°ñÍÁ…¸ÍÑå±”ô‰½±½ÈéÙ…È ´µ…•¹Ğ¤ˆø¡¤ğ½ÍÁ…¸øğ½ ÈøñÀùM¹½İ‰…±°Ù”MÑ½¬Ù•¹ÑÏŠe¥¸Ÿó³ğ§|…¯Ç}±…ËÅ¹‘…¸•Í¥¹±•¹•¸ì…¹…¬…É…çñëğ°Ù•É¥Í¤Ù”­…çÅÑ±…ËÄÍ…¹„…¥Ğ½±…¸SñÉ¯”Á½ÉÑ›ÙäÕåÕ±…µ…ÏÄ¸ğ½Àøñ‘¥Ø±…ÍÌô‰™•…ÑÕÉ”µÉ¥ˆøñ‘¥Ø±…ÍÌô‰™•…ÑÕÉ”µ¥Ñ•´ˆøñÍÑÉ½¹œùSñ´Ù…É³Å­±…Èğ½ÍÑÉ½¹œøñÍÁ…¸ù	%MP°	°Q°QL°…±ÓÅ¸°Ÿñ·ó|Ù”ƒÙé•°Ù…É³Å¬ğ½ÍÁ…¸øğ½‘¥Øøñ‘¥Ø±…ÍÌô‰™•…ÑÕÉ”µ¥Ñ•´ˆøñÍÑÉ½¹œùQ•µ•ÑÓğµ•É­•é¤ğ½ÍÑÉ½¹œøñÍÁ…¸ùŸÅ­±…¹·Ç|Ù”Ñ…¡µ¥¹¤ƒÙ‘•µ”…åËÅ·Ä°¹•Ğ•±¥Èğ½ÍÁ…¸øğ½‘¥Øøñ‘¥Ø±…ÍÌô‰™•…ÑÕÉ”µ¥Ñ•´ˆøñÍÑÉ½¹œûYéŸñÉ³ñ¬¡•‘•™¤ğ½ÍÑÉ½¹œøñÍÁ…¸ùå³Å¬¥‘•È­…ËÅ±…µ„Ù”ÕéÕ¸Ù…‘•±¤ÁÉ½©•­Í¥å½¸ğ½ÍÁ…¸øğ½‘¥Øøñ‘¥Ø±…ÍÌô‰™•…ÑÕÉ”µ¥Ñ•´ˆøñÍÑÉ½¹œûYé•°Ù”å•É•°ğ½ÍÑÉ½¹œøñÍÁ…¸ùA½ÉÑ›Ùä¥¡…ëÅ¹‘„­…³ÅÈì­•¹‘¤ÍÕ¹ÕÕ¸Í—¥±•‰¥±¥Èğ½ÍÁ…¸øğ½‘¥Øøğ½‘¥Øøñ‘¥Ø±…ÍÌô‰‰ÕÑÑ½¸µÉ½Üˆøñ‰ÕÑÑ½¸±…ÍÌô‰Í•½¹‘…Éäµ‰Ñ¸ˆ¥ô‰ÍÑ…ÉÑµÁÑäˆù-•¹‘¤Á½ÉÑ›Ùçñ´ğ½‰ÕÑÑ½¸øñ‰ÕÑÑ½¸±…ÍÌô‰ÁÉ¥µ…Éäµ‰Ñ¸ˆ¥ô‰ÍÑ…ÉÑ•µ¼ˆûYÉ¹—}¤¥¹•±”ğ½‰ÕÑÑ½¸øğ½‘¥Øøñ‘¥Ø±…ÍÌô‰‘¥Í±…¥µ•ÈˆùUåÕ±…µ„å…ÓÅËÅ´Ñ…ÙÍ¥å•Í¤Ù•Éµ•è¸ƒqÉ•ÑÍ¥èÙ•É¤­…å¹…­±…ËÅ»Å¸•¥­µ•Í¤Ù•å„­•Í¥¹Ñ¥Í¤½±…‰¥±¥ÈìÍ½¸‰‡}…ËÅ³Ä‘—}•È­½ÉÕ¹ÕÈ¸ğ½‘¥Øøğ½‘¥Øù€±í‘¥Íµ¥ÍÍ¥‰±”é™…±Í•ô¤ì(€€€€ œÍÑ…ÉÑµÁÑäœ¤¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ±¥¬œ° ¤ôùí±½…±MÑ½É…”¹Í•Ñ%Ñ•´¡=9	=I%9}-d°œÄœ¤íÍÑ…Ñ”õ‰±…¹­MÑ…Ñ” ¤íÍ…Ù•MÑ…Ñ” ¤í±½Í•5½‘…° ¤íÉ•¹‘•ÉA…” ¤íÍ•ÑQ¥µ•½ÕĞ¡Í¡½İÍÍ•Ñ½É´°ÈÀÀ¤íô¤ì(€€€€ œÍÑ…ÉÑ•µ¼œ¤¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ±¥¬œ° ¤ôùí±½…±MÑ½É…”¹Í•Ñ%Ñ•´¡=9	=I%9}-d°œÄœ¤íÍÑ…Ñ”õ‘•µ½MÑ…Ñ” ¤íÍ…Ù•MÑ…Ñ” ¤í±½Í•5½‘…° ¤íÉ•¹‘•ÉA…” ¤íÍ¡½İQ½…ÍĞ ŸYÉ¹•¬Á½ÉÑ›Ùä‡ŸÅ±“Äœ¤íô¤ì(€ô((€™Õ¹Ñ¥½¸Í•ÑÕÁ±½‰…±Ù•¹ÑÌ ¤ì(€€€€ œ¹¹…Øµ¥Ñ•´œ¤¹™½É… ¡‰Ñ¸ôù‰Ñ¸¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ±¥¬œ° ¤ôù¹…Ù¥…Ñ”¡‰Ñ¸¹‘…Ñ…Í•Ğ¹Á…”¤¤¤ì(€€€€ œ™…ˆœ¤¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ±¥¬œ° ¤ôùÍÑ…Ñ”¹…ÍÍ•ÑÌ¹±•¹Ñ ıÍ¡½İQÉ…¹Í…Ñ¥½¹½É´ ¤éÍ¡½İÍÍ•Ñ½É´ ¤¤ì(€€€€ œÁÉ¥Ù…å	Ñ¸œ¤¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ±¥¬œ° ¤ôùíÍÑ…Ñ”¹Í•ÑÑ¥¹Ì¹ÁÉ¥Ù…äô…ÍÑ…Ñ”¹Í•ÑÑ¥¹Ì¹ÁÉ¥Ù…äíÍ…Ù•MÑ…Ñ” ¤íÉ•¹‘•ÉA…” ¤íÍ¡½İQ½…ÍĞ¡ÍÑ…Ñ”¹Í•ÑÑ¥¹Ì¹ÁÉ¥Ù…äüQÕÑ…É±…È¥é±•¹‘¤œèQÕÑ…É±…ÈŸÙÍÑ•É¥±¥å½Èœ¤íô¤ì(€€€€ œÍå¹	Ñ¸œ¤¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ±¥¬œ° ¤ôùÉ•™É•Í¡±°¡í¥¹±Õ‘•½¹Ñ•¹ĞéÑÉÕ•ô¤¤ì(€€€€ œµ½É•	Ñ¸œ¤¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ±¥¬œ±Í¡½İM•ÑÑ¥¹Ì¤ì(€€€€ œ¥µÁ½ÉÑ%¹ÁÕĞœ¤¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ¡…¹”œ±”ôùí½¹ÍĞ™¥±”õ”¹Ñ…É•Ğ¹™¥±•Ìü¹lÁtí¥˜¡™¥±”¥¥µÁ½ÉÑ…Ñ„¡™¥±”¤í”¹Ñ…É•Ğ¹Ù…±Õ”ôœœíô¤ì(€€€İ¥¹‘½Ü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ½¹±¥¹”œ° ¤ôùíÍ¡½İQ½…ÍĞ ŸÁ¹Ñ•É¹•Ğ‰‡}±…¹ÓÅÏÄ•É¤•±‘¤œ¤íÑÉ¥•ÉÕÑ½I•™É•Í  ¤íô¤ì(€€€‘½Õµ•¹Ğ¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È Ù¥Í¥‰¥±¥Ñå¡…¹”œ° ¤ôùí¥˜¡‘½Õµ•¹Ğ¹Ù¥Í¥‰¥±¥ÑåMÑ…Ñ”ôôôÙ¥Í¥‰±”œ¥Í•ÑQ¥µ•½ÕĞ¡ÑÉ¥•ÉÕÑ½I•™É•Í °ÈÔÀ¤íô¤ì(€€€İ¥¹‘½Ü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ™½ÕÌœ° ¤ôùÍ•ÑQ¥µ•½ÕĞ¡ÑÉ¥•ÉÕÑ½I•™É•Í °ÈÔÀ¤¤ì(€€€İ¥¹‘½Ü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ½™™±¥¹”œ° ¤ôùÍ¡½İQ½…ÍĞ Ÿ•ÙÉ¥µ“ÇÄèÍ½¸Ù•É¥±•ÈŸÙÍÑ•É¥±¥å½Èœ¤¤ì(€€€‘½Õµ•¹Ğ¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ­•å‘½İ¸œ±”ôùí¥˜¡”¹­•äôôôÍ…Á”œ¥±½Í•5½‘…° ¤íô¤ì(€ô((€™Õ¹Ñ¥½¸¥¹¥ÑAİ„ ¤ì(€€€¥˜ Í•ÉÙ¥•]½É­•Èœ¥¸¹…Ù¥…Ñ½È€˜˜±½…Ñ¥½¸¹ÁÉ½Ñ½½°¹ÍÑ…ÉÑÍ]¥Ñ  ¡ÑÑÀœ¤¤¹…Ù¥…Ñ½È¹Í•ÉÙ¥•]½É­•È¹É•¥ÍÑ•È ÍÜ¹©Ìœ¤¹…Ñ   ¤ôùíô¤ì(€ô((€™Õ¹Ñ¥½¸¥¹¥Ğ ¤ì(€€€½¹ÍĞÁ…É…µÌ€ô¹•ÜUI1M•…É¡A…É…µÌ¡±½…Ñ¥½¸¹Í•…É ¤ì(€€€¥˜€¡Á…É…µÌ¹•Ğ ‘•µ¼œ¤€„ôô€œÄœ¤…ÁÁ±å9…Ñ¥Ù•	…­É½Õ¹‘AÉ¥•Ì ¤ì(€€€¥˜€¡Á…É…µÌ¹•Ğ ‘•µ¼œ¤€ôôô€œÄœ€˜˜€…ÍÑ…Ñ”¹…ÍÍ•ÑÌ¹±•¹Ñ ¤ì(€€€€€ÍÑ…Ñ”€ô‘•µ½MÑ…Ñ” ¤ì(€€€€€±½…±MÑ½É…”¹Í•Ñ%Ñ•´¡=9	=I%9}-d°€œÄœ¤ì(€€€€€Í…Ù•MÑ…Ñ” ¤ì(€€€ô(€€€É•¹‘•É%½¹Ì ¤íÍ•ÑÕÁ±½‰…±Ù•¹ÑÌ ¤íÉ•¹‘•ÉA…” ¤íÍ¡½İ=¹‰½…É‘¥¹œ ¤í¥¹¥ÑAİ„ ¤íÍ¡•‘Õ±•Ù•¹Ñ9½Ñ¥™¥…Ñ¥½¹Ì ¤íÍÑ…ÉÑÕÑ½I•™É•Í¡1½½À ¤ì(€€€¥˜¡Á…É…µÌ¹•Ğ ‘•µ¼œ¤€„ôô€œÄœ¥Í•ÑQ¥µ•½ÕĞ¡ÑÉ¥•ÉÕÑ½I•™É•Í °ÌÔÀ¤ì(€ô((€‘½Õµ•¹Ğ¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È =5½¹Ñ•¹Ñ1½…‘•œ±¥¹¥Ğ¤ì)ô¤ ¤ì(

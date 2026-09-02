@@ -1,4 +1,10 @@
-# Finansal(EB) v0.3.0
+# FinansalEB 2 — geliştirme dalı
+
+`finansaleb-2` dalı, mevcut uygulamanın verilerini kaybetmeden profesyonel ve test edilebilir bir FinansalEB 2 sürümüne geçiş içindir. İlk geliştirme sürümü `2.0.0-alpha.1`, geçmiş dış kaynak temettülerini kullanıcı onayı olmadan alınmış sayan eski davranışı kaldırır ve finans çekirdeği için otomatik test ekler.
+
+Mevcut cihaz verileri aynı `finansaleb_state_v1` anahtarından okunur ve açılışta güvenli biçimde v2 şemasına taşınır. `main` dalı ve v0.3.19 kayıtları değiştirilmez.
+
+## Önceki sürümün kullanım bilgileri
 
 Kişisel kullanım için Türkçe Android/PWA yatırım, işlem ve temettü takip uygulaması.
 

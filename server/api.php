@@ -15,7 +15,7 @@ declare(strict_types=1);
  *   ?action=batch&items=[{"symbol":"TUPRS.IS","type":"BIST"}]
  */
 
-const APP_VERSION = '0.3.19';
+const APP_VERSION = '2.0.0-alpha.1';
 
 $configFile = __DIR__ . '/config.php';
 $config = is_file($configFile) ? require $configFile : [
@@ -27,7 +27,7 @@ $config = is_file($configFile) ? require $configFile : [
     'DIVIDEND_CACHE_SECONDS' => 21600,
     'ENABLE_KAP_SCRAPER' => true,
     'TIMEZONE' => 'Europe/Istanbul',
-    'USER_AGENT' => 'FinansalEB/0.3.19 (personal portfolio tracker)',
+    'USER_AGENT' => 'FinansalEB/2.0.0-alpha.1 (personal portfolio tracker)',
     'SEC_USER_AGENT' => '',
 ];
 
@@ -40,7 +40,7 @@ $config = array_merge([
     'DIVIDEND_CACHE_SECONDS' => 21600,
     'ENABLE_KAP_SCRAPER' => true,
     'TIMEZONE' => 'Europe/Istanbul',
-    'USER_AGENT' => 'FinansalEB/0.3.19 (personal portfolio tracker)',
+    'USER_AGENT' => 'FinansalEB/2.0.0-alpha.1 (personal portfolio tracker)',
     'SEC_USER_AGENT' => '',
 ], $config);
 
@@ -150,7 +150,7 @@ try {
             break;
 
         case 'content':
-            $data = cached('content_v19', 900, fn() => fetchContentBundle($config));
+            $data = cached('content_v2_alpha1', 900, fn() => fetchContentBundle($config));
             respond(['ok' => true, 'data' => $data]);
             break;
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import shutil
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
@@ -33,11 +34,15 @@ for file in [ROOT / 'web/manifest.webmanifest']:
     except Exception as exc:
         fail(f'JSON {file.name}', str(exc))
 
-# PHP syntax
-for file in [ROOT / 'server/api.php', ROOT / 'server/config.sample.php']:
-    proc = subprocess.run(['php', '-l', str(file)], capture_output=True, text=True)
-    if proc.returncode == 0: ok(f'PHP syntax {file.name}')
-    else: fail(f'PHP syntax {file.name}', (proc.stdout + proc.stderr).strip())
+# PHP syntax (yerel ortamda PHP yoksa GitHub Actions doğrulaması devralır)
+php = shutil.which('php')
+if php:
+    for file in [ROOT / 'server/api.php', ROOT / 'server/config.sample.php']:
+        proc = subprocess.run([php, '-l', str(file)], capture_output=True, text=True)
+        if proc.returncode == 0: ok(f'PHP syntax {file.name}')
+        else: fail(f'PHP syntax {file.name}', (proc.stdout + proc.stderr).strip())
+else:
+    ok('PHP syntax', 'Yerel PHP bulunamadı; GitHub Actions aşamasında doğrulanacak')
 
 # XML syntax
 xml_files = list((ROOT / 'android/app/src/main').rglob('*.xml'))
@@ -96,8 +101,8 @@ if not any(e.startswith('Asset sync:') for e in errors): ok('Web/Android asset s
 # Required project files
 required = [
     ROOT / '.github/workflows/build-apk.yml', ROOT / 'README.md', ROOT / 'LICENSE.txt',
-    ROOT / 'scripts/sync-assets.sh', ROOT / 'android/app/build.gradle',
-    ROOT / 'android/signing/finansaleb-personal.jks', ROOT / 'android/signing/keystore.properties',
+    ROOT / 'scripts/sync-assets.sh', ROOT / 'android/app/build.gradle', ROOT / 'web/finance-core.js',
+    ROOT / 'tests/finance-core.test.js', ROOT / 'android/signing/finansaleb-release.p12.enc',
     ROOT / 'android/app/src/main/java/com/finansaleb/app/MainActivity.java',
     ROOT / 'android/app/src/main/java/com/finansaleb/app/AppBridge.java',
     ROOT / 'android/app/src/main/java/com/finansaleb/app/MarketDataClient.java',
@@ -107,6 +112,23 @@ required = [
 missing = [str(p.relative_to(ROOT)) for p in required if not p.exists()]
 if missing: fail('Required files', ', '.join(missing))
 else: ok('Required files', f'{len(required)} dosya')
+
+# Finans çekirdeği uygulamadan önce yüklenmeli
+index_html = (ROOT / 'web/index.html').read_text(encoding='utf-8')
+if index_html.find('finance-core.js') < 0 or index_html.find('finance-core.js') > index_html.find('app.js'):
+    fail('Finance core load order', 'finance-core.js, app.js dosyasından önce yüklenmelidir')
+else:
+    ok('Finance core load order')
+
+# Web, Android ve API sürümleri aynı olmalı
+web_version = re.search(r"APP_VERSION = '([^']+)'", (ROOT / 'web/app.js').read_text(encoding='utf-8'))
+gradle_version = re.search(r"versionName '([^']+)'", (ROOT / 'android/app/build.gradle').read_text(encoding='utf-8'))
+api_version = re.search(r"APP_VERSION = '([^']+)'", (ROOT / 'server/api.php').read_text(encoding='utf-8'))
+versions = {m.group(1) for m in [web_version, gradle_version, api_version] if m}
+if len(versions) != 1 or not all([web_version, gradle_version, api_version]):
+    fail('Version alignment', f'Bulunan sürümler: {sorted(versions)}')
+else:
+    ok('Version alignment', versions.pop())
 
 # Native market bridge wiring
 app_bridge = (ROOT / 'android/app/src/main/java/com/finansaleb/app/AppBridge.java').read_text(encoding='utf-8')
