@@ -1,5 +1,16 @@
 # Değişiklik Günlüğü
 
+## 2.0.0-alpha.2
+
+- Satışların komisyon sonrası net tutarı ilgili TRY/USD/EUR/GBP nakit hesabına otomatik eklenir.
+- Mevcut nakitten yapılan alışlar, alış bedeli ve komisyonla birlikte ilgili hesaptan düşülür.
+- Yetersiz nakitle alış ve para çekme engellenir; yeni para ile alışlar katkı olarak ayrı kaydedilir.
+- Temettüden yabancı para varlık alımında TL çıkışı ve döviz girişi ayrı, izlenebilir hareketler oluşturur.
+- Nakit hesapları güncel kurla toplam portföy değerine katılır; gerçekleşen kâr işlem tarihindeki kurla korunur.
+- Eski `amountTry` kayıtları bozulmadan çok para birimli nakit şemasına yükseltilir.
+- Nakit hesapları, son hareketler ve manuel para yatırma/çekme ekranı Portföy bölümüne eklendi.
+- Nakit ve alış/satış kuralları için dört yeni regresyon testi eklendi.
+
 ## 2.0.0-alpha.1
 
 - `finansaleb-2` geliştirme dalı başlatıldı.

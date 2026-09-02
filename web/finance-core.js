@@ -16,6 +16,81 @@
     return Number.isFinite(number) ? number : null;
   }
 
+  function normalizeCurrency(value) {
+    const currency = String(value || 'TRY').trim().toUpperCase();
+    return /^[A-Z]{3}$/.test(currency) ? currency : 'TRY';
+  }
+
+  function cashRowAmount(row, fx = {}) {
+    const direct = finiteNumber(row?.amount);
+    if (direct !== null) return direct;
+    const amountTry = finiteNumber(row?.amountTry);
+    if (amountTry === null) return 0;
+    const currency = normalizeCurrency(row?.currency);
+    if (currency === 'TRY') return amountTry;
+    const rate = finiteNumber(row?.fxRateTry) ?? finiteNumber(fx?.[currency]) ?? 1;
+    return rate > 0 ? amountTry / rate : 0;
+  }
+
+  /** Eski yalnız-TL satırlarını kaybetmeden çok para birimli nakit satırına yükseltir. */
+  function normalizeCashLedger(rows, fx = {}) {
+    return (Array.isArray(rows) ? rows : []).map(source => {
+      const row = {...source};
+      row.currency = normalizeCurrency(row.currency);
+      row.amount = cashRowAmount(row, fx);
+      const lockedTry = finiteNumber(row.amountTry);
+      const rate = finiteNumber(row.fxRateTry) ?? finiteNumber(fx?.[row.currency]) ?? 1;
+      row.fxRateTry = rate > 0 ? rate : 1;
+      row.amountTry = lockedTry !== null ? lockedTry : row.amount * row.fxRateTry;
+      return row;
+    });
+  }
+
+  function cashBalances(rows, fx = {}) {
+    const balances = {};
+    normalizeCashLedger(rows, fx).forEach(row => {
+      if (row.affectsCash === false) return;
+      balances[row.currency] = (balances[row.currency] || 0) + row.amount;
+    });
+    return balances;
+  }
+
+  /** Nakit hesaplarını güncel kurlarla TL portföy değerine çevirir. */
+  function cashTotalTry(rows, fx = {}) {
+    const balances = cashBalances(rows, fx);
+    return Object.entries(balances).reduce((sum, [currency, amount]) => {
+      const rate = currency === 'TRY' ? 1 : (finiteNumber(fx?.[currency]) ?? 1);
+      return sum + amount * rate;
+    }, 0);
+  }
+
+  /** Alış nakitten çıkar, satış komisyon sonrası net tutarı nakde ekler. */
+  function tradeCashAmount(transaction) {
+    const quantity = Math.max(0, finiteNumber(transaction?.quantity) ?? 0);
+    const price = Math.max(0, finiteNumber(transaction?.price) ?? 0);
+    const fee = Math.max(0, finiteNumber(transaction?.fee) ?? 0);
+    if (transaction?.type === 'buy') return -(quantity * price + fee);
+    if (transaction?.type === 'sell') return Math.max(0, quantity * price - fee);
+    return 0;
+  }
+
+  function tradeCashEntry(transaction, asset, fxRateTry = 1) {
+    if (!transaction?.id || !['buy', 'sell'].includes(transaction.type)) return null;
+    const currency = normalizeCurrency(transaction.currency || asset?.currency);
+    const amount = tradeCashAmount(transaction);
+    const rate = Math.max(0, finiteNumber(transaction.fxRateTry) ?? finiteNumber(fxRateTry) ?? 1) || 1;
+    return {
+      type: transaction.type === 'sell' ? 'trade_sale' : 'trade_purchase',
+      transactionId: transaction.id,
+      assetId: transaction.assetId || asset?.id,
+      date: transaction.date,
+      currency,
+      amount,
+      fxRateTry: rate,
+      amountTry: amount * rate
+    };
+  }
+
   function hasCashEvidence(event, cashLedger) {
     if (!event?.id || !Array.isArray(cashLedger)) return false;
     return cashLedger.some(row => row?.eventId === event.id && row?.type === 'dividend_income');
@@ -69,10 +144,16 @@
   }
 
   return Object.freeze({
+    cashBalances,
+    cashRowAmount,
+    cashTotalTry,
     dividendBucket,
     hasReceiptEvidence,
     mergeExternalDividend,
     migrateDividendEvents,
-    stableDividendNet
+    normalizeCashLedger,
+    stableDividendNet,
+    tradeCashAmount,
+    tradeCashEntry
   });
 });

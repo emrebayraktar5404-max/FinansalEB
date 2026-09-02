@@ -1,8 +1,8 @@
 # FinansalEB 2 — geliştirme dalı
 
-`finansaleb-2` dalı, mevcut uygulamanın verilerini kaybetmeden profesyonel ve test edilebilir bir FinansalEB 2 sürümüne geçiş içindir. İlk geliştirme sürümü `2.0.0-alpha.1`, geçmiş dış kaynak temettülerini kullanıcı onayı olmadan alınmış sayan eski davranışı kaldırır ve finans çekirdeği için otomatik test ekler.
+`finansaleb-2` dalı, mevcut uygulamanın verilerini kaybetmeden profesyonel ve test edilebilir bir FinansalEB 2 sürümüne geçiş içindir. `2.0.0-alpha.2`; güvenli temettü kurallarına ek olarak alış, satış ve çok para birimli nakit hesaplarını aynı işlem defterinde birleştirir.
 
-Mevcut cihaz verileri aynı `finansaleb_state_v1` anahtarından okunur ve açılışta güvenli biçimde v2 şemasına taşınır. `main` dalı ve v0.3.19 kayıtları değiştirilmez.
+Mevcut cihaz verileri aynı `finansaleb_state_v1` anahtarından okunur ve açılışta güvenli biçimde v3 şemasına taşınır. Eski işlemlere tahminî nakit hareketi eklenmez; yeni alış/satışlar nakit defterine otomatik bağlanır. `main` dalı ve v0.3.19 kayıtları değiştirilmez.
 
 ## Önceki sürümün kullanım bilgileri
 

@@ -28,8 +28,10 @@
 
 ### Alpha 2 — işlem ve performans motoru
 
-- Çoklu alış/satış, komisyon, gerçekleşen ve gerçekleşmemiş kâr/zarar testleri.
-- İşlem tarihindeki kur ile TL maliyet, güncel kur etkisi ve yatırım getirisi ayrımı.
+- Çoklu alış/satış, komisyon, gerçekleşen ve gerçekleşmemiş kâr/zarar testleri. *(nakit bağlantısı tamamlandı)*
+- İşlem tarihindeki kur ile TL maliyet, güncel kur etkisi ve yatırım getirisi ayrımı. *(işlem kuru ve nakit değerlemesi tamamlandı)*
+- TRY/USD/EUR/GBP nakit hesapları; satışın net nakde girişi ve alışın seçilen kaynaktan düşmesi. *(tamamlandı)*
+- Eski işlemler için tahmin üretmeden, yalnızca yeni işlemleri otomatik nakde bağlayan güvenli geçiş. *(tamamlandı)*
 - Günlük getiri ile toplam getirinin ayrı ve açıklanabilir gösterimi.
 - Hatalı/eksik geçmiş kayıtlar için veri sağlık merkezi.
 
