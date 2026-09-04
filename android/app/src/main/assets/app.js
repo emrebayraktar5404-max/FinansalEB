@@ -248,6 +248,7 @@
   let portfolioQuery = '';
   let analyticsFilter = 'ALL';
   let analyticsPeriod = '1Y';
+  let stockFilter = 'ALL';
   let toastTimer = null;
   let refreshController = null;
   let contentRefreshPromise = null;
@@ -1193,12 +1194,12 @@
 
   function renderDiscover() {
     const cards = [
-      ['trend','En yüksek temettü verimine sahip hisseler','Temettü verimi en yüksek hisseleri kolayca keşfedin ve yatırım fırsatlarını değerlendirin.','Hisseleri gör','portfolio'],
-      ['coin','Gelecek yüksek verimli temettü ödemeleri','Yüksek temettü verimine sahip yaklaşan tüm temettü ödemelerini keşfedin.','Temettüleri gör','dividends'],
-      ['calendar','Son 5 yılda temettü açıklayan hisseler','Son 5 yılda düzenli olarak temettü ödemesi açıklayan hisseleri keşfedin.','Hisseleri gör','portfolio'],
-      ['analytics','En yüksek temettü verimine sahip sektörler','Temettü açısından güçlü sektörleri ve bu sektörlerdeki hisseleri inceleyin.','Sektörleri gör','analytics']
+      ['trend','En yüksek temettü verimine sahip hisseler','Temettü verimi en yüksek hisseleri kolayca keşfedin ve yatırım fırsatlarını değerlendirin.','Hisseleri gör','stocks','yield'],
+      ['coin','Gelecek yüksek verimli temettü ödemeleri','Yüksek temettü verimine sahip yaklaşan tüm temettü ödemelerini keşfedin.','Temettüleri gör','upcoming','yield'],
+      ['calendar','Son 5 yılda temettü açıklayan hisseler','Son 5 yılda düzenli olarak temettü ödemesi açıklayan hisseleri keşfedin.','Hisseleri gör','stocks','dividend'],
+      ['analytics','En yüksek temettü verimine sahip sektörler','Temettü açısından güçlü sektörleri ve bu sektörlerdeki hisseleri inceleyin.','Sektörleri gör','sectors','yield']
     ];
-    return `<div class="reference-page"><h1>Keşfet</h1><div class="discover-list">${cards.map((c,i)=>`<button class="discover-card discover-${i}" data-page-go="${c[4]}"><span class="discover-icon">${ICONS[c[0]]}</span><strong>${c[1]}</strong><p>${c[2]}</p><em>${c[3]} ›</em></button>`).join('')}</div></div>`;
+    return `<div class="reference-page"><h1>Keşfet</h1><div class="discover-list">${cards.map((c,i)=>`<button class="discover-card discover-${i}" data-page-go="${c[4]}" data-stock-filter="${c[5]}"><span class="discover-icon">${ICONS[c[0]]}</span><strong>${c[1]}</strong><p>${c[2]}</p><em>${c[3]} ›</em></button>`).join('')}</div></div>`;
   }
 
   function renderTools() {
@@ -1208,24 +1209,52 @@
       ['coin','Temettü Getiri Hesaplama','Yatırımınızın temettü getirisini kolayca hesaplayın. Hisse senedi temettü gelirinizi ve veriminizi anında öğrenin.','income'],
       ['analytics','Temettü Verimi Hesaplama','Hisse fiyatı ya da maliyetinize göre temettü verimini hesaplayın.','yield']
     ];
-    return `<div class="reference-page"><h1>Araçlar</h1><div class="tool-list">${cards.map((c,i)=>`<button class="tool-card" data-tool="${c[4]}"><span class="tool-icon tool-${i}">${ICONS[c[0]]}</span><strong>${c[1]}</strong><p>${c[2]}</p><em>Şimdi hesapla</em></button>`).join('')}</div></div>`;
+    return `<div class="reference-page"><h1>Araçlar</h1><div class="tool-list">${cards.map((c,i)=>`<button class="tool-card" data-tool="${c[3]}"><span class="tool-icon tool-${i}">${ICONS[c[0]]}</span><strong>${c[1]}</strong><p>${c[2]}</p><em>Şimdi hesapla</em></button>`).join('')}</div></div>`;
   }
 
   function renderSearch() {
-    const quick = [['portfolio','Hisseler'],['analytics','Sektörler'],['calendar','Temettü Takvimi'],['discover','Keşfet'],['tools','Araçlar'],['guide','Rehber']];
+    const quick = [['stocks','Hisseler'],['sectors','Sektörler'],['calendar','Temettü Takvimi'],['discover','Keşfet'],['tools','Araçlar'],['guide','Rehber']];
     return `<div class="reference-page search-page"><h1>Ara</h1><label class="big-search">${ICONS.search}<input id="globalSearch" placeholder="Hisse, sektör veya içerik ara…" autocomplete="off"></label><h2>Hızlı Erişim</h2><div class="quick-grid">${quick.map(([p,n])=>`<button ${p==='guide'?'data-action="show-guide"':`data-page-go="${p}"`}>${n}</button>`).join('')}</div><div id="globalResults"><h2>Son Aramalar</h2><p class="empty-text">Arama geçmişi bulunamadı.</p></div></div>`;
   }
 
   function showCalculator(kind) {
-    const meta = {
-      compare:['Hisse/Yatırım Karşılaştırma','Başlangıç tutarı','Yıllık getiri (%)'],
-      retirement:['Temettü Emekliliği Hesaplama','Mevcut portföy','Aylık yatırım'],
-      income:['Temettü Getiri Hesaplama','Pay başına temettü','Sahip olunan adet'],
-      yield:['Temettü Verimi Hesaplama','Pay başına temettü','Hisse fiyatı / maliyet']
-    }[kind] || ['Hesaplama','Birinci değer','İkinci değer'];
-    showModal(`${modalHeader(meta[0])}<form id="calculatorForm"><div class="field"><label>${meta[1]}</label><input name="a" type="number" step="any" value="1000" required></div><div class="field"><label>${meta[2]}</label><input name="b" type="number" step="any" value="10" required></div><button class="primary-btn">Hesapla</button><div id="calculatorResult" class="calculator-result">Sonuç: —</div></form><section class="faq"><h3>Sıkça Sorulan Sorular</h3><details><summary>Bu hesaplama neyi gösterir?</summary><p>Girdiğiniz değerlere göre yaklaşık sonucu gösterir. Vergi, komisyon ve piyasa koşulları sonucu değiştirebilir.</p></details><details><summary>Yatırım kararında kullanılabilir mi?</summary><p>Tek başına yatırım kararı için yeterli değildir; bilgilendirme amaçlıdır.</p></details></section>`);
-    $('#calculatorForm').addEventListener('submit',e=>{e.preventDefault();const fd=new FormData(e.currentTarget),a=Number(fd.get('a')),b=Number(fd.get('b'));let out=0,label='';if(kind==='yield'){out=a/b*100;label=`%${numberFmt(out,2)}`;}else if(kind==='income'){out=a*b;label=money(out,'TRY');}else if(kind==='retirement'){out=b>0?Math.max(0,(a*25-a)/b/12):0;label=`${numberFmt(out,1)} yıl`;}else{out=a*Math.pow(1+b/100,10);label=money(out,'TRY');}$('#calculatorResult').textContent=`Sonuç: ${label}`;});
+    const configs={
+      compare:{title:'Hisse/Yatırım Karşılaştırma',fields:[['principal','Başlangıç tutarı',10000],['years','Süre (yıl)',10],['returnA','1. yatırım yıllık getirisi (%)',12],['returnB','2. yatırım yıllık getirisi (%)',8]],calc:f=>{const a=f.principal*Math.pow(1+f.returnA/100,f.years),b=f.principal*Math.pow(1+f.returnB/100,f.years);return `1. yatırım: ${money(a,'TRY')} · 2. yatırım: ${money(b,'TRY')} · Fark: ${money(Math.abs(a-b),'TRY')}`;}},
+      retirement:{title:'Temettü Emekliliği Hesaplama',fields:[['capital','Mevcut portföy',portfolioMetrics().total||100000],['monthly','Aylık yatırım',state.settings.monthlyContribution||10000],['target','Hedef aylık temettü',Number(state.settings.dividendGoalAnnual||600000)/12],['yieldRate','Net temettü verimi (%)',5]],calc:f=>{const targetCapital=f.yieldRate>0?f.target*12/(f.yieldRate/100):0;if(f.capital>=targetCapital)return 'Hedef sermayeye ulaştınız.';const months=f.monthly>0?Math.ceil((targetCapital-f.capital)/f.monthly):Infinity;return Number.isFinite(months)?`Yaklaşık ${Math.floor(months/12)} yıl ${months%12} ay · Hedef sermaye ${money(targetCapital,'TRY')}`:'Aylık yatırım sıfır olamaz.';}},
+      income:{title:'Temettü Getiri Hesaplama',fields:[['dividend','Pay başına net temettü',5],['quantity','Sahip olunan hisse adedi',1000],['price','Hisse fiyatı / maliyet',100]],calc:f=>`Toplam net temettü: ${money(f.dividend*f.quantity,'TRY')} · Temettü verimi: %${numberFmt(f.price>0?f.dividend/f.price*100:0,2)}`},
+      yield:{title:'Temettü Verimi Hesaplama',fields:[['dividend','Pay başına net temettü',5],['price','Hisse fiyatı / maliyet',100]],calc:f=>`Temettü verimi: %${numberFmt(f.price>0?f.dividend/f.price*100:0,2)}`}
+    };
+    const cfg=configs[kind]; if(!cfg)return showToast('Hesaplama türü bulunamadı');
+    showModal(`${modalHeader(cfg.title)}<form id="calculatorForm"><div class="form-grid">${cfg.fields.map(([n,l,v])=>`<div class="field full"><label>${l}</label><input name="${n}" type="number" min="0" step="any" value="${round(v,2)}" required></div>`).join('')}</div><button class="primary-btn">Hesapla</button><div id="calculatorResult" class="calculator-result">Sonuç: —</div></form><section class="faq"><h3>Sıkça Sorulan Sorular</h3><details><summary>Bu hesaplama neyi gösterir?</summary><p>Girdiğiniz değerlerle yaklaşık sonuç üretir; tüm alanlar hesaplamaya katılır.</p></details><details><summary>Yatırım kararında kullanılabilir mi?</summary><p>Bilgilendirme amaçlıdır; vergi, komisyon ve piyasa koşullarını ayrıca değerlendirin.</p></details></section>`);
+    $('#calculatorForm').addEventListener('submit',e=>{e.preventDefault();const fd=new FormData(e.currentTarget),values={};cfg.fields.forEach(([n])=>values[n]=Number(fd.get(n)||0));$('#calculatorResult').textContent=cfg.calc(values);});
   }
+
+  function stockDividendYield(a){return Number(a.price)>0?Number(a.annualDividendPerShare||0)/Number(a.price)*100:0;}
+  function renderStocks(){
+    let assets=[...state.assets,...(state.watchlist||[]).filter(w=>!state.assets.some(a=>a.symbol===w.symbol))];
+    if(stockFilter==='yield')assets.sort((a,b)=>stockDividendYield(b)-stockDividendYield(a));
+    else if(stockFilter==='dividend')assets=assets.filter(a=>Number(a.annualDividendPerShare||0)>0||state.dividendEvents.some(e=>e.assetId===a.id));
+    else assets.sort((a,b)=>String(a.symbol).localeCompare(String(b.symbol),'tr'));
+    return `<div class="reference-page"><div class="page-title-row"><h1>Hisseler</h1><button class="header-action" data-action="add-asset">+ Ekle</button></div><label class="big-search compact">${ICONS.search}<input id="stockSearch" placeholder="Hisse veya yatırım aracı ara…"></label>${stockFilter!=='ALL'?`<div class="active-filter">Etkin filtre: <b>${stockFilter==='yield'?'En yüksek temettü verimi':'Temettü geçmişi olanlar'}</b><button id="clearStockFilter">×</button></div>`:''}<div id="stockList" class="stock-list">${assets.length?assets.map(a=>`<button class="stock-card asset-row" data-asset-id="${a.id}"><div><strong>${esc(a.symbol)}</strong><span>${esc(a.name||TYPE_META[a.type]?.label||'Yatırım aracı')}</span><small>Temettü verimi %${numberFmt(stockDividendYield(a),2)}</small></div><div><small>Son fiyat</small><b>${money(a.price,a.currency,false,a.price<1?4:2)}</b><em class="${Number(a.changePct||0)>=0?'positive':'negative'}">${pct(a.changePct||0)}</em></div></button>`).join(''):emptyState('search','Henüz yatırım aracı yok','Hisse, ETF, fon, altın veya döviz ekleyerek başlayın.')}</div></div>`;
+  }
+
+  function renderSectors(){
+    const groups=new Map();state.assets.forEach(a=>{const name=a.sector||TYPE_META[a.type]?.label||'Diğer';if(!groups.has(name))groups.set(name,[]);groups.get(name).push(a);});
+    const items=[...groups.entries()].sort((a,b)=>b[1].length-a[1].length);
+    return `<div class="reference-page"><h1>Sektörler</h1><label class="big-search compact">${ICONS.search}<input id="sectorSearch" placeholder="Sektör ara…"></label><div id="sectorList" class="sector-list">${items.length?items.map(([name,list])=>`<button class="sector-card" data-sector="${esc(name)}"><strong>${esc(name)}</strong><p>${list.length} yatırım aracı bu grupta izleniyor.</p><div>${list.slice(0,3).map(a=>`<span>${esc(a.symbol)}</span>`).join('')} ${list.length>3?`<em>+${list.length-3}</em>`:''}</div></button>`).join(''):emptyState('analytics','Sektör verisi yok','Varlık eklediğinizde yatırım türleri burada gruplanır.')}</div></div>`;
+  }
+
+  function renderUpcoming(){
+    const events=upcomingEvents(100,false);const groups=new Map();events.forEach(e=>{const d=e.payDate||e.exDate;if(!groups.has(d))groups.set(d,[]);groups.get(d).push(e);});
+    return `<div class="reference-page"><div class="page-title-row"><h1>Yaklaşan Ödemeler</h1><button class="header-action" data-action="add-dividend">+ Ekle</button></div><p class="page-description">Şirket tarafından açıklanan resmi ödeme tarihi esas alınır. Tahmini kayıtlar ayrıca etiketlenir.</p>${events.length?[...groups.entries()].map(([date,list])=>`<section class="payment-group"><h2>${dateText(date,{day:'numeric',month:'long',year:'numeric'})}<small>${list.length} ödeme</small></h2><div class="event-list">${list.map(eventRow).join('')}</div></section>`).join(''):emptyState('coin','Yaklaşan ödeme yok','Portföyünüze bir temettü olayı ekleyin.')}</div>`;
+  }
+
+  function renderFavorites(){
+    const list=state.watchlist||[];return `<div class="reference-page"><div class="page-title-row"><h1>Favoriler</h1><button class="header-action" data-action="add-watch">+ Favori</button></div><p class="page-description">Takip etmek istediğiniz yatırım araçları portföy toplamına eklenmeden burada izlenir.</p><div class="asset-list">${list.length?list.map(watchlistRow).join(''):emptyState('eye','Favori listeniz boş','Bir hisse, ETF, fon, altın veya dövizi favorilere ekleyin.')}</div></div>`;
+  }
+
+  function renderSupport(){return `<div class="reference-page"><h1>Destek ve İletişim</h1><div class="support-list"><button id="openSourceStatus">Veri kaynaklarının durumunu kontrol et <span>›</span></button><button id="openDataSettings">Bağlantı ayarlarını aç <span>›</span></button><button id="exportSupport">Yedeği dışa aktar <span>›</span></button></div><div class="disclaimer">FinansalEB yatırım tavsiyesi vermez. Bir sorun bildirirken kullandığınız ekranı ve gördüğünüz hatayı ekleyin.</div></div>`;}
+  function renderProfile(){return `<div class="reference-page"><h1>Profil</h1><div class="profile-card"><div class="profile-avatar">EB</div><div><strong>Emre Bayraktar</strong><span>FinansalEB yerel profil</span></div></div><div class="support-list"><button id="profileSettings">Profil ve Ayarlar <span>›</span></button><button id="profileTheme">${state.settings.theme==='night'?'Açık temaya geç':'Gece moduna geç'} <span>›</span></button><button id="profileBackup">Verileri yedekle <span>›</span></button></div></div>`;}
 
   function showGuide() {
     const titles=['Bedelli sermaye artırımı nedir?','Bedelsiz sermaye artırımı nedir?','Sermaye artırımı nedir, nasıl yapılır?','Temettü verimi nedir, nasıl hesaplanır?','Temettü ödemesi nasıl alınır, hesaba ne zaman geçer?','Temettü nedir?'];
@@ -1233,15 +1262,15 @@
   }
 
   function showAppMenu() {
-    const rows=[['calendar','Temettü Takvimi'],['dividends','Yaklaşan Ödemeler'],['portfolio','Hisseler'],['analytics','Sektörler'],['discover','Keşfet'],['portfolio','Portföy'],['portfolio','Favoriler'],['tools','Hesaplama Araçları'],['guide','Rehber'],['support','Destek ve İletişim'],['settings','Profil ve Ayarlar']];
+    const rows=[['calendar','Temettü Takvimi'],['upcoming','Yaklaşan Ödemeler'],['stocks','Hisseler'],['sectors','Sektörler'],['discover','Keşfet'],['portfolio','Portföy'],['favorites','Favoriler'],['tools','Hesaplama Araçları'],['guide','Rehber'],['support','Destek ve İletişim'],['profile','Profil ve Ayarlar']];
     showModal(`<div class="app-menu-head"><b>Finansal<span>EB</span></b><button data-modal-close>×</button></div><div class="app-menu">${rows.map(([p,n])=>`<button data-menu-page="${p}"><span>${n}</span><i>›</i></button>`).join('')}</div>`,{className:'menu-modal'});
-    $$('[data-menu-page]').forEach(b=>b.addEventListener('click',()=>{const p=b.dataset.menuPage;closeModal();if(p==='guide')showGuide();else if(p==='settings')showSettings();else if(p==='support')showToast('Destek ekranı hazırlanıyor');else navigate(p);}));
+    $$('[data-menu-page]').forEach(b=>b.addEventListener('click',()=>{const p=b.dataset.menuPage;closeModal();if(p==='guide')showGuide();else navigate(p);}));
   }
 
   function renderPage(resetScroll = true) {
     const previousScroll = window.scrollY || document.documentElement.scrollTop || 0;
     const page = $('#page');
-    const renderers = { dashboard:renderDashboard, portfolio:renderPortfolio, dividends:renderDividends, calendar:renderCalendar, analytics:renderAnalytics, market:renderMarket, investors:renderInvestors, discover:renderDiscover, tools:renderTools, search:renderSearch };
+    const renderers = { dashboard:renderDashboard, portfolio:renderPortfolio, dividends:renderDividends, calendar:renderCalendar, analytics:renderAnalytics, market:renderMarket, investors:renderInvestors, discover:renderDiscover, tools:renderTools, search:renderSearch, stocks:renderStocks, sectors:renderSectors, upcoming:renderUpcoming, favorites:renderFavorites, support:renderSupport, profile:renderProfile };
     page.innerHTML = (renderers[currentPage] || renderCalendar)();
     $$('.nav-item').forEach(btn => btn.classList.toggle('active', btn.dataset.page === currentPage));
     renderIcons();
@@ -1273,11 +1302,17 @@
       }
       window.location.href = href;
     }));
-    $$('[data-page-go]').forEach(b=>b.addEventListener('click',()=>navigate(b.dataset.pageGo)));
+    $$('[data-page-go]').forEach(b=>b.addEventListener('click',()=>{if(b.dataset.stockFilter)stockFilter=b.dataset.stockFilter;navigate(b.dataset.pageGo);}));
     $$('[data-action]').forEach(b=>b.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();handleAction(b.dataset.action,b);}));
     $$('.asset-row').forEach(row=>row.addEventListener('click',()=>showAssetDetail(row.dataset.assetId)));
     $$('.event-row').forEach(row=>row.addEventListener('click',()=>showAssetDetail(row.dataset.assetId)));
     $$('.watch-row').forEach(row=>row.addEventListener('click',()=>showWatchForm(row.dataset.watchId)));
+    $('#clearStockFilter')?.addEventListener('click',()=>{stockFilter='ALL';renderPage(false);});
+    $('#stockSearch')?.addEventListener('input',e=>{const q=e.target.value.toLocaleUpperCase('tr-TR');$$('.stock-card').forEach(x=>x.hidden=!x.textContent.toLocaleUpperCase('tr-TR').includes(q));});
+    $('#sectorSearch')?.addEventListener('input',e=>{const q=e.target.value.toLocaleUpperCase('tr-TR');$$('.sector-card').forEach(x=>x.hidden=!x.textContent.toLocaleUpperCase('tr-TR').includes(q));});
+    $$('.sector-card').forEach(b=>b.addEventListener('click',()=>{stockFilter='ALL';navigate('stocks');}));
+    $('#openSourceStatus')?.addEventListener('click',showSourceStatus);$('#openDataSettings')?.addEventListener('click',showDataSettings);$('#exportSupport')?.addEventListener('click',exportData);
+    $('#profileSettings')?.addEventListener('click',showSettings);$('#profileTheme')?.addEventListener('click',()=>{state.settings.theme=state.settings.theme==='night'?'light':'night';saveState();renderPage(false);});$('#profileBackup')?.addEventListener('click',exportData);
     $$('[data-analytics-filter]').forEach(b=>b.addEventListener('click',()=>{analyticsFilter=b.dataset.analyticsFilter;renderPage();}));
     $$('[data-analytics-period]').forEach(b=>b.addEventListener('click',()=>{analyticsPeriod=b.dataset.analyticsPeriod;renderPage(false);}));
     $$('.filter-pill').forEach(b=>b.addEventListener('click',()=>{portfolioFilter=b.dataset.filter;renderPage();}));
@@ -2203,7 +2238,7 @@
     $('#syncBtn').addEventListener('click',()=>refreshAll({includeContent:true}));
     $('#moreBtn').addEventListener('click',showAppMenu);
     $('#searchBtn').addEventListener('click',()=>navigate('search'));
-    $('#profileBtn').addEventListener('click',showSettings);
+    $('#profileBtn').addEventListener('click',()=>navigate('profile'));
     $('#importInput').addEventListener('change',e=>{const file=e.target.files?.[0];if(file)importData(file);e.target.value='';});
     window.addEventListener('online',()=>{showToast('İnternet bağlantısı geri geldi');triggerAutoRefresh();});
     document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')setTimeout(triggerAutoRefresh,250);});
