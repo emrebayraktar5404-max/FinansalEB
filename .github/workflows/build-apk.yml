@@ -96,3 +96,5 @@ jobs:
           path: dist/
           if-no-files-found: error
           retention-days: 30
+
+# Bu iş akışı finansaleb-2 güncellemelerinde otomatik çalışır.
