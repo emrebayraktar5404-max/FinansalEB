@@ -98,3 +98,4 @@ jobs:
           retention-days: 30
 
 # Bu iş akışı finansaleb-2 güncellemelerinde otomatik çalışır.
+# İşlev düzeltmeleri APK derlemesi.
