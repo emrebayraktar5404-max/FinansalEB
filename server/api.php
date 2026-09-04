@@ -15,7 +15,7 @@ declare(strict_types=1);
  *   ?action=batch&items=[{"symbol":"TUPRS.IS","type":"BIST"}]
  */
 
-const APP_VERSION = '2.0.0-alpha.2';
+const APP_VERSION = '2.0.0-alpha.3';
 
 $configFile = __DIR__ . '/config.php';
 $config = is_file($configFile) ? require $configFile : [
@@ -27,7 +27,7 @@ $config = is_file($configFile) ? require $configFile : [
     'DIVIDEND_CACHE_SECONDS' => 21600,
     'ENABLE_KAP_SCRAPER' => true,
     'TIMEZONE' => 'Europe/Istanbul',
-    'USER_AGENT' => 'FinansalEB/2.0.0-alpha.2 (personal portfolio tracker)',
+    'USER_AGENT' => 'Folivra/2.0.0-alpha.3 (personal portfolio tracker)',
     'SEC_USER_AGENT' => '',
 ];
 
@@ -40,7 +40,7 @@ $config = array_merge([
     'DIVIDEND_CACHE_SECONDS' => 21600,
     'ENABLE_KAP_SCRAPER' => true,
     'TIMEZONE' => 'Europe/Istanbul',
-    'USER_AGENT' => 'FinansalEB/2.0.0-alpha.2 (personal portfolio tracker)',
+    'USER_AGENT' => 'Folivra/2.0.0-alpha.3 (personal portfolio tracker)',
     'SEC_USER_AGENT' => '',
 ], $config);
 

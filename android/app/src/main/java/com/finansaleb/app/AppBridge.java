@@ -121,10 +121,26 @@ public final class AppBridge {
     }
 
     @JavascriptInterface
+    public void cancelNotification(String uniqueId) {
+        if (uniqueId == null || uniqueId.trim().isEmpty()) return;
+        Intent intent = new Intent(activity, NotificationReceiver.class);
+        PendingIntent pendingIntent = PendingIntent.getBroadcast(
+                activity,
+                uniqueId.hashCode(),
+                intent,
+                PendingIntent.FLAG_NO_CREATE | PendingIntent.FLAG_IMMUTABLE
+        );
+        if (pendingIntent == null) return;
+        AlarmManager alarm = (AlarmManager) activity.getSystemService(Context.ALARM_SERVICE);
+        if (alarm != null) alarm.cancel(pendingIntent);
+        pendingIntent.cancel();
+    }
+
+    @JavascriptInterface
     public void downloadFile(String filename, String content, String mimeType) {
         activity.runOnUiThread(() -> {
             try {
-                String safeName = filename == null ? "FinansalEB-yedek.json"
+                String safeName = filename == null ? "Folivra-yedek.json"
                         : filename.replaceAll("[^a-zA-Z0-9._çÇğĞıİöÖşŞüÜ-]", "_");
                 byte[] bytes = (content == null ? "" : content).getBytes(StandardCharsets.UTF_8);
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -132,7 +148,7 @@ public final class AppBridge {
                     ContentValues values = new ContentValues();
                     values.put(MediaStore.Downloads.DISPLAY_NAME, safeName);
                     values.put(MediaStore.Downloads.MIME_TYPE, mimeType == null ? "application/octet-stream" : mimeType);
-                    values.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/FinansalEB");
+                    values.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/Folivra");
                     values.put(MediaStore.Downloads.IS_PENDING, 1);
                     Uri uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
                     if (uri == null) throw new IllegalStateException("Dosya konumu oluşturulamadı");
@@ -151,7 +167,7 @@ public final class AppBridge {
                         out.write(bytes);
                     }
                 }
-                Toast.makeText(activity, "Yedek İndirilenler/FinansalEB klasörüne kaydedildi", Toast.LENGTH_LONG).show();
+                Toast.makeText(activity, "Yedek İndirilenler/Folivra klasörüne kaydedildi", Toast.LENGTH_LONG).show();
             } catch (Exception error) {
                 Toast.makeText(activity, "Dosya kaydedilemedi: " + error.getMessage(), Toast.LENGTH_LONG).show();
             }

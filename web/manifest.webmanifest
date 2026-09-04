@@ -1,14 +1,14 @@
 {
-  "name": "Finansal(EB)",
-  "short_name": "Finansal(EB)",
+  "name": "Folivra",
+  "short_name": "Folivra",
   "description": "Kişisel portföy, temettü ve finansal özgürlük takip uygulaması",
   "lang": "tr",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait-primary",
-  "background_color": "#07131b",
-  "theme_color": "#07131b",
+  "background_color": "#071b35",
+  "theme_color": "#071b35",
   "icons": [
     {"src":"icon-192.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},
     {"src":"icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}

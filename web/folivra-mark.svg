@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">Folivra büyüyen yaprak ve grafik logosu</title>
+  <defs>
+    <linearGradient id="bg" x1="70" y1="55" x2="442" y2="462" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#102F55"/><stop offset="1" stop-color="#071B35"/>
+    </linearGradient>
+    <linearGradient id="growth" x1="120" y1="400" x2="395" y2="105" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#169BB4"/><stop offset=".52" stop-color="#10B981"/><stop offset="1" stop-color="#8ADE32"/>
+    </linearGradient>
+  </defs>
+  <rect x="24" y="24" width="464" height="464" rx="116" fill="url(#bg)"/>
+  <path d="M133 383c22-105 73-186 157-239 45-28 88-37 119-38-7 52-27 99-64 132-40 35-87 48-142 42 32-33 72-61 119-84-83 26-145 88-189 187Z" fill="url(#growth)"/>
+  <path d="M139 389c64-6 125-31 175-75 29-25 54-54 74-87" fill="none" stroke="#E9FFF7" stroke-width="18" stroke-linecap="round"/>
+  <path d="m366 218 35-2-7 35" fill="none" stroke="#E9FFF7" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M153 409v-54h35v54m29 0v-82h35v82m29 0V295h35v114m29 0V259h35v150" fill="none" stroke="url(#growth)" stroke-width="22" stroke-linejoin="round"/>
+</svg>

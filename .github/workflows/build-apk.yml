@@ -1,4 +1,4 @@
-name: FinansalEB Android APK
+name: Folivra Android APK
 
 on:
   push:
@@ -43,14 +43,14 @@ jobs:
         run: |
           node --check web/finance-core.js
           node --check web/app.js
-          node --test tests/finance-core.test.js
+          node --test tests/*.test.js
           python3 tests/static_checks.py
 
       - name: Sürüm doğrula
         run: |
-          grep -q "APP_VERSION = '2.0.0-alpha.2'" web/app.js
-          grep -q "versionName '2.0.0-alpha.2'" android/app/build.gradle
-          echo "v2.0.0-alpha.2 kaynakları doğrulandı"
+          grep -q "APP_VERSION = '2.0.0-alpha.3'" web/app.js
+          grep -q "versionName '2.0.0-alpha.3'" android/app/build.gradle
+          echo "v2.0.0-alpha.3 kaynakları doğrulandı"
 
       - name: Kalıcı imza anahtarını hazırla
         env:
@@ -86,16 +86,13 @@ jobs:
       - name: APK dosyasını hazırla
         run: |
           mkdir -p dist
-          cp android/app/build/outputs/apk/release/app-release.apk dist/FinansalEB-v2.0.0-alpha.2.apk
-          sha256sum dist/FinansalEB-v2.0.0-alpha.2.apk > dist/FinansalEB-v2.0.0-alpha.2.apk.sha256
+          cp android/app/build/outputs/apk/release/app-release.apk dist/Folivra-v2.0.0-alpha.3.apk
+          sha256sum dist/Folivra-v2.0.0-alpha.3.apk > dist/Folivra-v2.0.0-alpha.3.apk.sha256
 
       - name: APK artefaktını yükle
         uses: actions/upload-artifact@v4
         with:
-          name: FinansalEB-v2.0.0-alpha.2-APK
+          name: Folivra-v2.0.0-alpha.3-APK
           path: dist/
           if-no-files-found: error
           retention-days: 30
-
-# Bu iş akışı finansaleb-2 güncellemelerinde otomatik çalışır.
-# İşlev düzeltmeleri APK derlemesi.

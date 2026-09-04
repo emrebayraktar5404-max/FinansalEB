@@ -1,11 +1,11 @@
-/* Finansal(EB) — kişisel portföy ve temettü takip uygulaması
+/* Folivra — kişisel portföy, temettü ve finansal özgürlük uygulaması
  * Tamamen istemci tarafında çalışır; veriler cihazda saklanır.
  * Piyasa verileri ayarlanan kişisel PHP uç noktası veya desteklenen açık kaynaklar üzerinden yenilenir.
  */
 (() => {
   'use strict';
 
-  const APP_VERSION = '2.0.0-alpha.2';
+  const APP_VERSION = '2.0.0-alpha.3';
   const DEFAULT_BACKEND_URL = 'https://baykarturizm.com/finansaleb-api/api.php';
   const STORAGE_KEY = 'finansaleb_state_v1';
   const ONBOARDING_KEY = 'finansaleb_onboarded_v1';
@@ -123,14 +123,22 @@
         refreshHours: 6,
         refreshMinutes: 15,
         notifications: true,
+        notifyExDate: true,
+        notifyPaymentDate: true,
+        notifyAdvanceDays: 1,
+        notificationHour: 10,
+        profileName: 'Folivra Kullanıcısı',
+        profileEmail: '',
         autoRefresh: true,
         privacy: false,
         monthlyExpense: 50000,
         monthlyContribution: 15000,
         expectedReturn: 8,
         expectedDividendGrowth: 6,
+        expectedDividendYield: 5,
         dividendGoalAnnual: 600000,
         reinvestDividends: true,
+        portfolioName: 'Portföyüm',
         theme: 'light'
       },
       market: {
@@ -205,6 +213,7 @@
     ];
     s.settings.dividendGoalAnnual = 600000;
     s.settings.monthlyExpense = 50000;
+    s.settings.portfolioName = 'Örnek Portföy';
     return s;
   }
 
@@ -249,6 +258,10 @@
   let analyticsFilter = 'ALL';
   let analyticsPeriod = '1Y';
   let stockFilter = 'ALL';
+  let portfolioTab = 'overview';
+  let calendarFilter = 'upcoming';
+  let selectedSector = '';
+  let marketsTab = 'BIST';
   let toastTimer = null;
   let refreshController = null;
   let contentRefreshPromise = null;
@@ -434,6 +447,7 @@
     $$('[data-icon]').forEach(node => { node.innerHTML = ICONS[node.dataset.icon] || ''; });
     $('#privacyBtn').innerHTML = state.settings.privacy ? ICONS.eyeOff : ICONS.eye;
     $('#syncBtn').innerHTML = ICONS.refresh;
+    if ($('#quickAddBtn')) $('#quickAddBtn').innerHTML = ICONS.plus;
     $('#fab').innerHTML = ICONS.plus;
   }
 
@@ -543,7 +557,7 @@
     const amount = eventNet(event);
     const days = Math.ceil((d - new Date()) / DAY);
     const meta = days < 0 ? 'Ödeme gerçekleşti' : days === 0 ? 'Bugün' : `${days} gün sonra`;
-    return `<article class="event-row" data-asset-id="${esc(asset.id)}">
+    return `<article class="event-row" data-asset-id="${esc(asset.id)}" data-event-id="${esc(event.id)}">
       <div class="event-date"><div><strong>${String(d.getDate()).padStart(2,'0')}</strong><span>${MONTHS_SHORT[d.getMonth()]}</span></div></div>
       <div class="event-main"><div class="event-title">${esc(asset.symbol)} · ${event.payDate ? 'Temettü ödemesi' : 'Hak kullanım'}</div><div class="event-meta">${meta} · ${numberFmt(quantityAtDate(asset.id,event.exDate||event.payDate), asset.type==='TEFAS'?0:2)} hak sahibi adet</div><span class="status-pill ${eventStatusMeta(event).className}">${eventStatusMeta(event).label}</span></div>
       <div class="event-amount">${money(amount,'TRY')}</div>
@@ -715,15 +729,14 @@
     }
     assets.sort((a,b) => assetValue(b) - assetValue(a));
     const filters = [['ALL','Tümü'],['BIST','BIST'],['US','ABD'],['ETF','ETF'],['TEFAS','Fon'],['GOLD','Altın'],['SILVER','Gümüş'],['CUSTOM','Diğer']];
-    return `${demoBanner()}
-      ${pageHeader('Varlıklarım','Portföy','Maliyet, güncel değer ve dağılım',`<button class="header-action" data-action="add-asset">+ Varlık</button>`)}
-      <div class="search-box">${ICONS.search}<input id="assetSearch" value="${esc(portfolioQuery)}" placeholder="Sembol veya varlık ara"></div>
-      <div class="pill-row" style="margin-top:10px">${filters.map(([key,label])=>`<button class="filter-pill ${portfolioFilter===key?'active':''}" data-filter="${key}">${label}</button>`).join('')}</div>
-      <section class="summary-strip summary-strip-portfolio"><div class="summary-item"><div class="summary-label">Toplam değer</div><div class="summary-value">${money(m.total,'TRY')}</div></div><div class="summary-item"><div class="summary-label">Nakit</div><div class="summary-value">${money(m.cash,'TRY')}</div></div><div class="summary-item"><div class="summary-label">Toplam K/Z</div><div class="summary-value ${m.profit>=0?'positive':'negative'}">${money(m.profit,'TRY')}</div><div class="summary-sub ${m.profitPct>=0?'positive':'negative'}">${pct(m.profitPct)}</div></div><div class="summary-item"><div class="summary-label">Bugün</div><div class="summary-value ${m.daily>=0?'positive':'negative'}">${money(m.daily,'TRY')}</div><div class="summary-sub ${m.dailyPct>=0?'positive':'negative'}">${pct(m.dailyPct)}</div></div></section>
-      ${renderCashAccounts()}
-      ${renderIpoSection()}
-      <section class="section"><div class="section-head"><span class="section-title">${assets.length} varlık</span><button class="section-link" data-action="add-transaction">İşlem ekle</button></div><div class="asset-list">${assets.length ? assets.map(assetRow).join('') : emptyState('search','Sonuç bulunamadı','Filtreyi veya arama metnini değiştir.')}</div></section>
-      <section class="section"><div class="section-head"><div><span class="section-title">İzleme listesi</span><div class="section-note">Portföy değerine katılmaz; almak istediğin varlıkları burada takip et.</div></div><button class="section-link" data-action="add-watch">+ Takip et</button></div><div class="asset-list">${state.watchlist.length ? state.watchlist.map(watchlistRow).join('') : emptyState('eye','İzleme listesi boş','Portföyünde olmayan hisse, ETF, fon veya diğer varlıkları ekleyebilirsin.')}</div></section>`;
+    const paid=state.dividendEvents.filter(e=>e.received).reduce((s,e)=>s+eventNet(e),0),expected=upcomingEvents(100,false).reduce((s,e)=>s+eventNet(e),0);
+    const tabs=`<div class="portfolio-tabs">${[['overview','Bakış'],['holdings','Hisseler'],['dividends','Temettüler'],['transactions','İşlemler']].map(([k,l])=>`<button class="${portfolioTab===k?'active':''}" data-portfolio-tab="${k}">${l}</button>`).join('')}</div>`;
+    let body='';
+    if(portfolioTab==='overview')body=`<section class="portfolio-hero"><span>Tüm Zamanlar Değer</span><strong>${money(m.total,'TRY')}</strong><em class="${m.profit>=0?'positive':'negative'}">${m.profit>=0?'↑':'↓'} ${money(Math.abs(m.profit),'TRY')} (${pct(m.profitPct)})</em>${miniTrendSvg(analyticsTrend(scopedAssets,'ALL'))}</section><section class="summary-strip summary-strip-portfolio"><div class="summary-item"><div class="summary-label">Toplam maliyet</div><div class="summary-value">${money(m.cost,'TRY')}</div></div><div class="summary-item"><div class="summary-label">Toplam kazanç</div><div class="summary-value ${m.profit>=0?'positive':'negative'}">${money(m.profit,'TRY')}</div></div><div class="summary-item"><div class="summary-label">Ödenen temettü</div><div class="summary-value positive">${money(paid,'TRY')}</div></div><div class="summary-item"><div class="summary-label">Beklenen temettü</div><div class="summary-value">${money(expected,'TRY')}</div></div></section>${renderCashAccounts()}`;
+    if(portfolioTab==='holdings')body=`<div class="search-box">${ICONS.search}<input id="assetSearch" value="${esc(portfolioQuery)}" placeholder="Sembol veya varlık ara"></div><div class="pill-row" style="margin-top:10px">${filters.map(([key,label])=>`<button class="filter-pill ${portfolioFilter===key?'active':''}" data-filter="${key}">${label}</button>`).join('')}</div><section class="section"><div class="section-head"><span class="section-title">${assets.length} varlık</span><button class="section-link" data-action="add-asset">+ Varlık ekle</button></div><div class="asset-list">${assets.length?assets.map(assetRow).join(''):emptyState('portfolio','Portföyünüz boş','İlk yatırım aracınızı ekleyerek başlayın.')}</div></section>`;
+    if(portfolioTab==='dividends')body=`<section class="dividend-hero"><div class="dividend-main-label">Toplam Temettü</div><div class="dividend-main-value">${money(paid+expected,'TRY')}</div><div class="event-meta">Ödenen ${money(paid,'TRY')} · Beklenen ${money(expected,'TRY')}</div></section><section class="section">${dividendBarChart()}</section><section class="section"><div class="section-head"><span class="section-title">Yaklaşan ödemeler</span><button class="section-link" data-action="add-dividend">+ Temettü</button></div><div class="event-list">${upcomingEvents(20,false).map(eventRow).join('')||emptyState('coin','Temettü kaydı yok','Açıklanmış veya tahmini ödeme ekleyin.')}</div></section>`;
+    if(portfolioTab==='transactions'){const tx=[...state.transactions].sort((a,b)=>parseDate(b.date)-parseDate(a.date));body=`<section class="section"><div class="section-head"><span class="section-title">İşlem geçmişi</span><button class="section-link" data-action="add-transaction">+ İşlem ekle</button></div><div class="transaction-list">${tx.length?tx.map(t=>{const a=assetById(t.assetId),gross=Number(t.quantity||0)*Number(t.price||0),net=t.type==='sell'?gross-Number(t.fee||0):gross+Number(t.fee||0);return `<button class="transaction-card" data-transaction-id="${esc(t.id)}"><div><b>${esc(a?.symbol||'Varlık')}</b><span>${dateText(t.date)} · ${t.type==='sell'?'Satış':'Alış'}${t.purchaseKind==='ipo'?' · Halka arz':''}</span></div><div><b>${numberFmt(t.quantity,4)} adet</b><span>${money(net,t.currency||a?.currency||'TRY')} ›</span></div></button>`}).join(''):emptyState('cashflow','İşlem bulunamadı','İlk alış veya satış işleminizi ekleyin.')}</div></section>`;}
+    return `${demoBanner()}<div class="portfolio-heading"><button class="portfolio-name-button" data-action="edit-portfolio-name"><small>PORTFÖY</small><h1>${esc(state.settings.portfolioName||'Portföyüm')}</h1></button><button data-action="add-transaction" aria-label="Yeni işlem ekle">${ICONS.plus}</button></div>${tabs}${body}`;
   }
 
   function renderDividends() {
@@ -759,27 +772,20 @@
   }
 
   function renderCalendar() {
-    const view = state.calendarView;
-    const year = Number(view.year);
-    const month = Number(view.month);
-    const first = new Date(year,month,1,12);
-    const last = new Date(year,month+1,0,12);
-    const startOffset = (first.getDay()+6)%7;
-    const cells = [];
-    for (let i=0;i<42;i++) {
-      const d = new Date(year,month,1-startOffset+i,12);
-      const dateIso = isoDate(d);
-      const events = state.dividendEvents.filter(e => sameDay(parseDate(e.payDate||e.exDate),d) || (e.exDate && sameDay(parseDate(e.exDate),d)));
-      cells.push({d,dateIso,events,outside:d.getMonth()!==month});
-    }
-    const selected = parseDate(view.selected);
-    const selectedEvents = state.dividendEvents.filter(e => sameDay(parseDate(e.payDate||e.exDate),selected) || (e.exDate && sameDay(parseDate(e.exDate),selected)));
-    return `${demoBanner()}
-      ${pageHeader('Gelir ajandası','Temettü takvimi','Hak kullanım ve ödeme günleri',`<button class="header-action" data-action="export-calendar">Takvimi aktar</button>`)}
-      <section class="card calendar-card"><div class="calendar-head"><div class="calendar-title">${MONTHS[month]} ${year}</div><div class="calendar-nav"><button data-cal-nav="-1">‹</button><button data-cal-today>•</button><button data-cal-nav="1">›</button></div></div><div class="weekdays">${WEEKDAYS.map(d=>`<div>${d}</div>`).join('')}</div><div class="calendar-grid">${cells.map(c=>`<button class="day-cell ${c.outside?'outside':''} ${sameDay(c.d,new Date())?'today':''} ${c.dateIso===view.selected?'selected':''}" data-date="${c.dateIso}">${c.d.getDate()}${c.events.length?`<span class="day-dots">${c.events.slice(0,3).map(e=>`<i class="day-dot ${e.status==='estimated'?'warning':''}"></i>`).join('')}</span>`:''}</button>`).join('')}</div></section>
-      <section class="section"><div class="section-head"><span class="section-title">${dateText(view.selected,{day:'numeric',month:'long',year:'numeric'})}</span><button class="section-link" data-action="add-dividend" data-date-prefill="${view.selected}">Olay ekle</button></div><div class="event-list">${selectedEvents.length ? selectedEvents.map(eventRow).join('') : emptyState('calendar','Bu tarihte olay yok','Ödeme veya hak kullanım günü seçildiğinde ayrıntılar burada görünür.')}</div></section>
-      <section class="section"><div class="section-head"><span class="section-title">Sıradaki ödemeler</span></div><div class="event-list">${upcomingEvents(5).map(eventRow).join('') || emptyState('coin','Yaklaşan ödeme yok','Henüz bir temettü takvimi oluşmadı.')}</div></section>`;
+    const year=Number(state.calendarView.year||new Date().getFullYear()),now=new Date();
+    let events=state.dividendEvents.filter(e=>parseDate(e.payDate||e.exDate).getFullYear()===year);
+    if(calendarFilter==='upcoming')events=events.filter(e=>parseDate(e.payDate||e.exDate)>=addDays(now,-1));
+    if(calendarFilter==='confirmed')events=events.filter(e=>e.status==='confirmed'||e.status==='proposed');
+    if(calendarFilter==='portfolio')events=events.filter(e=>state.assets.some(a=>a.id===e.assetId&&Number(a.quantity||0)>0));
+    events.sort((a,b)=>parseDate(a.payDate||a.exDate)-parseDate(b.payDate||b.exDate));
+    const months=new Map();events.forEach(e=>{const m=parseDate(e.payDate||e.exDate).getMonth();if(!months.has(m))months.set(m,[]);months.get(m).push(e);});
+    const label={upcoming:'Yaklaşan',all:'Tüm yıl',confirmed:'Açıklanmış',portfolio:'Portföyüm'}[calendarFilter];
+    return `${demoBanner()}<div class="calendar-title-row"><h1>Temettü Takvimi</h1><button data-action="add-dividend">${ICONS.plus}</button></div><div class="calendar-toolbar"><button class="summary-toggle">${ICONS.analytics} Özet</button><div class="year-switch"><button data-year-step="-1">‹</button><b>${year}</b><button data-year-step="1">›</button></div><button id="calendarFilterBtn" class="filter-trigger">${ICONS.search} Filtrele<i>${calendarFilter!=='all'?'':''}</i></button></div><div class="active-calendar-filter">${label}<span>${events.length} bildirim</span></div>${months.size?[...months.entries()].map(([month,list])=>`<section class="calendar-month"><h2>${MONTHS[month]} ${year}<small>${list.length} bildirim</small></h2><div class="calendar-event-list">${list.map(calendarEventCard).join('')}</div></section>`).join(''):emptyState('calendar','Bu filtrede temettü yok','Filtreyi değiştirin veya yeni temettü kaydı ekleyin.')}`;
   }
+
+  function calendarEventCard(e){const a=assetById(e.assetId),d=parseDate(e.payDate||e.exDate),yieldPct=a&&Number(a.price)>0?Number(e.amountPerShare||0)*(1-clamp(e.taxRate??automaticDividendTax(a,d),0,100)/100)/Number(a.price)*100:0;return `<button class="calendar-event event-row" data-asset-id="${e.assetId}" data-event-id="${esc(e.id)}"><div class="calendar-event-head"><div><b>${esc(a?.symbol||'Hisse')}</b><span>${esc(a?.name||'')}</span></div><div><small>Son Fiyat</small><strong>${a?money(a.price,a.currency,false,a.price<1?4:2):'—'}</strong><em class="${Number(a?.changePct||0)>=0?'positive':'negative'}">${pct(a?.changePct||0)}</em></div></div><div class="calendar-event-stats"><span><small>Tarih</small><b><i></i>${dateText(d,{day:'numeric',month:'short',year:'numeric'})}</b></span><span><small>Pay Başı (Net)</small><b>${money(Number(e.amountPerShare||0)*(1-clamp(e.taxRate??automaticDividendTax(a,d),0,100)/100),e.currency||a?.currency||'TRY',false,4)}</b></span><span><small>Verim (Net)</small><b>%${numberFmt(yieldPct,2)}</b></span></div><div class="status-pill ${e.status==='estimated'?'estimated':'confirmed'}">${e.status==='estimated'?'Tahmini':'Açıklanmış'}</div></button>`;}
+
+  function showCalendarFilter(){showModal(`${modalHeader('Filtrele')}<div class="filter-options">${[['upcoming','Yaklaşan ödemeler'],['all','Tüm yıl'],['confirmed','Yalnızca açıklanmış'],['portfolio','Portföy hisselerim']].map(([k,l])=>`<button data-calendar-filter="${k}" class="${calendarFilter===k?'active':''}"><span>${l}</span><i>${calendarFilter===k?'✓':''}</i></button>`).join('')}</div>`);$$('[data-calendar-filter]').forEach(b=>b.addEventListener('click',()=>{calendarFilter=b.dataset.calendarFilter;closeModal();renderPage();}));}
 
   function allocationBy(keyFn, assetList = state.assets) {
     const map = new Map();
@@ -1052,7 +1058,7 @@
     return `<section class="card market-card news-hub"><div class="section-head"><div><div class="section-title">📰 Haber Merkezi</div><div class="section-note">Hayatını, Türkiye’yi, piyasaları ve portföyünü etkileyebilecek gelişmeler.</div></div></div><div class="news-tabs">${tabs.map(([k,l])=>`<button type="button" class="${marketNewsMode===k?'active':''}" data-action="news-mode" data-news-mode="${k}">${l}</button>`).join('')}</div><div class="content-list">${cards||'<div class="ipo-empty"><b>Bu filtrede haber bulunamadı.</b><span>Yenile veya başka bir kategori seç.</span></div>'}</div><div class="news-legend"><span>🔴 yüksek etki</span><span>🟠 dikkat</span><span>🔵 bilgi</span></div>${xHtml}</section>`;
   }
 
-  function renderMarket() {
+  function renderMarketLegacy() {
     const today=isoDate();
     const all = Array.isArray(state.market.news) ? state.market.news : [];
     const macroAll = (Array.isArray(state.market.macroEvents) ? state.market.macroEvents : []).filter(e=>!e.date || String(e.date)>=today);
@@ -1192,6 +1198,16 @@
     return contentRefreshPromise;
   }
 
+  function renderMarket(){
+    const tabs=[['BIST','BIST'],['US','ABD'],['ETF','ETF'],['TEFAS','TEFAS'],['METAL','Altın'],['FX','Döviz']];
+    const typeAssets=marketsTab==='METAL'?state.assets.filter(a=>['GOLD','SILVER'].includes(a.type)):marketsTab==='FX'?state.assets.filter(a=>a.type==='FX'):state.assets.filter(a=>a.type===marketsTab);
+    const movers=[...typeAssets].sort((a,b)=>Math.abs(Number(b.changePct||0))-Math.abs(Number(a.changePct||0)));
+    const fxCards=Object.entries(state.market.fx||{}).filter(([c])=>c!=='TRY').map(([c,v])=>`<article class="market-quote"><span>${c}/TRY</span><strong>${money(v,'TRY',false,4)}</strong><small>Son başarılı kur</small></article>`).join('');
+    const assetCards=movers.map(a=>`<button class="market-asset asset-row" data-asset-id="${a.id}"><div><b>${esc(a.symbol)}</b><span>${esc(a.name)}</span></div><div><strong>${money(a.price,a.currency,false,a.price<1?4:2)}</strong><em class="${Number(a.changePct||0)>=0?'positive':'negative'}">${pct(a.changePct||0)}</em></div></button>`).join('');
+    const news=(state.market.news||[]).slice(0,5);
+    return `<div class="reference-page markets-page"><div class="page-title-row"><div><small class="page-kicker">CANLI PİYASA</small><h1>Piyasalar</h1></div><button id="marketsRefresh" class="round-action">${ICONS.refresh}</button></div><div class="market-tabs">${tabs.map(([k,l])=>`<button data-markets-tab="${k}" class="${marketsTab===k?'active':''}">${l}</button>`).join('')}</div>${marketsTab==='FX'?`<div class="market-quote-grid">${fxCards||emptyState('market','Kur verisi yok','Verileri yenileyerek tekrar deneyin.')}</div>`:`<section><div class="section-head"><span class="section-title">İzlenen yatırım araçları</span><button class="section-link" data-action="add-asset">+ Ekle</button></div><div class="market-assets">${assetCards||emptyState('market',`${tabs.find(x=>x[0]===marketsTab)?.[1]} kaydı yok`,'Bu piyasa için yatırım aracı ekleyin veya arama ekranını kullanın.')}</div></section>`}<section class="section"><div class="section-head"><span class="section-title">Piyasada bugün</span><button class="section-link" data-action="refresh-content">Yenile</button></div><div class="market-news-list">${news.length?news.map(n=>`<button class="market-news" ${n.url?`data-external-url="${esc(n.url)}"`:''}><small>${esc(n.source||'Piyasa')}</small><b>${esc(n.title||'Güncel piyasa haberi')}</b><p>${esc(n.summary||'')}</p></button>`).join(''):emptyState('news','Güncel haber bulunamadı','Piyasa içeriğini yenileyerek tekrar deneyin.')}</div></section><div class="disclaimer">Fiyatlar ücretsiz kaynakların gecikmesine tabi olabilir. Son başarılı veri korunur.</div></div>`;
+  }
+
   function renderDiscover() {
     const cards = [
       ['trend','En yüksek temettü verimine sahip hisseler','Temettü verimi en yüksek hisseleri kolayca keşfedin ve yatırım fırsatlarını değerlendirin.','Hisseleri gör','stocks','yield'],
@@ -1203,13 +1219,25 @@
   }
 
   function renderTools() {
+    const freedom=freedomProjection();
     const cards = [
       ['trend','Hisse/Yatırım Karşılaştırma','Hisse senetleri, döviz, altın ve ETF gibi yatırım araçlarını temettüler ve sermaye artışları dahil ederek uzun vadeli karşılaştırın.','compare'],
       ['target','Temettü Emekliliği Hesaplama','Temettü emeklisi olarak finansal özgürlüğünüze ne zaman ulaşacağınızı hesaplayın ve emeklilik planınızı oluşturun.','retirement'],
       ['coin','Temettü Getiri Hesaplama','Yatırımınızın temettü getirisini kolayca hesaplayın. Hisse senedi temettü gelirinizi ve veriminizi anında öğrenin.','income'],
       ['analytics','Temettü Verimi Hesaplama','Hisse fiyatı ya da maliyetinize göre temettü verimini hesaplayın.','yield']
     ];
-    return `<div class="reference-page"><h1>Araçlar</h1><div class="tool-list">${cards.map((c,i)=>`<button class="tool-card" data-tool="${c[3]}"><span class="tool-icon tool-${i}">${ICONS[c[0]]}</span><strong>${c[1]}</strong><p>${c[2]}</p><em>Şimdi hesapla</em></button>`).join('')}</div></div>`;
+    return `<div class="reference-page"><h1>Araçlar</h1><section class="freedom-card"><div class="freedom-card-head"><span>${ICONS.target}</span><div><small>FİNANSAL ÖZGÜRLÜK</small><h2>Aylık gider karşılama</h2></div></div><div class="freedom-score"><strong>%${numberFmt(freedom.coverage,1)}</strong><span>${money(freedom.monthlyDividend,'TRY')} / ${money(freedom.monthlyExpense,'TRY')}</span></div><div class="progress"><i style="width:${Math.min(100,freedom.coverage)}%"></i></div><div class="freedom-grid"><div><small>Hedef sermaye</small><b>${money(freedom.targetCapital,'TRY')}</b></div><div><small>Tahmini süre</small><b>${freedom.label}</b></div></div><button class="freedom-settings" data-action="projection-settings">Hedefi ve varsayımları düzenle ›</button></section><div class="tool-list">${cards.map((c,i)=>`<button class="tool-card" data-tool="${c[3]}"><span class="tool-icon tool-${i}">${ICONS[c[0]]}</span><strong>${c[1]}</strong><p>${c[2]}</p><em>Şimdi hesapla</em></button>`).join('')}</div></div>`;
+  }
+
+  function calculateFreedomProjection({capital,monthlyContribution,monthlyExpense,annualReturn,dividendYield}) {
+    return CORE.freedomProjection({capital,monthlyContribution,monthlyExpense,annualReturn,dividendYield});
+  }
+
+  function freedomProjection() {
+    const metrics=portfolioMetrics(),s=state.settings,monthlyExpense=Math.max(0,Number(s.monthlyExpense||0)),monthlyDividend=Math.max(0,Number(metrics.monthlyDividend||0)),coverage=monthlyExpense?monthlyDividend/monthlyExpense*100:0;
+    const result=calculateFreedomProjection({capital:metrics.total,monthlyContribution:s.monthlyContribution,monthlyExpense,annualReturn:s.expectedReturn,dividendYield:s.expectedDividendYield||5});
+    const label=result.months===0?'Hedefe ulaşıldı':Number.isFinite(result.months)?`${Math.floor(result.months/12)} yıl ${result.months%12} ay`:'Hesaplanamıyor';
+    return{...result,label,coverage,monthlyExpense,monthlyDividend};
   }
 
   function renderSearch() {
@@ -1220,7 +1248,7 @@
   function showCalculator(kind) {
     const configs={
       compare:{title:'Hisse/Yatırım Karşılaştırma',fields:[['principal','Başlangıç tutarı',10000],['years','Süre (yıl)',10],['returnA','1. yatırım yıllık getirisi (%)',12],['returnB','2. yatırım yıllık getirisi (%)',8]],calc:f=>{const a=f.principal*Math.pow(1+f.returnA/100,f.years),b=f.principal*Math.pow(1+f.returnB/100,f.years);return `1. yatırım: ${money(a,'TRY')} · 2. yatırım: ${money(b,'TRY')} · Fark: ${money(Math.abs(a-b),'TRY')}`;}},
-      retirement:{title:'Temettü Emekliliği Hesaplama',fields:[['capital','Mevcut portföy',portfolioMetrics().total||100000],['monthly','Aylık yatırım',state.settings.monthlyContribution||10000],['target','Hedef aylık temettü',Number(state.settings.dividendGoalAnnual||600000)/12],['yieldRate','Net temettü verimi (%)',5]],calc:f=>{const targetCapital=f.yieldRate>0?f.target*12/(f.yieldRate/100):0;if(f.capital>=targetCapital)return 'Hedef sermayeye ulaştınız.';const months=f.monthly>0?Math.ceil((targetCapital-f.capital)/f.monthly):Infinity;return Number.isFinite(months)?`Yaklaşık ${Math.floor(months/12)} yıl ${months%12} ay · Hedef sermaye ${money(targetCapital,'TRY')}`:'Aylık yatırım sıfır olamaz.';}},
+      retirement:{title:'Temettü Emekliliği Hesaplama',fields:[['capital','Mevcut portföy',portfolioMetrics().total||100000],['monthly','Aylık yatırım',state.settings.monthlyContribution||10000],['target','Hedef aylık temettü',state.settings.monthlyExpense||50000],['yieldRate','Net temettü verimi (%)',state.settings.expectedDividendYield||5],['returnRate','Yıllık toplam getiri (%)',state.settings.expectedReturn||8]],calc:f=>{const result=calculateFreedomProjection({capital:f.capital,monthlyContribution:f.monthly,monthlyExpense:f.target,annualReturn:f.returnRate,dividendYield:f.yieldRate});if(!Number.isFinite(result.targetCapital))return 'Net temettü verimi sıfırdan büyük olmalıdır.';if(result.months===0)return `Hedefe ulaştınız · Gereken sermaye ${money(result.targetCapital,'TRY')}`;return Number.isFinite(result.months)?`Yaklaşık ${Math.floor(result.months/12)} yıl ${result.months%12} ay · Hedef sermaye ${money(result.targetCapital,'TRY')}`:'Bu katkı ve getiri varsayımlarıyla 100 yıl içinde hedefe ulaşılamıyor.';}},
       income:{title:'Temettü Getiri Hesaplama',fields:[['dividend','Pay başına net temettü',5],['quantity','Sahip olunan hisse adedi',1000],['price','Hisse fiyatı / maliyet',100]],calc:f=>`Toplam net temettü: ${money(f.dividend*f.quantity,'TRY')} · Temettü verimi: %${numberFmt(f.price>0?f.dividend/f.price*100:0,2)}`},
       yield:{title:'Temettü Verimi Hesaplama',fields:[['dividend','Pay başına net temettü',5],['price','Hisse fiyatı / maliyet',100]],calc:f=>`Temettü verimi: %${numberFmt(f.price>0?f.dividend/f.price*100:0,2)}`}
     };
@@ -1232,10 +1260,12 @@
   function stockDividendYield(a){return Number(a.price)>0?Number(a.annualDividendPerShare||0)/Number(a.price)*100:0;}
   function renderStocks(){
     let assets=[...state.assets,...(state.watchlist||[]).filter(w=>!state.assets.some(a=>a.symbol===w.symbol))];
+    if(selectedSector)assets=assets.filter(a=>(a.sector||TYPE_META[a.type]?.label||'Diğer')===selectedSector);
     if(stockFilter==='yield')assets.sort((a,b)=>stockDividendYield(b)-stockDividendYield(a));
     else if(stockFilter==='dividend')assets=assets.filter(a=>Number(a.annualDividendPerShare||0)>0||state.dividendEvents.some(e=>e.assetId===a.id));
     else assets.sort((a,b)=>String(a.symbol).localeCompare(String(b.symbol),'tr'));
-    return `<div class="reference-page"><div class="page-title-row"><h1>Hisseler</h1><button class="header-action" data-action="add-asset">+ Ekle</button></div><label class="big-search compact">${ICONS.search}<input id="stockSearch" placeholder="Hisse veya yatırım aracı ara…"></label>${stockFilter!=='ALL'?`<div class="active-filter">Etkin filtre: <b>${stockFilter==='yield'?'En yüksek temettü verimi':'Temettü geçmişi olanlar'}</b><button id="clearStockFilter">×</button></div>`:''}<div id="stockList" class="stock-list">${assets.length?assets.map(a=>`<button class="stock-card asset-row" data-asset-id="${a.id}"><div><strong>${esc(a.symbol)}</strong><span>${esc(a.name||TYPE_META[a.type]?.label||'Yatırım aracı')}</span><small>Temettü verimi %${numberFmt(stockDividendYield(a),2)}</small></div><div><small>Son fiyat</small><b>${money(a.price,a.currency,false,a.price<1?4:2)}</b><em class="${Number(a.changePct||0)>=0?'positive':'negative'}">${pct(a.changePct||0)}</em></div></button>`).join(''):emptyState('search','Henüz yatırım aracı yok','Hisse, ETF, fon, altın veya döviz ekleyerek başlayın.')}</div></div>`;
+    const filterLabel=selectedSector|| (stockFilter==='yield'?'En yüksek temettü verimi':stockFilter==='dividend'?'Temettü geçmişi olanlar':'');
+    return `<div class="reference-page"><div class="page-title-row"><h1>Hisseler</h1><button class="header-action" data-action="add-asset">+ Ekle</button></div><label class="big-search compact">${ICONS.search}<input id="stockSearch" placeholder="Hisse veya yatırım aracı ara…"></label>${filterLabel?`<div class="active-filter">Etkin filtre: <b>${esc(filterLabel)}</b><button id="clearStockFilter">×</button></div>`:''}<div id="stockList" class="stock-list">${assets.length?assets.map(a=>`<button class="stock-card asset-row" data-asset-id="${a.id}"><div><strong>${esc(a.symbol)}</strong><span>${esc(a.name||TYPE_META[a.type]?.label||'Yatırım aracı')}</span><small>Temettü verimi %${numberFmt(stockDividendYield(a),2)}</small></div><div><small>Son fiyat</small><b>${money(a.price,a.currency,false,a.price<1?4:2)}</b><em class="${Number(a.changePct||0)>=0?'positive':'negative'}">${pct(a.changePct||0)}</em></div></button>`).join(''):emptyState('search','Henüz yatırım aracı yok','Hisse, ETF, fon, altın veya döviz ekleyerek başlayın.')}</div></div>`;
   }
 
   function renderSectors(){
@@ -1253,18 +1283,35 @@
     const list=state.watchlist||[];return `<div class="reference-page"><div class="page-title-row"><h1>Favoriler</h1><button class="header-action" data-action="add-watch">+ Favori</button></div><p class="page-description">Takip etmek istediğiniz yatırım araçları portföy toplamına eklenmeden burada izlenir.</p><div class="asset-list">${list.length?list.map(watchlistRow).join(''):emptyState('eye','Favori listeniz boş','Bir hisse, ETF, fon, altın veya dövizi favorilere ekleyin.')}</div></div>`;
   }
 
-  function renderSupport(){return `<div class="reference-page"><h1>Destek ve İletişim</h1><div class="support-list"><button id="openSourceStatus">Veri kaynaklarının durumunu kontrol et <span>›</span></button><button id="openDataSettings">Bağlantı ayarlarını aç <span>›</span></button><button id="exportSupport">Yedeği dışa aktar <span>›</span></button></div><div class="disclaimer">FinansalEB yatırım tavsiyesi vermez. Bir sorun bildirirken kullandığınız ekranı ve gördüğünüz hatayı ekleyin.</div></div>`;}
-  function renderProfile(){return `<div class="reference-page"><h1>Profil</h1><div class="profile-card"><div class="profile-avatar">EB</div><div><strong>Emre Bayraktar</strong><span>FinansalEB yerel profil</span></div></div><div class="support-list"><button id="profileSettings">Profil ve Ayarlar <span>›</span></button><button id="profileTheme">${state.settings.theme==='night'?'Açık temaya geç':'Gece moduna geç'} <span>›</span></button><button id="profileBackup">Verileri yedekle <span>›</span></button></div></div>`;}
+  function renderSupport(){return `<div class="reference-page"><h1>Destek ve İletişim</h1><div class="support-list"><button id="openSourceStatus">Veri kaynaklarının durumunu kontrol et <span>›</span></button><button id="openDataSettings">Bağlantı ayarlarını aç <span>›</span></button><button id="exportSupport">Yedeği dışa aktar <span>›</span></button></div><div class="disclaimer">Folivra yatırım tavsiyesi vermez. Bir sorun bildirirken kullandığınız ekranı ve gördüğünüz hatayı ekleyin.</div></div>`;}
+  function renderProfile(){const name=state.settings.profileName||'Yatırımcı',initials=name.split(/\s+/).filter(Boolean).slice(0,2).map(x=>x[0]).join('').toLocaleUpperCase('tr-TR');return `<div class="reference-page"><h1>Profil</h1><button class="profile-card profile-card-button" id="editProfile"><div class="profile-avatar">${esc(initials||'F')}</div><div><strong>${esc(name)}</strong><span>${esc(state.settings.profileEmail||'Folivra yerel profil')}</span></div><i>›</i></button><div class="profile-overview"><div><small>Portföy</small><b>${money(portfolioMetrics().total,'TRY')}</b></div><div><small>Aylık temettü</small><b>${money(portfolioMetrics().monthlyDividend,'TRY')}</b></div></div><div class="support-list"><button id="profileSettings">Profil ve Ayarlar <span>›</span></button><button id="profileNotifications">Bildirim tercihleri <span>${state.settings.notifications?'Açık':'Kapalı'} ›</span></button><button id="profileTheme">${state.settings.theme==='night'?'Açık temaya geç':'Gece moduna geç'} <span>›</span></button><button id="profileBackup">Verileri yedekle <span>›</span></button></div></div>`;}
 
   function showGuide() {
-    const titles=['Bedelli sermaye artırımı nedir?','Bedelsiz sermaye artırımı nedir?','Sermaye artırımı nedir, nasıl yapılır?','Temettü verimi nedir, nasıl hesaplanır?','Temettü ödemesi nasıl alınır, hesaba ne zaman geçer?','Temettü nedir?'];
-    showModal(`${modalHeader('Rehber')}<p>Temettü, pasif gelir ve finansal özgürlük üzerine detaylı bilgi ve yatırım ipuçları.</p><div class="guide-list">${titles.map((t,i)=>`<article><div class="guide-art art-${i}">${ICONS[i%2?'coin':'trend']}</div><small>REHBER</small><h3>${t}</h3><p>Temel kavramlar, hesaplama yöntemleri ve yatırımcıların dikkat etmesi gereken noktalar.</p></article>`).join('')}</div>`,{className:'guide-modal'});
+    const articles=guideArticles();
+    showModal(`${modalHeader('Rehber')}<p>Temettü, pasif gelir ve finansal özgürlük üzerine sade ve uygulanabilir bilgiler.</p><div class="guide-list">${articles.map((article,i)=>`<button class="guide-card" data-guide-index="${i}"><div class="guide-art art-${i}">${ICONS[i%2?'coin':'trend']}</div><small>REHBER · ${article.reading}</small><h3>${article.title}</h3><p>${article.summary}</p><em>Okumaya devam et ›</em></button>`).join('')}</div>`,{className:'guide-modal'});
+    $$('[data-guide-index]').forEach(button=>button.addEventListener('click',()=>showGuideArticle(Number(button.dataset.guideIndex))));
   }
+
+  function guideArticles(){return[
+    {title:'Bedelli sermaye artırımı nedir?',reading:'4 dk',summary:'Şirketin mevcut ortaklarından yeni nakit isteyerek sermayesini artırmasıdır.',sections:[['Ne değişir?','Şirket yeni pay ihraç eder. Mevcut yatırımcıya rüçhan hakkı tanınabilir; kullanılmazsa ortaklık oranı seyrelme riski taşır.'],['Neyi kontrol etmelisin?','Artırım oranı, kullanım fiyatı, rüçhan hakkı tarihleri ve şirketin toplanan parayı hangi amaçla kullanacağı birlikte incelenmelidir.'],['Folivra’da kayıt','Yeni pay aldıysan bunu normal alış işlemi olarak; ödediğin tutarı ve varsa komisyonu gerçek değerleriyle kaydet.']]},
+    {title:'Bedelsiz sermaye artırımı nedir?',reading:'3 dk',summary:'Şirket iç kaynaklarını sermayeye ekler ve yatırımcıya karşılıksız yeni pay dağıtır.',sections:[['Servet artar mı?','Pay adedi artarken fiyat teorik olarak aynı oranda düzeltilir. İşlem anında toplam portföy değeri kendiliğinden artmaz.'],['Maliyet nasıl değişir?','Toplam maliyet aynı kalır; adet arttığı için pay başına ortalama maliyet oransal olarak düşer.'],['Dikkat','Bedelsiz oranını tek başına yatırım gerekçesi olarak değerlendirme; şirketin kârlılığı ve nakit üretimi değişmeyebilir.']]},
+    {title:'Sermaye artırımı nasıl izlenir?',reading:'4 dk',summary:'Bedelli, bedelsiz ve tahsisli artırımların portföye etkisini doğru kaydetme rehberi.',sections:[['Önce türü belirle','Bedelli nakit çıkışı yaratır; bedelsiz yaratmaz. Tahsisli artırım mevcut yatırımcıya doğrudan yeni pay vermeyebilir.'],['Tarihleri doğrula','KAP kararı, SPK onayı, hak kullanım başlangıcı ve bitişi farklı tarihlerdir. İşlem kaydında fiili gerçekleşme tarihini kullan.'],['Kontrol','Artırım sonrası adet, toplam maliyet ve ortalama maliyeti aracı kurum ekstresiyle karşılaştır.']]},
+    {title:'Temettü verimi nasıl hesaplanır?',reading:'3 dk',summary:'Pay başına yıllık net temettünün güncel fiyata veya maliyete oranıdır.',sections:[['Güncel verim','Yıllık pay başına net temettü ÷ güncel fiyat × 100. Bugünkü alım fiyatına göre gelir oranını gösterir.'],['Maliyete göre verim','Yıllık pay başına net temettü ÷ ortalama maliyet × 100. Kendi yatırım geçmişine özgüdür.'],['Yanıltıcı durumlar','Tek seferlik yüksek ödeme, hızla düşen fiyat veya sürdürülemeyen kâr verimi geçici olarak yüksek gösterebilir.']]},
+    {title:'Temettü hesaba ne zaman geçer?',reading:'3 dk',summary:'Hak kullanım ve ödeme tarihi aynı şey değildir; kayıtları buna göre ayırmak gerekir.',sections:[['Hak kullanım tarihi','Temettü hakkı için gereken sahipliği belirleyen tarihtir. Bu tarihte yeni alınan pay genellikle ilgili ödemeye hak kazanmaz.'],['Ödeme tarihi','Nakit, şirketin açıkladığı ödeme gününde aracı kurum sürecine göre hesaba geçer. Yurt dışı ödemelerde ek süre olabilir.'],['Folivra onayı','Tarih geçti diye ödeme otomatik alınmış sayılmaz. Nakit gerçekten hesabına geçtiğinde “Aldım” diyerek onayla.']]},
+    {title:'Temettü nedir?',reading:'4 dk',summary:'Şirketin dağıtılabilir kârının ortaklara payları oranında aktarılmasıdır.',sections:[['Gelirin kaynağı','Temettü şirketin faaliyetlerinden ürettiği ve dağıtma kararı aldığı kârdan gelir; garanti edilmiş faiz değildir.'],['Brüt ve net','Brüt ödeme üzerinden stopaj veya ülkeye özgü vergi kesintileri uygulanabilir. Portföy planında net tutarı esas almak daha sağlıklıdır.'],['Sürdürülebilirlik','Kâr, serbest nakit akışı, borçluluk, ödeme oranı ve geçmiş dağıtım disiplini birlikte değerlendirilmelidir.']]}
+  ];}
+
+  function showGuideArticle(index){const article=guideArticles()[index];if(!article)return;showModal(`${modalHeader(article.title)}<article class="guide-reader"><div class="guide-reader-hero">${ICONS[index%2?'coin':'trend']}<small>${article.reading} okuma</small></div><p class="guide-lead">${article.summary}</p>${article.sections.map(([title,text])=>`<section><h3>${title}</h3><p>${text}</p></section>`).join('')}<div class="disclaimer">Bu içerik eğitim amaçlıdır ve yatırım tavsiyesi değildir. Güncel oran ve tarihler için KAP, SPK ve aracı kurum kayıtlarını doğrula.</div></article>`,{className:'guide-modal'});}
 
   function showAppMenu() {
     const rows=[['calendar','Temettü Takvimi'],['upcoming','Yaklaşan Ödemeler'],['stocks','Hisseler'],['sectors','Sektörler'],['discover','Keşfet'],['portfolio','Portföy'],['favorites','Favoriler'],['tools','Hesaplama Araçları'],['guide','Rehber'],['support','Destek ve İletişim'],['profile','Profil ve Ayarlar']];
-    showModal(`<div class="app-menu-head"><b>Finansal<span>EB</span></b><button data-modal-close>×</button></div><div class="app-menu">${rows.map(([p,n])=>`<button data-menu-page="${p}"><span>${n}</span><i>›</i></button>`).join('')}</div>`,{className:'menu-modal'});
+    showModal(`<div class="app-menu-head"><b>Foli<span>vra</span></b><button data-modal-close>×</button></div><div class="app-menu">${rows.map(([p,n])=>`<button data-menu-page="${p}"><span>${n}</span><i>›</i></button>`).join('')}</div>`,{className:'menu-modal'});
     $$('[data-menu-page]').forEach(b=>b.addEventListener('click',()=>{const p=b.dataset.menuPage;closeModal();if(p==='guide')showGuide();else navigate(p);}));
+  }
+
+  function showQuickAdd(){
+    showModal(`${modalHeader('Yeni kayıt')}<div class="quick-add-sheet"><button data-quick-action="asset"><span>${ICONS.portfolio}</span><div><b>Yatırım aracı ekle</b><small>BIST, ABD, ETF, TEFAS, altın veya döviz</small></div></button><button data-quick-action="transaction"><span>${ICONS.cashflow}</span><div><b>Alış / satış işlemi</b><small>Adet, fiyat, komisyon ve işlem tarihi</small></div></button><button data-quick-action="dividend"><span>${ICONS.coin}</span><div><b>Temettü kaydı</b><small>Açıklanmış, tahmini veya alınmış ödeme</small></div></button><button data-quick-action="cash"><span>${ICONS.wallet}</span><div><b>Nakit hareketi</b><small>Para yatırma veya çekme</small></div></button></div>`);
+    $$('[data-quick-action]').forEach(b=>b.addEventListener('click',()=>{const a=b.dataset.quickAction;closeModal();setTimeout(()=>{if(a==='asset')showAssetForm();else if(a==='transaction')state.assets.length?showTransactionForm():showAssetForm();else if(a==='dividend')showDividendForm();else showCashTransactionForm();},180);}));
   }
 
   function renderPage(resetScroll = true) {
@@ -1272,10 +1319,14 @@
     const page = $('#page');
     const renderers = { dashboard:renderDashboard, portfolio:renderPortfolio, dividends:renderDividends, calendar:renderCalendar, analytics:renderAnalytics, market:renderMarket, investors:renderInvestors, discover:renderDiscover, tools:renderTools, search:renderSearch, stocks:renderStocks, sectors:renderSectors, upcoming:renderUpcoming, favorites:renderFavorites, support:renderSupport, profile:renderProfile };
     page.innerHTML = (renderers[currentPage] || renderCalendar)();
+    page.classList.remove('page-enter');
+    void page.offsetWidth;
+    page.classList.add('page-enter');
     $$('.nav-item').forEach(btn => btn.classList.toggle('active', btn.dataset.page === currentPage));
     renderIcons();
     applyPrivacy();
     updateSyncText();
+    const profileName=state.settings.profileName||'Yatırımcı';$('#profileBtn').textContent=profileName.split(/\s+/).filter(Boolean).slice(0,2).map(x=>x[0]).join('').toLocaleUpperCase('tr-TR')||'F';
     bindPageEvents();
     if (resetScroll) {
       window.scrollTo({top:0,behavior:'instant'});
@@ -1302,17 +1353,23 @@
       }
       window.location.href = href;
     }));
-    $$('[data-page-go]').forEach(b=>b.addEventListener('click',()=>{if(b.dataset.stockFilter)stockFilter=b.dataset.stockFilter;navigate(b.dataset.pageGo);}));
+    $$('[data-page-go]').forEach(b=>b.addEventListener('click',()=>{if(b.dataset.stockFilter){stockFilter=b.dataset.stockFilter;selectedSector='';}navigate(b.dataset.pageGo);}));
     $$('[data-action]').forEach(b=>b.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();handleAction(b.dataset.action,b);}));
     $$('.asset-row').forEach(row=>row.addEventListener('click',()=>showAssetDetail(row.dataset.assetId)));
-    $$('.event-row').forEach(row=>row.addEventListener('click',()=>showAssetDetail(row.dataset.assetId)));
+    $$('.event-row').forEach(row=>row.addEventListener('click',()=>row.dataset.eventId?showDividendDetail(row.dataset.eventId):showAssetDetail(row.dataset.assetId)));
     $$('.watch-row').forEach(row=>row.addEventListener('click',()=>showWatchForm(row.dataset.watchId)));
-    $('#clearStockFilter')?.addEventListener('click',()=>{stockFilter='ALL';renderPage(false);});
+    $$('.transaction-card[data-transaction-id]').forEach(row=>row.addEventListener('click',()=>showTransactionDetail(row.dataset.transactionId)));
+    $$('[data-portfolio-tab]').forEach(b=>b.addEventListener('click',()=>{portfolioTab=b.dataset.portfolioTab;renderPage(false);}));
+    $$('[data-markets-tab]').forEach(b=>b.addEventListener('click',()=>{marketsTab=b.dataset.marketsTab;renderPage(false);}));
+    $('#marketsRefresh')?.addEventListener('click',()=>refreshAll({includeContent:true}));
+    $('#clearStockFilter')?.addEventListener('click',()=>{stockFilter='ALL';selectedSector='';renderPage(false);});
     $('#stockSearch')?.addEventListener('input',e=>{const q=e.target.value.toLocaleUpperCase('tr-TR');$$('.stock-card').forEach(x=>x.hidden=!x.textContent.toLocaleUpperCase('tr-TR').includes(q));});
     $('#sectorSearch')?.addEventListener('input',e=>{const q=e.target.value.toLocaleUpperCase('tr-TR');$$('.sector-card').forEach(x=>x.hidden=!x.textContent.toLocaleUpperCase('tr-TR').includes(q));});
-    $$('.sector-card').forEach(b=>b.addEventListener('click',()=>{stockFilter='ALL';navigate('stocks');}));
+    $$('.sector-card').forEach(b=>b.addEventListener('click',()=>{stockFilter='ALL';selectedSector=b.dataset.sector;navigate('stocks');}));
+    $('#calendarFilterBtn')?.addEventListener('click',showCalendarFilter);
+    $$('[data-year-step]').forEach(b=>b.addEventListener('click',()=>{state.calendarView.year=Number(state.calendarView.year)+Number(b.dataset.yearStep);saveState();renderPage();}));
     $('#openSourceStatus')?.addEventListener('click',showSourceStatus);$('#openDataSettings')?.addEventListener('click',showDataSettings);$('#exportSupport')?.addEventListener('click',exportData);
-    $('#profileSettings')?.addEventListener('click',showSettings);$('#profileTheme')?.addEventListener('click',()=>{state.settings.theme=state.settings.theme==='night'?'light':'night';saveState();renderPage(false);});$('#profileBackup')?.addEventListener('click',exportData);
+    $('#editProfile')?.addEventListener('click',showProfileEditor);$('#profileSettings')?.addEventListener('click',showSettings);$('#profileNotifications')?.addEventListener('click',showNotificationSettings);$('#profileTheme')?.addEventListener('click',()=>{state.settings.theme=state.settings.theme==='night'?'light':'night';saveState();renderPage(false);});$('#profileBackup')?.addEventListener('click',exportData);
     $$('[data-analytics-filter]').forEach(b=>b.addEventListener('click',()=>{analyticsFilter=b.dataset.analyticsFilter;renderPage();}));
     $$('[data-analytics-period]').forEach(b=>b.addEventListener('click',()=>{analyticsPeriod=b.dataset.analyticsPeriod;renderPage(false);}));
     $$('.filter-pill').forEach(b=>b.addEventListener('click',()=>{portfolioFilter=b.dataset.filter;renderPage();}));
@@ -1340,6 +1397,7 @@
       'add-asset': () => showAssetForm(),
       'add-transaction': () => showTransactionForm(),
       'cash-transaction': () => showCashTransactionForm(),
+      'edit-portfolio-name': () => showPortfolioNameEditor(),
       'add-dividend': () => showDividendForm(null,node?.dataset.datePrefill),
       'add-watch': () => showWatchForm(),
       'confirm-dividend': () => showDividendConfirmation(node?.dataset.eventId),
@@ -1406,7 +1464,7 @@
         <div class="field fund-fee-field" style="${a.type==='TEFAS'?'':'display:none'}"><label>Giriş komisyonu (%)</label><input name="fundEntryFee" type="number" step="any" min="0" value="${a.fundEntryFee ?? ''}" placeholder="KAP'tan otomatik"></div>
         <div class="field fund-fee-field" style="${a.type==='TEFAS'?'':'display:none'}"><label>Çıkış komisyonu (%)</label><input name="fundExitFee" type="number" step="any" min="0" value="${a.fundExitFee ?? ''}" placeholder="KAP'tan otomatik"></div>
         <div class="field fund-fee-field" style="${a.type==='TEFAS'?'':'display:none'}"><label>Performans ücreti (%)</label><input name="fundPerformanceFee" type="number" step="any" min="0" value="${a.fundPerformanceFee ?? ''}" placeholder="Varsa KAP'tan"></div>
-        <div class="field full"><div class="field-hint">Fon yönetim ücreti fonun birim fiyatına zaten yansır; Finansal(EB) bu bedeli bilgi amaçlı gösterir ve getiriden ikinci kez düşmez.</div></div>
+        <div class="field full"><div class="field-hint">Fon yönetim ücreti fonun birim fiyatına zaten yansır; Folivra bu bedeli bilgi amaçlı gösterir ve getiriden ikinci kez düşmez.</div></div>
       </div><div class="button-row">${existing?`<button type="button" class="danger-btn" id="deleteAsset">Sil</button>`:`<button type="button" class="secondary-btn" id="assetCancelButton" data-modal-close>Vazgeç</button>`}<button class="primary-btn" id="assetSaveButton" type="submit">Kaydet</button></div></form>`);
 
     const form = $('#assetForm');
@@ -1707,8 +1765,11 @@
 
   function showCashTransactionForm() {
     const balances=cashBalances();
-    showModal(`${modalHeader('Nakit işlemi')}<form id="cashForm"><div class="form-grid"><div class="field"><label>İşlem</label><select name="type"><option value="deposit">Para yatırma</option><option value="withdrawal">Para çekme</option></select></div><div class="field"><label>Para birimi</label><select name="currency">${['TRY','USD','EUR','GBP'].map(c=>`<option value="${c}">${c} · ${money(balances[c]||0,c)}</option>`).join('')}</select></div><div class="field"><label>Tarih</label><input type="date" name="date" value="${isoDate()}" required></div><div class="field"><label>Tutar</label><input type="number" step="any" min="0" name="amount" required></div><div class="field full"><label>Not</label><input name="note" placeholder="Örn. Aracı kuruma para yatırma"></div></div><div class="disclaimer">Para yatırma ve çekme yatırım getirisi değildir; yalnızca nakit hesabını ve toplam portföy değerini değiştirir.</div><div class="button-row"><button type="button" class="secondary-btn" data-modal-close>Vazgeç</button><button class="primary-btn">Kaydet</button></div></form>`);
-    $('#cashForm').addEventListener('submit',e=>{e.preventDefault();const fd=new FormData(e.currentTarget),type=String(fd.get('type')),currency=String(fd.get('currency')||'TRY'),amount=Number(fd.get('amount')||0),date=String(fd.get('date')||''),rate=fxRate(currency);if(!(amount>0)||!date)return showToast('Tarih ve tutarı kontrol edin.');if(type==='withdrawal'&&cashBalance(currency)+1e-8<amount)return showToast(`${currency} nakit bakiyesi yetersiz: ${money(cashBalance(currency),currency)}`);const signed=type==='withdrawal'?-amount:amount,amountTry=signed*rate;addCashRow({type:type==='withdrawal'?'cash_withdrawal':'cash_deposit',date,currency,amount:signed,fxRateTry:rate,amountTry,note:String(fd.get('note')||'')||cashActivityLabel({type:type==='withdrawal'?'cash_withdrawal':'cash_deposit'})});state.cashflows.push({id:uid('flow'),type:type==='withdrawal'?'withdrawal':'contribution',date,amount:amountTry,currency:'TRY',originalAmount:signed,originalCurrency:currency,note:String(fd.get('note')||'')});state.demo=false;saveState();closeModal();renderPage();showToast(type==='withdrawal'?'Para çekme kaydedildi':'Nakit hesaba eklendi');});
+    const currencies=['TRY','USD','EUR','GBP'];
+    showModal(`${modalHeader('Nakit işlemi')}<form id="cashForm"><div class="form-grid"><div class="field"><label>İşlem</label><select name="type"><option value="deposit">Para yatırma</option><option value="withdrawal">Para çekme</option><option value="conversion">Döviz dönüşümü</option></select></div><div class="field"><label id="cashCurrencyLabel">Para birimi</label><select name="currency">${currencies.map(c=>`<option value="${c}">${c} · ${money(balances[c]||0,c)}</option>`).join('')}</select></div><div class="field" id="cashTargetField" hidden><label>Alınan para birimi</label><select name="targetCurrency">${currencies.map(c=>`<option value="${c}" ${c==='USD'?'selected':''}>${c}</option>`).join('')}</select></div><div class="field"><label>Tarih</label><input type="date" name="date" value="${isoDate()}" required></div><div class="field"><label id="cashAmountLabel">Tutar</label><input type="number" step="any" min="0" name="amount" required></div><div class="field" id="cashTargetAmountField" hidden><label>Hesaba geçen tutar</label><input type="number" step="any" min="0" name="targetAmount"></div><div class="field full"><label>Not</label><input name="note" placeholder="Örn. Aracı kuruma para yatırma"></div></div><div class="disclaimer" id="cashFormHint">Para yatırma ve çekme yatırım getirisi değildir; yalnızca nakit hesabını ve toplam portföy değerini değiştirir.</div><div class="button-row"><button type="button" class="secondary-btn" data-modal-close>Vazgeç</button><button class="primary-btn">Kaydet</button></div></form>`);
+    const form=$('#cashForm'),update=()=>{const converting=form.elements.type.value==='conversion';$('#cashTargetField').hidden=!converting;$('#cashTargetAmountField').hidden=!converting;$('#cashCurrencyLabel').textContent=converting?'Satılan para birimi':'Para birimi';$('#cashAmountLabel').textContent=converting?'Satılan tutar':'Tutar';$('#cashFormHint').textContent=converting?'Gerçekleşen kur yerine iki hesaptaki kesin tutarlar kaydedilir. Böylece banka makası ve işlem sonucu doğru kalır.':'Para yatırma ve çekme yatırım getirisi değildir; yalnızca nakit hesabını ve toplam portföy değerini değiştirir.';};
+    form.elements.type.addEventListener('change',update);update();
+    form.addEventListener('submit',e=>{e.preventDefault();const fd=new FormData(e.currentTarget),type=String(fd.get('type')),currency=String(fd.get('currency')||'TRY'),amount=Number(fd.get('amount')||0),date=String(fd.get('date')||''),rate=fxRate(currency),note=String(fd.get('note')||'').trim();if(!(amount>0)||!date)return showToast('Tarih ve tutarı kontrol edin.');if((type==='withdrawal'||type==='conversion')&&cashBalance(currency)+1e-8<amount)return showToast(`${currency} nakit bakiyesi yetersiz: ${money(cashBalance(currency),currency)}`);if(type==='conversion'){const targetCurrency=String(fd.get('targetCurrency')||'USD'),targetAmount=Number(fd.get('targetAmount')||0);if(targetCurrency===currency)return showToast('Satılan ve alınan para birimi farklı olmalıdır.');if(!(targetAmount>0))return showToast('Hesaba geçen tutarı girin.');const conversionId=uid('fx');addCashRow({type:'cash_conversion_out',conversionId,date,currency,amount:-amount,fxRateTry:rate,amountTry:-amount*rate,note:note||`${currency} → ${targetCurrency} dönüşümü`});addCashRow({type:'cash_conversion_in',conversionId,date,currency:targetCurrency,amount:targetAmount,fxRateTry:fxRate(targetCurrency),amountTry:targetAmount*fxRate(targetCurrency),note:note||`${currency} → ${targetCurrency} dönüşümü`});state.demo=false;saveState();closeModal();renderPage();showToast(`${currency} → ${targetCurrency} dönüşümü kaydedildi`);return;}const signed=type==='withdrawal'?-amount:amount,amountTry=signed*rate;addCashRow({type:type==='withdrawal'?'cash_withdrawal':'cash_deposit',date,currency,amount:signed,fxRateTry:rate,amountTry,note:note||cashActivityLabel({type:type==='withdrawal'?'cash_withdrawal':'cash_deposit'})});state.cashflows.push({id:uid('flow'),type:type==='withdrawal'?'withdrawal':'contribution',date,amount:amountTry,currency:'TRY',originalAmount:signed,originalCurrency:currency,note});state.demo=false;saveState();closeModal();renderPage();showToast(type==='withdrawal'?'Para çekme kaydedildi':'Nakit hesaba eklendi');});
   }
 
   function showWatchForm(watchId=null){
@@ -1742,6 +1803,23 @@
     $('#divForm').addEventListener('submit',e=>{e.preventDefault();const fd=new FormData(e.currentTarget);const a=assetById(fd.get('assetId'));if(!a)return;const evt={id:uid('div'),assetId:a.id,exDate:String(fd.get('exDate')),payDate:String(fd.get('payDate')),amountPerShare:Number(fd.get('amount')||0),currency:a.currency,status:String(fd.get('status')),received:fd.get('received')==='1',receivedAt:fd.get('received')==='1'?isoDate():undefined,taxRate:fd.get('taxRate')===''?undefined:Number(fd.get('taxRate')),source:String(fd.get('source')||'Manuel kayıt')};state.dividendEvents.push(evt);if(evt.received){const netTry=eventNet(evt);evt.confirmedQuantity=eligibleQuantityAtExDate(evt.assetId,evt.exDate);evt.confirmedNetTry=netTry;addCashRow({type:'dividend_income',eventId:evt.id,assetId:a.id,date:evt.payDate,currency:'TRY',amount:netTry,fxRateTry:1,amountTry:netTry,note:`${a.symbol} net temettü`});}state.demo=false;saveState();closeModal();renderPage();showToast('Temettü olayı eklendi');scheduleEventNotifications();});
   }
 
+  function showDividendDetail(eventId) {
+    const event=state.dividendEvents.find(item=>item.id===eventId);if(!event)return;
+    const asset=assetById(event.assetId);if(!asset)return;
+    const eligible=event.confirmedQuantity??eligibleQuantityAtExDate(event.assetId,event.exDate||event.payDate),tax=clamp(event.taxRate??automaticDividendTax(asset,event.payDate||event.exDate),0,100),gross=Number(eligible||0)*Number(event.amountPerShare||0),netCurrency=gross*(1-tax/100),netTry=eventNet(event),status=eventStatusMeta(event);
+    showModal(`${modalHeader('Temettü detayı')}<div class="detail-sheet"><div class="transaction-detail-head"><span class="status-pill ${status.className}">${status.label}</span><div class="big-symbol">${esc(asset.symbol)}</div><p>${esc(asset.name||'')}</p></div><div class="detail-grid"><div class="detail-stat"><div class="label">Hak kullanım</div><div class="value">${dateText(event.exDate)}</div></div><div class="detail-stat"><div class="label">Ödeme tarihi</div><div class="value">${dateText(event.payDate||event.exDate)}</div></div><div class="detail-stat"><div class="label">Hak edilen adet</div><div class="value">${numberFmt(eligible,4)}</div></div><div class="detail-stat"><div class="label">Pay başına brüt</div><div class="value">${money(event.amountPerShare,event.currency||asset.currency,false,4)}</div></div><div class="detail-stat"><div class="label">Brüt toplam</div><div class="value">${money(gross,event.currency||asset.currency)}</div></div><div class="detail-stat"><div class="label">Stopaj</div><div class="value">%${numberFmt(tax,2)}</div></div><div class="detail-stat"><div class="label">Net ödeme</div><div class="value positive">${money(netCurrency,event.currency||asset.currency)}</div></div><div class="detail-stat"><div class="label">TL karşılığı</div><div class="value positive">${money(netTry,'TRY')}</div></div></div><div class="disclaimer">Kaynak: ${esc(event.source||'Manuel kayıt')}. “Alındı” durumundaki kayıt Folivra nakit hesabına bir kez eklenir.</div><div class="button-row"><button class="danger-btn" id="deleteDividendEvent">Sil</button><button class="secondary-btn" id="editDividendEvent">Düzenle</button>${event.received?'':`<button class="primary-btn" id="receiveDividendEvent">Aldım</button>`}</div></div>`);
+    $('#editDividendEvent').addEventListener('click',()=>showDividendEditForm(eventId));
+    $('#receiveDividendEvent')?.addEventListener('click',()=>showDividendConfirmation(eventId));
+    $('#deleteDividendEvent').addEventListener('click',()=>{showModal(`${modalHeader('Temettü kaydı silinsin mi?')}<div class="detail-sheet"><p><b>${esc(asset.symbol)}</b> temettü kaydı ve varsa bağlı nakit girişi silinecek.</p><div class="button-row"><button class="secondary-btn" data-modal-close>Vazgeç</button><button class="danger-btn" id="confirmDeleteDividend">Evet, sil</button></div></div>`);$('#confirmDeleteDividend').addEventListener('click',()=>{state.dividendEvents=state.dividendEvents.filter(item=>item.id!==eventId);state.cashLedger=state.cashLedger.filter(row=>row.eventId!==eventId);state.demo=false;saveState();closeModal();renderPage();showToast('Temettü ve bağlı nakit kaydı silindi');});});
+  }
+
+  function showDividendEditForm(eventId) {
+    const event=state.dividendEvents.find(item=>item.id===eventId);if(!event)return;
+    const asset=assetById(event.assetId);if(!asset)return;
+    showModal(`${modalHeader('Temettüyü düzenle')}<form id="dividendEditForm"><div class="form-grid"><div class="field full"><label>Varlık</label><input value="${esc(asset.symbol)} · ${esc(asset.name||'')}" disabled></div><div class="field"><label>Hak kullanım tarihi</label><input type="date" name="exDate" value="${esc(event.exDate||isoDate())}" required></div><div class="field"><label>Ödeme tarihi</label><input type="date" name="payDate" value="${esc(event.payDate||event.exDate||isoDate())}" required></div><div class="field"><label>Pay başına brüt</label><input type="number" step="any" min="0" name="amount" value="${Number(event.amountPerShare||0)}" required></div><div class="field"><label>Durum</label><select name="status"><option value="confirmed" ${event.status==='confirmed'?'selected':''}>Açıklanmış</option><option value="estimated" ${event.status==='estimated'?'selected':''}>Tahmini</option></select></div><div class="field"><label>Stopaj (%)</label><input type="number" step=".1" min="0" max="100" name="taxRate" value="${event.taxRate??''}" placeholder="Varlık ayarı"></div><div class="field"><label>Kaynak/not</label><input name="source" value="${esc(event.source||'Manuel kayıt')}"></div></div><div class="disclaimer">Alınmış bir temettü düzenlenirse bağlı TL nakit girişi yeni net tutarla otomatik güncellenir.</div><div class="button-row"><button type="button" class="secondary-btn" data-modal-close>Vazgeç</button><button class="primary-btn">Güncelle</button></div></form>`);
+    $('#dividendEditForm').addEventListener('submit',e=>{e.preventDefault();const fd=new FormData(e.currentTarget);event.exDate=String(fd.get('exDate'));event.payDate=String(fd.get('payDate'));event.amountPerShare=Number(fd.get('amount')||0);event.status=String(fd.get('status'));event.taxRate=fd.get('taxRate')===''?undefined:Number(fd.get('taxRate'));event.source=String(fd.get('source')||'Manuel kayıt');if(event.received){state.cashLedger=state.cashLedger.filter(row=>row.eventId!==eventId);const qty=eligibleQuantityAtExDate(event.assetId,event.exDate),netTry=qty*event.amountPerShare*(1-clamp(event.taxRate??automaticDividendTax(asset,event.payDate),0,100)/100)*fxRate(event.currency||asset.currency);event.confirmedQuantity=qty;event.confirmedNetTry=netTry;addCashRow({type:'dividend_income',eventId:event.id,assetId:asset.id,date:event.payDate,currency:'TRY',amount:netTry,fxRateTry:1,amountTry:netTry,note:`${asset.symbol} net temettü`});}state.demo=false;saveState();closeModal();renderPage();showToast('Temettü kaydı güncellendi');scheduleEventNotifications();});
+  }
+
   function showAssetDetail(assetId) {
     const a=assetById(assetId);if(!a)return;const value=assetValue(a),cost=assetCost(a),profit=value-cost,annual=state.dividendEvents.filter(e=>e.assetId===a.id&&parseDate(e.payDate||e.exDate)>=addDays(new Date(),-1)&&parseDate(e.payDate||e.exDate)<=addDays(new Date(),365)).reduce((s,e)=>s+eventNet(e),0)||Number(a.quantity||0)*Number(a.annualDividendPerShare||0)*(1-clamp(automaticDividendTax(a),0,100)/100)*fxRate(a.currency);const hist=(a.history||[]).map(Number).filter(Number.isFinite);const spark=sparklineSvg(hist);const pos=transactionPosition(a.id);const firstBuy=state.transactions.filter(t=>t.assetId===a.id&&t.type==='buy'&&t.date).sort((x,y)=>parseDate(x.date)-parseDate(y.date))[0];
     showModal(`${modalHeader(a.name||a.symbol)}<div class="detail-sheet"><div class="big-symbol">${esc(a.symbol)}</div><div class="detail-price">${money(a.price,a.currency,false,a.price<1?4:2)}</div><div class="asset-change ${Number(a.changePct||0)>=0?'positive':'negative'}">${pct(a.changePct)} bugün</div>${spark}<div class="detail-grid"><div class="detail-stat"><div class="label">Portföy değeri</div><div class="value">${money(value,'TRY')}</div></div><div class="detail-stat"><div class="label">Açık kâr / zarar</div><div class="value ${profit>=0?'positive':'negative'}">${money(profit,'TRY')} · ${pct(assetProfitPct(a))}</div></div><div class="detail-stat"><div class="label">Ortalama maliyet</div><div class="value">${money(a.avgCost,a.currency,false,a.avgCost<1?4:2)}</div></div><div class="detail-stat"><div class="label">Gerçekleşen kâr / zarar</div><div class="value ${Number(pos.realizedProfitTry||0)>=0?'positive':'negative'}">${money(Number(pos.realizedProfitTry||0),'TRY')}</div></div><div class="detail-stat"><div class="label">İlk alış tarihi</div><div class="value">${firstBuy?dateText(firstBuy.date):'—'}</div></div><div class="detail-stat"><div class="label">12 ay net temettü</div><div class="value">${money(annual,'TRY')}</div></div>${a.type==='TEFAS'?`<div class="detail-stat"><div class="label">Yönetim ücreti</div><div class="value">${a.fundManagementFeeAnnual!=null?'%'+numberFmt(a.fundManagementFeeAnnual,4)+' / yıl':'—'}</div></div><div class="detail-stat"><div class="label">Fon toplam gider oranı</div><div class="value">${a.fundExpenseRatio!=null?'%'+numberFmt(a.fundExpenseRatio,4):'—'}</div></div>`:''}</div>${a.type==='TEFAS'?`<div class="disclaimer">Fon ücretleri KAP'tan mümkün olduğunda otomatik alınır. Yönetim ücreti fon fiyatına zaten yansıdığı için portföy getirisinden ayrıca düşülmez.</div>`:''}<div class="button-row"><button class="secondary-btn" id="detailDividend">Temettü ekle</button><button class="primary-btn" id="detailEdit">Düzenle</button></div></div>`);
@@ -1762,11 +1840,40 @@
     $('#targetForm').addEventListener('submit',e=>{e.preventDefault();const fd=new FormData(e.currentTarget);state.assets.forEach(a=>a.targetWeight=Number(fd.get(a.id)||0));saveState();closeModal();renderPage();showToast('Hedefler güncellendi');});
   }
 
+  function showPortfolioNameEditor() {
+    showModal(`${modalHeader('Portföy adını düzenle')}<form id="portfolioNameForm"><div class="field"><label>Portföy adı</label><input name="name" maxlength="40" value="${esc(state.settings.portfolioName||'Portföyüm')}" required placeholder="Örn. Finansal Özgürlük Portföyü"></div><div class="field-hint">Bu ad portföy başlığında ve özetlerde görünür.</div><div class="button-row"><button type="button" class="secondary-btn" data-modal-close>Vazgeç</button><button class="primary-btn">Kaydet</button></div></form>`);
+    $('#portfolioNameForm').addEventListener('submit',e=>{e.preventDefault();const name=String(new FormData(e.currentTarget).get('name')||'').trim();if(!name)return showToast('Portföy adı boş bırakılamaz.');state.settings.portfolioName=name;state.demo=false;saveState();closeModal();renderPage(false);showToast('Portföy adı güncellendi');});
+  }
+
+  function removeTransaction(transactionId) {
+    const tx=state.transactions.find(item=>item.id===transactionId);
+    if(!tx)return false;
+    state.transactions=state.transactions.filter(item=>item.id!==transactionId);
+    state.cashLedger=state.cashLedger.filter(row=>row.transactionId!==transactionId);
+    state.cashflows=state.cashflows.filter(row=>row.transactionId!==transactionId);
+    const asset=assetById(tx.assetId);if(asset)syncAssetLedger(asset);
+    state.demo=false;saveState();return true;
+  }
+
+  function showTransactionDetail(transactionId) {
+    const tx=state.transactions.find(item=>item.id===transactionId);if(!tx)return;
+    const asset=assetById(tx.assetId);if(!asset)return;
+    const currency=tx.currency||asset.currency||'TRY',quantity=Number(tx.quantity||0),price=Number(tx.price||0),fee=Number(tx.fee||0),gross=quantity*price,net=tx.type==='sell'?gross-fee:gross+fee;
+    const before=transactionPosition(asset.id,tx.date,true);
+    const realized=tx.type==='sell'?(Math.min(quantity,Number(before.quantity||0))*(price-Number(before.avgCost||0))-fee)*Number(tx.fxRateTry||fxRate(currency)):null;
+    showModal(`${modalHeader('İşlem detayı')}<div class="detail-sheet"><div class="transaction-detail-head"><span class="transaction-type ${tx.type}">${tx.type==='sell'?'SATIŞ':'ALIŞ'}</span><div class="big-symbol">${esc(asset.symbol)}</div><p>${esc(asset.name||TYPE_META[asset.type]?.label||'Varlık')}</p></div><div class="detail-grid"><div class="detail-stat"><div class="label">İşlem tarihi</div><div class="value">${dateText(tx.date)}</div></div><div class="detail-stat"><div class="label">Adet / pay</div><div class="value">${numberFmt(quantity,4)}</div></div><div class="detail-stat"><div class="label">Birim fiyat</div><div class="value">${money(price,currency,false,price<1?4:2)}</div></div><div class="detail-stat"><div class="label">Komisyon</div><div class="value">${money(fee,currency)}</div></div><div class="detail-stat"><div class="label">${tx.type==='sell'?'Net nakit girişi':'Toplam maliyet'}</div><div class="value">${money(net,currency)}</div></div>${realized!==null?`<div class="detail-stat"><div class="label">Gerçekleşen kâr / zarar</div><div class="value ${realized>=0?'positive':'negative'}">${money(realized,'TRY')}</div></div>`:''}</div><div class="disclaimer">Bu işlem silinirse bağlı nakit hareketi ve yeni para katkısı da birlikte geri alınır; portföy adedi ve ortalama maliyet yeniden hesaplanır.</div><div class="button-row"><button class="danger-btn" id="deleteTransaction">İşlemi sil</button><button class="primary-btn" data-modal-close>Kapat</button></div></div>`);
+    $('#deleteTransaction').addEventListener('click',()=>{showModal(`${modalHeader('İşlem silinsin mi?')}<div class="detail-sheet"><p><b>${esc(asset.symbol)}</b> için ${dateText(tx.date)} tarihli ${tx.type==='sell'?'satış':'alış'} işlemi silinecek.</p><div class="disclaimer">Bağlı nakit hareketleri de silinir ve portföy geçmişi yeniden hesaplanır.</div><div class="button-row"><button class="secondary-btn" data-modal-close>Vazgeç</button><button class="danger-btn" id="confirmDeleteTransaction">Evet, sil</button></div></div>`);$('#confirmDeleteTransaction').addEventListener('click',()=>{if(removeTransaction(transactionId)){closeModal();renderPage();showToast('İşlem ve bağlı nakit hareketleri silindi');}});});
+  }
+
   function showProjectionSettings() {
     const s=state.settings;
-    showModal(`${modalHeader('Özgürlük projeksiyonu')}<form id="projectionForm"><div class="form-grid"><div class="field"><label>Aylık yaşam gideri (₺)</label><input type="number" min="0" step="100" name="monthlyExpense" value="${s.monthlyExpense}"></div><div class="field"><label>Aylık yeni yatırım (₺)</label><input type="number" min="0" step="100" name="monthlyContribution" value="${s.monthlyContribution}"></div><div class="field"><label>Yıllık getiri varsayımı (%)</label><input type="number" step=".1" name="expectedReturn" value="${s.expectedReturn}"></div><div class="field"><label>Yıllık net temettü hedefi (₺)</label><input type="number" min="0" step="1000" name="dividendGoalAnnual" value="${s.dividendGoalAnnual}"></div></div><div class="disclaimer">Projeksiyon bir tahmindir; piyasa getirisi, kur ve temettü ödemeleri garanti değildir.</div><div class="button-row"><button type="button" class="secondary-btn" data-modal-close>Vazgeç</button><button class="primary-btn">Kaydet</button></div></form>`);
-    $('#projectionForm').addEventListener('submit',e=>{e.preventDefault();const fd=new FormData(e.currentTarget);['monthlyExpense','monthlyContribution','expectedReturn','dividendGoalAnnual'].forEach(k=>state.settings[k]=Number(fd.get(k)||0));saveState();closeModal();renderPage();showToast('Projeksiyon ayarları güncellendi');});
+    showModal(`${modalHeader('Özgürlük projeksiyonu')}<form id="projectionForm"><div class="form-grid"><div class="field"><label>Aylık yaşam gideri (₺)</label><input type="number" min="0" step="100" name="monthlyExpense" value="${s.monthlyExpense}"></div><div class="field"><label>Aylık yeni yatırım (₺)</label><input type="number" min="0" step="100" name="monthlyContribution" value="${s.monthlyContribution}"></div><div class="field"><label>Yıllık toplam getiri varsayımı (%)</label><input type="number" min="-99" step=".1" name="expectedReturn" value="${s.expectedReturn}"></div><div class="field"><label>Hedef net temettü verimi (%)</label><input type="number" min=".1" max="100" step=".1" name="expectedDividendYield" value="${s.expectedDividendYield||5}"></div><div class="field full"><label>Yıllık net temettü hedefi (₺)</label><input type="number" min="0" step="1000" name="dividendGoalAnnual" value="${s.dividendGoalAnnual}"><div class="field-hint">Temettü merkezi ilerleme çubuğu için kullanılır. Finansal özgürlük hesabı aylık yaşam giderinizi esas alır.</div></div></div><div class="disclaimer">Aylık katkılar ay sonunda eklenerek bileşik büyüme hesaplanır. Vergi, enflasyon, kur ve piyasa getirileri garanti değildir; sonuç bir senaryodur.</div><div class="button-row"><button type="button" class="secondary-btn" data-modal-close>Vazgeç</button><button class="primary-btn">Kaydet</button></div></form>`);
+    $('#projectionForm').addEventListener('submit',e=>{e.preventDefault();const fd=new FormData(e.currentTarget);['monthlyExpense','monthlyContribution','expectedReturn','expectedDividendYield','dividendGoalAnnual'].forEach(k=>state.settings[k]=Number(fd.get(k)||0));saveState();closeModal();renderPage();showToast('Projeksiyon ayarları güncellendi');});
   }
+
+  function showProfileEditor(){const s=state.settings;showModal(`${modalHeader('Profili düzenle')}<form id="profileForm"><div class="profile-edit-mark"><img src="folivra-mark.svg" alt=""><span>Yalnızca bu cihazda saklanır</span></div><div class="form-grid"><div class="field full"><label>Ad soyad</label><input name="profileName" maxlength="60" value="${esc(s.profileName||'')}" required></div><div class="field full"><label>E-posta (isteğe bağlı)</label><input type="email" name="profileEmail" maxlength="100" value="${esc(s.profileEmail||'')}" placeholder="ornek@eposta.com"></div><div class="field full"><label>Portföy adı</label><input name="portfolioName" maxlength="40" value="${esc(s.portfolioName||'Portföyüm')}" required></div></div><div class="disclaimer">Profil ve portföy bilgileri cihazdaki yedeğe dahildir. Herhangi bir üyelik veya ücretli hesap oluşturulmaz.</div><div class="button-row"><button type="button" class="secondary-btn" data-modal-close>Vazgeç</button><button class="primary-btn">Kaydet</button></div></form>`);$('#profileForm').addEventListener('submit',e=>{e.preventDefault();const fd=new FormData(e.currentTarget),name=String(fd.get('profileName')||'').trim(),portfolioName=String(fd.get('portfolioName')||'').trim();if(!name||!portfolioName)return showToast('Ad ve portföy adı zorunludur.');s.profileName=name;s.profileEmail=String(fd.get('profileEmail')||'').trim();s.portfolioName=portfolioName;saveState();closeModal();renderPage(false);showToast('Profil güncellendi');});}
+
+  function showNotificationSettings(){const s=state.settings;showModal(`${modalHeader('Bildirim tercihleri')}<form id="notificationForm"><div class="setting-list notification-preferences"><label class="setting-row"><div class="setting-icon">${ICONS.bell}</div><div><div class="setting-name">Bildirimleri etkinleştir</div><div class="setting-value">Folivra yaklaşan olayları hatırlatsın</div></div><input type="checkbox" name="notifications" ${s.notifications?'checked':''}></label><label class="setting-row"><div class="setting-icon">${ICONS.calendar}</div><div><div class="setting-name">Hak kullanım tarihi</div><div class="setting-value">Temettü hakkı için kritik tarih</div></div><input type="checkbox" name="notifyExDate" ${s.notifyExDate!==false?'checked':''}></label><label class="setting-row"><div class="setting-icon">${ICONS.coin}</div><div><div class="setting-name">Ödeme tarihi</div><div class="setting-value">Nakit hesabını kontrol etme uyarısı</div></div><input type="checkbox" name="notifyPaymentDate" ${s.notifyPaymentDate!==false?'checked':''}></label></div><div class="form-grid notification-timing"><div class="field"><label>Kaç gün önce?</label><select name="notifyAdvanceDays">${[[0,'Yalnızca aynı gün'],[1,'1 gün önce'],[3,'3 gün önce'],[7,'7 gün önce']].map(([v,l])=>`<option value="${v}" ${Number(s.notifyAdvanceDays??1)===v?'selected':''}>${l}</option>`).join('')}</select></div><div class="field"><label>Bildirim saati</label><select name="notificationHour">${[8,9,10,12,18,20].map(v=>`<option value="${v}" ${Number(s.notificationHour||10)===v?'selected':''}>${String(v).padStart(2,'0')}:00</option>`).join('')}</select></div></div><div class="disclaimer">Android, pil tasarrufu veya bildirim izni nedeniyle hatırlatmayı birkaç dakika geciktirebilir. Ödeme tarihinin geçmesi paranın alındığı anlamına gelmez.</div><div class="button-row"><button type="button" class="secondary-btn" data-modal-close>Vazgeç</button><button class="primary-btn">Kaydet</button></div></form>`);$('#notificationForm').addEventListener('submit',e=>{e.preventDefault();const fd=new FormData(e.currentTarget);s.notifications=fd.get('notifications')==='on';s.notifyExDate=fd.get('notifyExDate')==='on';s.notifyPaymentDate=fd.get('notifyPaymentDate')==='on';s.notifyAdvanceDays=Number(fd.get('notifyAdvanceDays')||0);s.notificationHour=Number(fd.get('notificationHour')||10);saveState();closeModal();renderPage(false);scheduleEventNotifications();showToast(s.notifications?'Bildirim tercihleri güncellendi':'Bildirimler kapatıldı');});}
 
   function showSettings() {
     const s=state.settings;
@@ -1785,15 +1892,15 @@
     <div class="setting-group"><div class="setting-group-title">Yedek ve taşıma</div><div class="setting-list">
       <div class="setting-row" id="exportData"><div class="setting-icon">${ICONS.download}</div><div><div class="setting-name">Yedeği dışa aktar</div><div class="setting-value">Şifrelenmemiş JSON dosyası</div></div><span class="setting-chevron">›</span></div>
       <div class="setting-row" id="exportCalendar"><div class="setting-icon">${ICONS.calendar}</div><div><div class="setting-name">Temettü takvimini aktar</div><div class="setting-value">Google/Apple/Outlook için .ics</div></div><span class="setting-chevron">›</span></div>
-      <div class="setting-row" id="importData"><div class="setting-icon">${ICONS.upload}</div><div><div class="setting-name">Yedekten geri yükle</div><div class="setting-value">Finansal(EB) JSON yedeği</div></div><span class="setting-chevron">›</span></div>
+      <div class="setting-row" id="importData"><div class="setting-icon">${ICONS.upload}</div><div><div class="setting-name">Yedekten geri yükle</div><div class="setting-value">Folivra JSON yedeği</div></div><span class="setting-chevron">›</span></div>
       <div class="setting-row" id="resetData"><div class="setting-icon" style="color:var(--negative);background:rgba(255,102,127,.08)">${ICONS.trash}</div><div><div class="setting-name" style="color:var(--negative)">Tüm verileri sil</div><div class="setting-value">Cihazdaki yerel portföyü sıfırla</div></div><span class="setting-chevron">›</span></div>
-    </div></div><div class="disclaimer">Finansal(EB) v${APP_VERSION}. Yatırım tavsiyesi değildir. Fiyat ve temettü kayıtlarını işlem yapmadan önce aracı kurum/KAP verisiyle doğrula.</div>`,{className:'settings-modal'});
+    </div></div><div class="disclaimer">Folivra v${APP_VERSION}. Yatırım tavsiyesi değildir. Fiyat ve temettü kayıtlarını işlem yapmadan önce aracı kurum/KAP verisiyle doğrula.</div>`,{className:'settings-modal'});
     $('#dataSettings').addEventListener('click',showDataSettings);
     $('#refreshNow').addEventListener('click',()=>{closeModal();refreshAll({includeContent:true});});
     $('#sourceStatus').addEventListener('click',showSourceStatus);
     $('#themeSetting').addEventListener('click',()=>{state.settings.theme=state.settings.theme==='night'?'light':'night';saveState();showSettings();renderPage(false);});
     $('#privacySetting').addEventListener('click',()=>{state.settings.privacy=!state.settings.privacy;saveState();showSettings();renderPage();});
-    $('#notificationSetting').addEventListener('click',()=>{state.settings.notifications=!state.settings.notifications;saveState();showSettings();scheduleEventNotifications();});
+    $('#notificationSetting').addEventListener('click',showNotificationSettings);
     $('#widgetHelp').addEventListener('click',showWidgetHelp);
     $('#projectionSettings').addEventListener('click',showProjectionSettings);
     $('#exportData').addEventListener('click',exportData);
@@ -1815,11 +1922,11 @@
 
   function showWidgetHelp() {
     const m=portfolioMetrics(),next=upcomingEvents(1)[0];
-    showModal(`${modalHeader('Android ana ekran widget’ları')}<div class="card" style="padding:16px;background:linear-gradient(145deg,#12323d,#0a2029)"><div class="hero-label">Finansal(EB) · Portföy</div><div class="metric-value" style="font-size:24px">${money(m.total,'TRY')}</div><div class="asset-change ${m.daily>=0?'positive':'negative'}">${pct(m.dailyPct)} bugün</div><div class="summary-strip" style="margin-top:13px"><div class="summary-item"><div class="summary-label">Yıllık temettü</div><div class="summary-value">${money(m.annualDividend,'TRY')}</div></div><div class="summary-item"><div class="summary-label">Sıradaki</div><div class="summary-value">${next?dateText(next.payDate||next.exDate,{day:'numeric',month:'short'}):'—'}</div></div><div class="summary-item"><div class="summary-label">Güncelleme</div><div class="summary-value">${state.market.lastSync?'Güncel':'Yerel'}</div></div></div></div><div class="disclaimer">APK kurulduktan sonra telefonun ana ekranına basılı tut → Widget’lar → Finansal(EB) → “Portföy Özeti” veya “Sıradaki Temettü”. Widget, son başarılı yenilemenin güvenli özetini gösterir.</div>`);
+    showModal(`${modalHeader('Android ana ekran widget’ları')}<div class="card" style="padding:16px;background:linear-gradient(145deg,#102f55,#071b35)"><div class="hero-label">Folivra · Portföy</div><div class="metric-value" style="font-size:24px">${money(m.total,'TRY')}</div><div class="asset-change ${m.daily>=0?'positive':'negative'}">${pct(m.dailyPct)} bugün</div><div class="summary-strip" style="margin-top:13px"><div class="summary-item"><div class="summary-label">Yıllık temettü</div><div class="summary-value">${money(m.annualDividend,'TRY')}</div></div><div class="summary-item"><div class="summary-label">Sıradaki</div><div class="summary-value">${next?dateText(next.payDate||next.exDate,{day:'numeric',month:'short'}):'—'}</div></div><div class="summary-item"><div class="summary-label">Güncelleme</div><div class="summary-value">${state.market.lastSync?'Güncel':'Yerel'}</div></div></div></div><div class="disclaimer">APK kurulduktan sonra telefonun ana ekranına basılı tut → Widget’lar → Folivra → “Portföy Özeti” veya “Sıradaki Temettü”. Widget, son başarılı yenilemenin güvenli özetini gösterir.</div>`);
   }
 
   function exportData() {
-    const payload=JSON.stringify({...state,exportedAt:new Date().toISOString(),appVersion:APP_VERSION},null,2);const filename=`FinansalEB-yedek-${isoDate()}.json`;
+    const payload=JSON.stringify({...state,exportedAt:new Date().toISOString(),appVersion:APP_VERSION},null,2);const filename=`Folivra-yedek-${isoDate()}.json`;
     try { if(window.Android?.downloadFile){window.Android.downloadFile(filename,payload,'application/json');showToast('Yedek dosyası hazırlandı');return;} } catch(_){}
     const blob=new Blob([payload],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);showToast('Yedek indirildi');
   }
@@ -1834,11 +1941,11 @@
     const escapeIcs = value => String(value ?? '').replaceAll('\\','\\\\').replaceAll(';','\\;').replaceAll(',','\\,').replace(/\r?\n/g,'\\n');
     const stamp = new Date().toISOString().replace(/[-:]/g,'').replace(/\.\d{3}Z$/,'Z');
     const statusLabel = value => ({confirmed:'Açıklanmış',proposed:'Şirket teklifi',estimated:'Tahmini',historical:'Geçmiş'}[value] || 'Kayıt');
-    const lines = ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//FinansalEB//Temettu Takvimi//TR','CALSCALE:GREGORIAN','METHOD:PUBLISH','X-WR-CALNAME:Finansal(EB) Temettü Takvimi','X-WR-TIMEZONE:Europe/Istanbul'];
+    const lines = ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Folivra//Temettu Takvimi//TR','CALSCALE:GREGORIAN','METHOD:PUBLISH','X-WR-CALNAME:Folivra Temettü Takvimi','X-WR-TIMEZONE:Europe/Istanbul'];
     future.forEach(e => {
       const a = assetById(e.assetId); if (!a) return;
       const prefix = e.status === 'estimated' ? '≈ ' : e.status === 'proposed' ? 'Teklif · ' : '';
-      const description = `${statusLabel(e.status)} · Net yaklaşık ${money(eventNet(e),'TRY')} · ${e.source || 'Finansal(EB)'}`;
+      const description = `${statusLabel(e.status)} · Net yaklaşık ${money(eventNet(e),'TRY')} · ${e.source || 'Folivra'}`;
       const append = (kind,date,summary) => {
         if (!date) return;
         lines.push('BEGIN:VEVENT',`UID:${escapeIcs(`${e.id}-${kind}@finansaleb.local`)}`,`DTSTAMP:${stamp}`,`DTSTART;VALUE=DATE:${compactDate(date)}`,`DTEND;VALUE=DATE:${nextDate(date)}`,`SUMMARY:${escapeIcs(prefix + a.symbol + ' · ' + summary)}`,`DESCRIPTION:${escapeIcs(description)}`,'CATEGORIES:FinansalEB,Temettü','TRANSP:TRANSPARENT','END:VEVENT');
@@ -1848,13 +1955,13 @@
     });
     lines.push('END:VCALENDAR');
     const content = lines.join('\r\n') + '\r\n';
-    const filename = `FinansalEB-temettu-takvimi-${isoDate()}.ics`;
+    const filename = `Folivra-temettu-takvimi-${isoDate()}.ics`;
     try { if(window.Android?.downloadFile){window.Android.downloadFile(filename,content,'text/calendar');showToast('Takvim dosyası hazırlandı');return;} } catch(_){}
     const blob=new Blob([content],{type:'text/calendar;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);showToast('Temettü takvimi indirildi');
   }
 
   function importData(file) {
-    const reader=new FileReader();reader.onload=()=>{try{const parsed=JSON.parse(reader.result);state=normalizeState(parsed);state.demo=false;saveState();closeModal();renderPage();showToast('Yedek geri yüklendi');}catch(e){showToast('Dosya geçerli bir Finansal(EB) yedeği değil',3600);}};reader.readAsText(file);
+    const reader=new FileReader();reader.onload=()=>{try{const parsed=JSON.parse(reader.result);state=normalizeState(parsed);state.demo=false;saveState();closeModal();renderPage();showToast('Yedek geri yüklendi');}catch(e){showToast('Dosya geçerli bir Folivra yedeği değil',3600);}};reader.readAsText(file);
   }
 
   function confirmReset() {
@@ -2216,17 +2323,20 @@
   }
 
   function scheduleEventNotifications() {
-    if(!state.settings.notifications)return;
     try {
       if(!window.Android?.scheduleNotification)return;
-      upcomingEvents(8,false).forEach(e=>{const a=assetById(e.assetId),date=parseDate(e.payDate||e.exDate),pre=new Date(date.getFullYear(),date.getMonth(),date.getDate()-1,10,0,0).getTime(),day=new Date(date.getFullYear(),date.getMonth(),date.getDate(),10,0,0).getTime();if(pre>Date.now())window.Android.scheduleNotification(`${a?.symbol||'Hisse'} temettüsü yarın`,`${dateText(date,{day:'numeric',month:'long'})} · yaklaşık ${money(eventNet(e),'TRY')}`,pre,`divpre_${e.id}`);if(day>Date.now())window.Android.scheduleNotification(`${a?.symbol||'Hisse'} · temettü kazancı olabilir`,`Bugün ödeme tarihi · yaklaşık ${money(eventNet(e),'TRY')}. Aldıysan uygulamadan onayla.`,day,`divpay_${e.id}`);});
+      const advance=Math.max(0,Number(state.settings.notifyAdvanceDays??1)),hour=Math.min(23,Math.max(0,Number(state.settings.notificationHour||10)));
+      state.dividendEvents.forEach(e=>{['ex_pre','ex_day','pay_pre','pay_day'].forEach(kind=>window.Android.cancelNotification?.(`div_${kind}_${e.id}`));window.Android.cancelNotification?.(`divpre_${e.id}`);window.Android.cancelNotification?.(`divpay_${e.id}`);});
+      (state.ipoTracked||[]).forEach(i=>['demandStart','demandEnd','firstTradeDate'].forEach(key=>window.Android.cancelNotification?.(`ipo_${i.id}_${key}`)));
+      if(!state.settings.notifications)return;
+      upcomingEvents(40,false).forEach(e=>{const a=assetById(e.assetId),amount=money(eventNet(e),'TRY');const scheduleKind=(kind,value,label,body)=>{if(!value)return;const date=parseDate(value),day=new Date(date.getFullYear(),date.getMonth(),date.getDate(),hour,0,0).getTime(),pre=new Date(date.getFullYear(),date.getMonth(),date.getDate()-advance,hour,0,0).getTime();if(advance>0&&pre>Date.now())window.Android.scheduleNotification(`${a?.symbol||'Hisse'} · ${advance} gün kaldı`,`${label}: ${dateText(date,{day:'numeric',month:'long'})} · yaklaşık ${amount}`,pre,`div_${kind}_pre_${e.id}`);if(day>Date.now())window.Android.scheduleNotification(`${a?.symbol||'Hisse'} · ${label}`,body,day,`div_${kind}_day_${e.id}`);};if(state.settings.notifyExDate!==false)scheduleKind('ex',e.exDate,'Hak kullanım günü','Temettü hakkı için kritik gün. İşlem yapmadan önce şirket açıklamasını doğrula.');if(state.settings.notifyPaymentDate!==false)scheduleKind('pay',e.payDate,'Ödeme günü',`Yaklaşık ${amount} temettü hesabına geçmiş olabilir. Geldiyse Folivra’da onayla.`);});
       (state.ipoTracked||[]).forEach(i=>{[['demandStart','Halka arz talebi başlıyor'],['demandEnd','Halka arzda son gün'],['firstTradeDate','Borsada ilk işlem günü']].forEach(([key,title])=>{if(!i[key])return;const d=parseDate(i[key]),at=new Date(d.getFullYear(),d.getMonth(),d.getDate(),9,0,0).getTime();if(at>Date.now())window.Android.scheduleNotification(`${i.symbol||i.name} · ${title}`,`${dateText(d,{day:'numeric',month:'long'})} · ${i.name}`,at,`ipo_${i.id}_${key}`);});});
     } catch(error){console.warn('Notification bridge',error);}
   }
 
   function showOnboarding() {
     if(localStorage.getItem(ONBOARDING_KEY)||state.assets.length)return;
-    showModal(`<div class="modal-grabber"></div><div class="onboarding"><div class="onboarding-logo"><svg viewBox="0 0 48 48"><path d="M10 34V15.5c0-2.5 2-4.5 4.5-4.5H31l7 7v16c0 2.2-1.8 4-4 4H14c-2.2 0-4-1.8-4-4Z"/><path d="M18 30.5 23 25l4 3 6-8"/><path d="m30 20 3-1-1 3"/></svg></div><h2>Finansal<span style="color:var(--accent)">(EB)</span></h2><p>Snowball ve Stock Events’in güçlü iş akışlarından esinlenen; ancak arayüzü, verisi ve kayıtları sana ait olan Türkçe portföy uygulaması.</p><div class="feature-grid"><div class="feature-item"><strong>Tüm varlıklar</strong><span>BIST, ABD, ETF, TEFAS, altın, gümüş ve özel varlık</span></div><div class="feature-item"><strong>Temettü merkezi</strong><span>Açıklanmış ve tahmini ödeme ayrımı, net gelir</span></div><div class="feature-item"><strong>Özgürlük hedefi</strong><span>Aylık gider karşılama ve uzun vadeli projeksiyon</span></div><div class="feature-item"><strong>Özel ve yerel</strong><span>Portföy cihazında kalır; kendi sunucun seçilebilir</span></div></div><div class="button-row"><button class="secondary-btn" id="startEmpty">Kendi portföyüm</button><button class="primary-btn" id="startDemo">Örneği incele</button></div><div class="disclaimer">Uygulama yatırım tavsiyesi vermez. Ücretsiz veri kaynaklarının gecikmesi veya kesintisi olabilir; son başarılı değer korunur.</div></div>`,{dismissible:false});
+    showModal(`<div class="modal-grabber"></div><div class="onboarding"><div class="onboarding-logo folivra-onboarding-mark"><img src="folivra-mark.svg" alt="Folivra logosu"></div><h2>Foli<span style="color:var(--accent)">vra</span></h2><p>Tüm yatırımlarını tek yerde birleştir; portföyünü büyüt, pasif gelirini izle ve finansal özgürlük hedefine yaklaş.</p><div class="feature-grid"><div class="feature-item"><strong>Tüm yatırımlar</strong><span>BIST, ABD, ETF, TEFAS, altın, gümüş ve döviz</span></div><div class="feature-item"><strong>Temettü merkezi</strong><span>Açıklanmış ve tahmini ödeme ayrımı, net gelir</span></div><div class="feature-item"><strong>Özgürlük hedefi</strong><span>Aylık gider karşılama ve uzun vadeli projeksiyon</span></div><div class="feature-item"><strong>Özel ve yerel</strong><span>Portföy cihazında kalır; kendi sunucun seçilebilir</span></div></div><div class="button-row"><button class="secondary-btn" id="startEmpty">Portföyümü oluştur</button><button class="primary-btn" id="startDemo">Örneği incele</button></div><div class="disclaimer">Folivra yatırım tavsiyesi vermez. Ücretsiz veri kaynaklarının gecikmesi veya kesintisi olabilir; son başarılı değer korunur.</div></div>`,{dismissible:false});
     $('#startEmpty').addEventListener('click',()=>{localStorage.setItem(ONBOARDING_KEY,'1');state=blankState();saveState();closeModal();renderPage();setTimeout(showAssetForm,200);});
     $('#startDemo').addEventListener('click',()=>{localStorage.setItem(ONBOARDING_KEY,'1');state=demoState();saveState();closeModal();renderPage();showToast('Örnek portföy açıldı');});
   }
@@ -2236,6 +2346,7 @@
     $('#fab').addEventListener('click',()=>state.assets.length?showTransactionForm():showAssetForm());
     $('#privacyBtn').addEventListener('click',()=>{state.settings.privacy=!state.settings.privacy;saveState();renderPage();showToast(state.settings.privacy?'Tutarlar gizlendi':'Tutarlar gösteriliyor');});
     $('#syncBtn').addEventListener('click',()=>refreshAll({includeContent:true}));
+    $('#quickAddBtn').addEventListener('click',showQuickAdd);
     $('#moreBtn').addEventListener('click',showAppMenu);
     $('#searchBtn').addEventListener('click',()=>navigate('search'));
     $('#profileBtn').addEventListener('click',()=>navigate('profile'));

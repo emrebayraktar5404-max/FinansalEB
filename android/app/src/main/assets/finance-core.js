@@ -143,11 +143,32 @@
     return merged;
   }
 
+  /** Aylık katkıyı ay sonunda ekleyerek hedef temettü sermayesine ulaşma süresini hesaplar. */
+  function freedomProjection(input = {}) {
+    const capital = Math.max(0, finiteNumber(input.capital) ?? 0);
+    const contribution = Math.max(0, finiteNumber(input.monthlyContribution) ?? 0);
+    const expense = Math.max(0, finiteNumber(input.monthlyExpense) ?? 0);
+    const annualReturn = Math.max(-99, finiteNumber(input.annualReturn) ?? 0) / 100;
+    const dividendYield = Math.max(0, finiteNumber(input.dividendYield) ?? 0) / 100;
+    const targetCapital = dividendYield > 0 ? expense * 12 / dividendYield : Infinity;
+    if (capital >= targetCapital) return {months:0, targetCapital, endingCapital:capital};
+    const monthlyRate = Math.pow(1 + annualReturn, 1 / 12) - 1;
+    if (contribution <= 0 && monthlyRate <= 0) return {months:Infinity, targetCapital, endingCapital:capital};
+    let endingCapital = capital;
+    let months = 0;
+    while (endingCapital < targetCapital && months < 1200) {
+      endingCapital = endingCapital * (1 + monthlyRate) + contribution;
+      months += 1;
+    }
+    return {months:endingCapital >= targetCapital ? months : Infinity, targetCapital, endingCapital};
+  }
+
   return Object.freeze({
     cashBalances,
     cashRowAmount,
     cashTotalTry,
     dividendBucket,
+    freedomProjection,
     hasReceiptEvidence,
     mergeExternalDividend,
     migrateDividendEvents,

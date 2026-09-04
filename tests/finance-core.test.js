@@ -99,3 +99,21 @@ test('uygulama yeni alış ve satışları nakit defterine bağlar', () => {
   assert.match(app, /realizedCostTry/);
   assert.match(app, /Satış net tutarı.*hesabına eklendi/);
 });
+
+test('finansal özgürlük hedef sermayesini ve bileşik süreyi hesaplar', () => {
+  const result = core.freedomProjection({
+    capital: 100000,
+    monthlyContribution: 10000,
+    monthlyExpense: 50000,
+    annualReturn: 8,
+    dividendYield: 5
+  });
+  assert.equal(result.targetCapital, 12000000);
+  assert.ok(result.months > 0 && result.months < 1200);
+  assert.ok(result.endingCapital >= result.targetCapital);
+});
+
+test('sıfır verim veya katkısız negatif senaryo ulaşılamaz döndürür', () => {
+  assert.equal(core.freedomProjection({capital:1000, monthlyExpense:1000, dividendYield:0}).targetCapital, Infinity);
+  assert.equal(core.freedomProjection({capital:1000, monthlyExpense:1000, dividendYield:5, monthlyContribution:0, annualReturn:0}).months, Infinity);
+});

@@ -40,7 +40,7 @@ public final class NotificationReceiver extends BroadcastReceiver {
                 : new Notification.Builder(context);
         Notification notification = builder
                 .setSmallIcon(R.drawable.ic_notification)
-                .setContentTitle(title == null ? "Finansal(EB)" : title)
+                .setContentTitle(title == null ? "Folivra" : title)
                 .setContentText(body == null ? "Temettü takviminde yaklaşan olay var." : body)
                 .setStyle(new Notification.BigTextStyle().bigText(body))
                 .setAutoCancel(true)
