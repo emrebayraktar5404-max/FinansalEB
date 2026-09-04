@@ -131,7 +131,7 @@
         expectedDividendGrowth: 6,
         dividendGoalAnnual: 600000,
         reinvestDividends: true,
-        theme: 'dark'
+        theme: 'light'
       },
       market: {
         fx: { TRY: 1, USD: 41.5, EUR: 48.3, GBP: 55.8 },
@@ -217,7 +217,7 @@
     return {
       ...base,
       ...raw,
-      settings: { ...base.settings, ...(raw.settings || {}), backendUrl: String((raw.settings || {}).backendUrl || DEFAULT_BACKEND_URL) },
+      settings: { ...base.settings, ...(raw.settings || {}), theme:(raw.settings || {}).theme === 'night' ? 'night' : 'light', backendUrl: String((raw.settings || {}).backendUrl || DEFAULT_BACKEND_URL) },
       market: { ...base.market, ...(raw.market || {}), fx: { ...base.market.fx, ...((raw.market || {}).fx || {}) } },
       assets: Array.isArray(raw.assets) ? raw.assets : [],
       transactions: Array.isArray(raw.transactions) ? raw.transactions : [],
@@ -243,7 +243,7 @@
 
   let state = loadState();
   syncAllAssetLedgers();
-  let currentPage = 'dashboard';
+  let currentPage = 'calendar';
   let portfolioFilter = 'ALL';
   let portfolioQuery = '';
   let analyticsFilter = 'ALL';
@@ -292,6 +292,7 @@
 
   function saveState({render = false} = {}) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    applyTheme();
     applyPrivacy();
     syncNativeWidget();
     if (render) renderPage();
@@ -438,6 +439,12 @@
   function applyPrivacy() {
     document.documentElement.style.setProperty('--money-blur', state.settings.privacy ? '7px' : '0px');
     if ($('#privacyBtn')) $('#privacyBtn').innerHTML = state.settings.privacy ? ICONS.eyeOff : ICONS.eye;
+  }
+
+  function applyTheme() {
+    const night = state.settings.theme === 'night';
+    document.documentElement.dataset.theme = night ? 'night' : 'light';
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', night ? '#07131b' : '#ffffff');
   }
 
   function updateSyncText() {
@@ -1184,11 +1191,58 @@
     return contentRefreshPromise;
   }
 
+  function renderDiscover() {
+    const cards = [
+      ['trend','En yüksek temettü verimine sahip hisseler','Temettü verimi en yüksek hisseleri kolayca keşfedin ve yatırım fırsatlarını değerlendirin.','Hisseleri gör','portfolio'],
+      ['coin','Gelecek yüksek verimli temettü ödemeleri','Yüksek temettü verimine sahip yaklaşan tüm temettü ödemelerini keşfedin.','Temettüleri gör','dividends'],
+      ['calendar','Son 5 yılda temettü açıklayan hisseler','Son 5 yılda düzenli olarak temettü ödemesi açıklayan hisseleri keşfedin.','Hisseleri gör','portfolio'],
+      ['analytics','En yüksek temettü verimine sahip sektörler','Temettü açısından güçlü sektörleri ve bu sektörlerdeki hisseleri inceleyin.','Sektörleri gör','analytics']
+    ];
+    return `<div class="reference-page"><h1>Keşfet</h1><div class="discover-list">${cards.map((c,i)=>`<button class="discover-card discover-${i}" data-page-go="${c[4]}"><span class="discover-icon">${ICONS[c[0]]}</span><strong>${c[1]}</strong><p>${c[2]}</p><em>${c[3]} ›</em></button>`).join('')}</div></div>`;
+  }
+
+  function renderTools() {
+    const cards = [
+      ['trend','Hisse/Yatırım Karşılaştırma','Hisse senetleri, döviz, altın ve ETF gibi yatırım araçlarını temettüler ve sermaye artışları dahil ederek uzun vadeli karşılaştırın.','compare'],
+      ['target','Temettü Emekliliği Hesaplama','Temettü emeklisi olarak finansal özgürlüğünüze ne zaman ulaşacağınızı hesaplayın ve emeklilik planınızı oluşturun.','retirement'],
+      ['coin','Temettü Getiri Hesaplama','Yatırımınızın temettü getirisini kolayca hesaplayın. Hisse senedi temettü gelirinizi ve veriminizi anında öğrenin.','income'],
+      ['analytics','Temettü Verimi Hesaplama','Hisse fiyatı ya da maliyetinize göre temettü verimini hesaplayın.','yield']
+    ];
+    return `<div class="reference-page"><h1>Araçlar</h1><div class="tool-list">${cards.map((c,i)=>`<button class="tool-card" data-tool="${c[4]}"><span class="tool-icon tool-${i}">${ICONS[c[0]]}</span><strong>${c[1]}</strong><p>${c[2]}</p><em>Şimdi hesapla</em></button>`).join('')}</div></div>`;
+  }
+
+  function renderSearch() {
+    const quick = [['portfolio','Hisseler'],['analytics','Sektörler'],['calendar','Temettü Takvimi'],['discover','Keşfet'],['tools','Araçlar'],['guide','Rehber']];
+    return `<div class="reference-page search-page"><h1>Ara</h1><label class="big-search">${ICONS.search}<input id="globalSearch" placeholder="Hisse, sektör veya içerik ara…" autocomplete="off"></label><h2>Hızlı Erişim</h2><div class="quick-grid">${quick.map(([p,n])=>`<button ${p==='guide'?'data-action="show-guide"':`data-page-go="${p}"`}>${n}</button>`).join('')}</div><div id="globalResults"><h2>Son Aramalar</h2><p class="empty-text">Arama geçmişi bulunamadı.</p></div></div>`;
+  }
+
+  function showCalculator(kind) {
+    const meta = {
+      compare:['Hisse/Yatırım Karşılaştırma','Başlangıç tutarı','Yıllık getiri (%)'],
+      retirement:['Temettü Emekliliği Hesaplama','Mevcut portföy','Aylık yatırım'],
+      income:['Temettü Getiri Hesaplama','Pay başına temettü','Sahip olunan adet'],
+      yield:['Temettü Verimi Hesaplama','Pay başına temettü','Hisse fiyatı / maliyet']
+    }[kind] || ['Hesaplama','Birinci değer','İkinci değer'];
+    showModal(`${modalHeader(meta[0])}<form id="calculatorForm"><div class="field"><label>${meta[1]}</label><input name="a" type="number" step="any" value="1000" required></div><div class="field"><label>${meta[2]}</label><input name="b" type="number" step="any" value="10" required></div><button class="primary-btn">Hesapla</button><div id="calculatorResult" class="calculator-result">Sonuç: —</div></form><section class="faq"><h3>Sıkça Sorulan Sorular</h3><details><summary>Bu hesaplama neyi gösterir?</summary><p>Girdiğiniz değerlere göre yaklaşık sonucu gösterir. Vergi, komisyon ve piyasa koşulları sonucu değiştirebilir.</p></details><details><summary>Yatırım kararında kullanılabilir mi?</summary><p>Tek başına yatırım kararı için yeterli değildir; bilgilendirme amaçlıdır.</p></details></section>`);
+    $('#calculatorForm').addEventListener('submit',e=>{e.preventDefault();const fd=new FormData(e.currentTarget),a=Number(fd.get('a')),b=Number(fd.get('b'));let out=0,label='';if(kind==='yield'){out=a/b*100;label=`%${numberFmt(out,2)}`;}else if(kind==='income'){out=a*b;label=money(out,'TRY');}else if(kind==='retirement'){out=b>0?Math.max(0,(a*25-a)/b/12):0;label=`${numberFmt(out,1)} yıl`;}else{out=a*Math.pow(1+b/100,10);label=money(out,'TRY');}$('#calculatorResult').textContent=`Sonuç: ${label}`;});
+  }
+
+  function showGuide() {
+    const titles=['Bedelli sermaye artırımı nedir?','Bedelsiz sermaye artırımı nedir?','Sermaye artırımı nedir, nasıl yapılır?','Temettü verimi nedir, nasıl hesaplanır?','Temettü ödemesi nasıl alınır, hesaba ne zaman geçer?','Temettü nedir?'];
+    showModal(`${modalHeader('Rehber')}<p>Temettü, pasif gelir ve finansal özgürlük üzerine detaylı bilgi ve yatırım ipuçları.</p><div class="guide-list">${titles.map((t,i)=>`<article><div class="guide-art art-${i}">${ICONS[i%2?'coin':'trend']}</div><small>REHBER</small><h3>${t}</h3><p>Temel kavramlar, hesaplama yöntemleri ve yatırımcıların dikkat etmesi gereken noktalar.</p></article>`).join('')}</div>`,{className:'guide-modal'});
+  }
+
+  function showAppMenu() {
+    const rows=[['calendar','Temettü Takvimi'],['dividends','Yaklaşan Ödemeler'],['portfolio','Hisseler'],['analytics','Sektörler'],['discover','Keşfet'],['portfolio','Portföy'],['portfolio','Favoriler'],['tools','Hesaplama Araçları'],['guide','Rehber'],['support','Destek ve İletişim'],['settings','Profil ve Ayarlar']];
+    showModal(`<div class="app-menu-head"><b>Finansal<span>EB</span></b><button data-modal-close>×</button></div><div class="app-menu">${rows.map(([p,n])=>`<button data-menu-page="${p}"><span>${n}</span><i>›</i></button>`).join('')}</div>`,{className:'menu-modal'});
+    $$('[data-menu-page]').forEach(b=>b.addEventListener('click',()=>{const p=b.dataset.menuPage;closeModal();if(p==='guide')showGuide();else if(p==='settings')showSettings();else if(p==='support')showToast('Destek ekranı hazırlanıyor');else navigate(p);}));
+  }
+
   function renderPage(resetScroll = true) {
     const previousScroll = window.scrollY || document.documentElement.scrollTop || 0;
     const page = $('#page');
-    const renderers = { dashboard:renderDashboard, portfolio:renderPortfolio, dividends:renderDividends, calendar:renderCalendar, analytics:renderAnalytics, market:renderMarket, investors:renderInvestors };
-    page.innerHTML = (renderers[currentPage] || renderDashboard)();
+    const renderers = { dashboard:renderDashboard, portfolio:renderPortfolio, dividends:renderDividends, calendar:renderCalendar, analytics:renderAnalytics, market:renderMarket, investors:renderInvestors, discover:renderDiscover, tools:renderTools, search:renderSearch };
+    page.innerHTML = (renderers[currentPage] || renderCalendar)();
     $$('.nav-item').forEach(btn => btn.classList.toggle('active', btn.dataset.page === currentPage));
     renderIcons();
     applyPrivacy();
@@ -1202,6 +1256,13 @@
   }
 
   function bindPageEvents() {
+    $$('[data-tool]').forEach(b=>b.addEventListener('click',()=>showCalculator(b.dataset.tool)));
+    $('#globalSearch')?.addEventListener('input',e=>{
+      const q=e.target.value.trim().toLocaleUpperCase('tr-TR');
+      const found=q ? state.assets.filter(a=>`${a.symbol} ${a.name} ${TYPE_META[a.type]?.label||''}`.toLocaleUpperCase('tr-TR').includes(q)).slice(0,20) : [];
+      $('#globalResults').innerHTML=q ? `<h2>Sonuçlar</h2>${found.length?`<div class="search-results">${found.map(a=>`<button class="asset-row" data-asset-id="${a.id}"><b>${esc(a.symbol)}</b><span>${esc(a.name)}</span><em>${money(a.price,a.currency)}</em></button>`).join('')}</div>`:'<p class="empty-text">Eşleşen varlık bulunamadı.</p>'} `:'<h2>Son Aramalar</h2><p class="empty-text">Arama geçmişi bulunamadı.</p>';
+      $$('.asset-row','#globalResults').forEach(row=>row.addEventListener('click',()=>showAssetDetail(row.dataset.assetId)));
+    });
     $$('[data-external-url]').forEach(node=>node.addEventListener('click',e=>{
       e.preventDefault();
       e.stopPropagation();
@@ -1250,6 +1311,7 @@
       'export-calendar': exportCalendar,
       'edit-targets': showTargetEditor,
       'projection-settings': showProjectionSettings,
+      'show-guide': showGuide,
       'refresh-content': refreshContent,
       'toggle-market': () => { const key=node?.dataset.marketKey; if(key && Object.prototype.hasOwnProperty.call(marketExpanded,key)){ marketExpanded[key]=!marketExpanded[key]; renderPage(false); } },
       'news-mode': () => { const mode=node?.dataset.newsMode; if(['important','portfolio','life','tr','world','all'].includes(mode)){ marketNewsMode=mode; renderPage(false); } },
@@ -1679,6 +1741,7 @@
       <div class="setting-row" id="sourceStatus"><div class="setting-icon">${ICONS.info}</div><div><div class="setting-name">Veri kaynakları</div><div class="setting-value">Açıklanmış ve tahmini veri ayrımı</div></div><span class="setting-chevron">›</span></div>
     </div></div>
     <div class="setting-group"><div class="setting-group-title">Kişiselleştirme</div><div class="setting-list">
+      <div class="setting-row" id="themeSetting"><div class="setting-icon">${ICONS.eye}</div><div><div class="setting-name">Gece modu</div><div class="setting-value">Koyu renkli, göz yormayan arayüz</div></div><i class="switch ${s.theme==='night'?'on':''}"></i></div>
       <div class="setting-row" id="privacySetting"><div class="setting-icon">${ICONS.eye}</div><div><div class="setting-name">Gizlilik modu</div><div class="setting-value">Tutarları bulanıklaştır</div></div><i class="switch ${s.privacy?'on':''}"></i></div>
       <div class="setting-row" id="notificationSetting"><div class="setting-icon">${ICONS.bell}</div><div><div class="setting-name">Temettü bildirimleri</div><div class="setting-value">Hak kullanım ve ödeme uyarıları</div></div><i class="switch ${s.notifications?'on':''}"></i></div>
       <div class="setting-row" id="widgetHelp"><div class="setting-icon">${ICONS.widget}</div><div><div class="setting-name">Android widget'ları</div><div class="setting-value">Portföy özeti ve sıradaki temettü</div></div><span class="setting-chevron">›</span></div>
@@ -1693,6 +1756,7 @@
     $('#dataSettings').addEventListener('click',showDataSettings);
     $('#refreshNow').addEventListener('click',()=>{closeModal();refreshAll({includeContent:true});});
     $('#sourceStatus').addEventListener('click',showSourceStatus);
+    $('#themeSetting').addEventListener('click',()=>{state.settings.theme=state.settings.theme==='night'?'light':'night';saveState();showSettings();renderPage(false);});
     $('#privacySetting').addEventListener('click',()=>{state.settings.privacy=!state.settings.privacy;saveState();showSettings();renderPage();});
     $('#notificationSetting').addEventListener('click',()=>{state.settings.notifications=!state.settings.notifications;saveState();showSettings();scheduleEventNotifications();});
     $('#widgetHelp').addEventListener('click',showWidgetHelp);
@@ -2137,7 +2201,9 @@
     $('#fab').addEventListener('click',()=>state.assets.length?showTransactionForm():showAssetForm());
     $('#privacyBtn').addEventListener('click',()=>{state.settings.privacy=!state.settings.privacy;saveState();renderPage();showToast(state.settings.privacy?'Tutarlar gizlendi':'Tutarlar gösteriliyor');});
     $('#syncBtn').addEventListener('click',()=>refreshAll({includeContent:true}));
-    $('#moreBtn').addEventListener('click',showSettings);
+    $('#moreBtn').addEventListener('click',showAppMenu);
+    $('#searchBtn').addEventListener('click',()=>navigate('search'));
+    $('#profileBtn').addEventListener('click',showSettings);
     $('#importInput').addEventListener('change',e=>{const file=e.target.files?.[0];if(file)importData(file);e.target.value='';});
     window.addEventListener('online',()=>{showToast('İnternet bağlantısı geri geldi');triggerAutoRefresh();});
     document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')setTimeout(triggerAutoRefresh,250);});
@@ -2158,7 +2224,7 @@
       localStorage.setItem(ONBOARDING_KEY, '1');
       saveState();
     }
-    renderIcons();setupGlobalEvents();renderPage();showOnboarding();initPwa();scheduleEventNotifications();startAutoRefreshLoop();
+    applyTheme();renderIcons();setupGlobalEvents();renderPage();showOnboarding();initPwa();scheduleEventNotifications();startAutoRefreshLoop();
     if(params.get('demo') !== '1')setTimeout(triggerAutoRefresh,350);
   }
 
